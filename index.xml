@@ -1,2 +1,86 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts"/>
+<index version="1" name="Jay Sabins Scripts" commit="177919685f5c90bfe3416a2a4ee7f75bd8a3c417">
+  <category name="Batch Tools">
+    <reapack name="JS_Folder_Batch_ImGui.lua" type="script" desc="JS Folder Batch Processor">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Batch-renders multi-language VO from a structured project folder (_Raw to _Processed) with per-language overrides and CSV logging. Requires SWS and ReaImGui.\par}
+}
+]]></description>
+      </metadata>
+      <version name="2.0.0" author="Jay Sabins, Daniel Petras" time="2026-10-30T02:42:46Z">
+        <changelog><![CDATA[Initial public release]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/177919685f5c90bfe3416a2a4ee7f75bd8a3c417/Batch%20Tools/JS_Folder_Batch_ImGui.lua</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Loudness">
+    <reapack name="JS_Utility_LoudnessAnalyzer.lua" type="script" desc="JS Loudness Analyzer (language folders)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Measures LUFS and RMS for every file in the project's _Raw language folders and writes a CSV to Data. Requires SWS.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.1.0" author="Jay Sabins" time="2026-10-30T02:42:46Z">
+        <changelog><![CDATA[Initial public release]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/177919685f5c90bfe3416a2a4ee7f75bd8a3c417/Loudness/JS_Utility_LoudnessAnalyzer.lua</source>
+      </version>
+    </reapack>
+    <reapack name="JS_Utility_LoudnessAnalyzer_SelectedItems.lua" type="script" desc="JS Loudness Analyzer (selected items)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Measures LUFS, true peak and RMS of selected items without modifying the project. Prints to the console and optionally writes a CSV. Requires SWS.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Jay Sabins" time="2026-10-30T02:42:46Z">
+        <changelog><![CDATA[Initial public release]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/177919685f5c90bfe3416a2a4ee7f75bd8a3c417/Loudness/JS_Utility_LoudnessAnalyzer_SelectedItems.lua</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Rename">
+    <reapack name="JS_Rename and number items with region name.lua" type="script" desc="Rename and number items with region name">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Renames selected items to their region's name plus a two-digit counter (Region_01, Region_02...).\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Jay Sabins" time="2026-10-30T02:42:46Z">
+        <changelog><![CDATA[Initial public release]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/177919685f5c90bfe3416a2a4ee7f75bd8a3c417/Rename/JS_Rename%20and%20number%20items%20with%20region%20name.lua</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Utility">
+    <reapack name="JS_ListInstalledPlugins.lua" type="script" desc="List installed plugins">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Writes a text list of every plugin REAPER knows about, grouped by format, to the resource folder and opens it. Requires REAPER 6.37+.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Jay Sabins" time="2026-10-30T02:42:46Z">
+        <changelog><![CDATA[Initial public release]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/177919685f5c90bfe3416a2a4ee7f75bd8a3c417/Utility/JS_ListInstalledPlugins.lua</source>
+      </version>
+    </reapack>
+  </category>
+</index>
