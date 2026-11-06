@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="177919685f5c90bfe3416a2a4ee7f75bd8a3c417">
+<index version="1" name="Jay Sabins Scripts" commit="740a769b6ce26f3413f5520a62a9c9cdab4c33e4">
   <category name="Batch Tools">
     <reapack name="JS_Folder_Batch_ImGui.lua" type="script" desc="JS Folder Batch Processor">
       <metadata>
@@ -14,6 +14,25 @@
       <version name="2.0.0" author="Jay Sabins, Daniel Petras" time="2026-10-30T02:42:46Z">
         <changelog><![CDATA[Initial public release]]></changelog>
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/177919685f5c90bfe3416a2a4ee7f75bd8a3c417/Batch%20Tools/JS_Folder_Batch_ImGui.lua</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Items">
+    <reapack name="JS_Build layer variations.lua" type="script" desc="Build aligned layer variations (gunshots, impacts, etc.)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Each track = one layer. The items on that track (left to right) = that layer's variations. Select the layer items (or just the layer tracks) and run.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Default mode: builds N variations side by side, every layer aligned in each slot. Variation 1 = file 1 of every layer, variation 2 = file 2, etc. Layers with fewer files cycle (or pick randomly, if chosen). A layer with one file is reused in every variation. Combo mode: builds every possible combination of layer files.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Alignment: item start (default) or first transient per item. Optional: one region per variation, ready for Render > Project regions. Fully undoable.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Jay Sabins" time="2026-11-06T20:09:20Z">
+        <changelog><![CDATA[Initial public release]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/5cb9bceef964cfa09afeec546dcb3b1a8472a5c6/Items/JS_Build%20layer%20variations.lua</source>
       </version>
     </reapack>
   </category>
