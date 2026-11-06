@@ -1,9 +1,10 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.4.1
+-- @version 1.4.2
 -- @changelog
---   Fixed a command prompt window flashing open and closed over and over while the window is open.
---   The Wwise selection is now read when you switch back to the window (or with the Refresh button), not on a timer.
+--   REAPER no longer hangs after a transfer while Wwise is still busy with the import.
+--   The preview remembers what already exists in Wwise and only asks Wwise again when something changes.
+--   The preview never waits on Wwise for more than a moment; if Wwise is busy it tries again a few seconds later.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -57,8 +58,15 @@ local preset_name = ""
 local selected_row = 0           -- 0 = leaf
 local summary = nil
 local status_line = ""
-local last_sig, last_check, want_sel_poll = nil, 0, true
+local last_sig, last_check, sel_poll_at = nil, 0, 0
 local was_focused = true
+-- The preview never waits on Wwise longer than this (seconds); if Wwise is busy it retries later.
+local PREVIEW_TIMEOUT, RETRY_DELAY = 1.5, 5
+local retry_at = nil
+local quiet_until = 0
+-- What the preview knows exists in Wwise under known_dest (lowercase path -> id, or false).
+local known_existing, known_dest = {}, nil
+local function forget_existing() known_existing = {} end
 local wwise_sel_path = nil
 local dirty_settings = false
 local open_summary = false
@@ -80,6 +88,7 @@ local function connect()
   conn, conn_err = core.connect()
   if conn and S.destination == "" then S.destination = conn.root .. "\\Default Work Unit" end
   if conn and S.leaf.voice and S.leaf.language == "" and conn.languages[1] then S.leaf.language = conn.languages[1] end
+  forget_existing()
   last_sig = nil
 end
 
@@ -116,16 +125,21 @@ end
 local function refresh_job(poll_selection, sig)
   return coroutine.create(function()
     if poll_selection then
-      local p = core.wwise_selection_path()
-      if p ~= wwise_sel_path then wwise_sel_path = p end
+      local p, _, code = core.wwise_selection_path(PREVIEW_TIMEOUT)
+      if code ~= "busy" and p ~= wwise_sel_path then wwise_sel_path = p end
     end
     local s2 = core.json.decode(core.json.encode(S))
     s2.destination = current_destination()
     local newplan = core.build_plan(s2, conn)
     local after = signature()
     if conn and newplan.destination ~= "" then
-      local _, err = core.mark_existing(newplan)
-      if err == "offline" then conn = nil; conn_err = "Lost connection to Wwise." end
+      if known_dest ~= newplan.destination then known_existing, known_dest = {}, newplan.destination end
+      local _, err = core.mark_existing(newplan, PREVIEW_TIMEOUT, known_existing)
+      if err == "offline" then conn = nil; conn_err = "Lost connection to Wwise."
+      elseif err == "busy" then
+        status_line = "Wwise is busy, the preview will update in a moment."
+        retry_at = r.time_precise() + RETRY_DELAY
+      elseif status_line:find("^Wwise is busy") then status_line = "" end
     end
     newplan.tree = core.build_tree(newplan, s2, conn)
     plan = newplan
@@ -137,8 +151,9 @@ local function refresh_preview(force)
   if transfer_task then return end
   if bg_task then bg_task = run_task(bg_task); return end
   local now = r.time_precise()
-  local poll = S.use_wwise_selection and conn and want_sel_poll
-  if poll then want_sel_poll = false end
+  if retry_at and now >= retry_at then retry_at = nil; force = true end
+  local poll = S.use_wwise_selection and conn and sel_poll_at and now >= sel_poll_at
+  if poll then sel_poll_at = nil end
   if not force and not poll and now - last_check < 0.3 then return end
   last_check = now
   local sig = signature()
@@ -147,8 +162,9 @@ local function refresh_preview(force)
   if poll and sig == last_sig and not force then
     -- Only the Wwise selection might have changed: check it, rebuild only if it did.
     bg_task = coroutine.create(function()
-      local p = core.wwise_selection_path()
-      if p ~= wwise_sel_path then wwise_sel_path = p; last_sig = nil end
+      local p, _, code = core.wwise_selection_path(PREVIEW_TIMEOUT)
+      if code == "busy" then sel_poll_at = r.time_precise() + RETRY_DELAY
+      elseif p ~= wwise_sel_path then wwise_sel_path = p; last_sig = nil end
     end)
   else
     last_sig = sig
@@ -258,9 +274,9 @@ local function section_destination()
   ImGui.SeparatorText(ctx, "Wwise destination")
   local c
   c, S.use_wwise_selection = ImGui.Checkbox(ctx, "Always use the object selected in Wwise", S.use_wwise_selection)
-  if c then settings_changed(); want_sel_poll = true end
+  if c then settings_changed(); sel_poll_at = 0 end
   if S.use_wwise_selection then
-    if ImGui.SmallButton(ctx, "Refresh##selpoll") then want_sel_poll = true end
+    if ImGui.SmallButton(ctx, "Refresh##selpoll") then sel_poll_at = 0; forget_existing(); last_sig = nil end
     ImGui.SameLine(ctx)
     ImGui.TextColored(ctx, COLOR_DIM, "Import destination: " .. (wwise_sel_path or "(nothing selected in Wwise)"))
   else
@@ -523,7 +539,13 @@ local function do_transfer()
     summary.destination = s2.destination
     status_line = ""
     open_summary = true
+    -- Remember what was just created, so the preview doesn't query Wwise while it's still busy importing.
+    if summary.plan and summary.imported > 0 then
+      if known_dest ~= summary.plan.destination then known_existing, known_dest = {}, summary.plan.destination end
+      core.remember_transfer(summary.plan, known_existing)
+    end
     last_sig = nil
+    quiet_until = r.time_precise() + 10
   end)
   transfer_task = run_task(transfer_task)
 end
@@ -595,8 +617,12 @@ local function loop()
   local visible, open = ImGui.Begin(ctx, "Wwise Transfer", true)
   if visible then
     -- Re-read the Wwise selection when coming back to this window (e.g. after clicking in Wwise).
-    local focused = ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows)
-    if focused and not was_focused then want_sel_poll = true end
+    -- AnyWindow: our own popups (like the summary) don't count as leaving. Right after a
+    -- transfer (render dialog, Wwise busy importing) focus changes are ignored for a bit.
+    local focused = ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_AnyWindow)
+    if focused and not was_focused and r.time_precise() > quiet_until then
+      sel_poll_at = 0; forget_existing(); last_sig = nil
+    end
     was_focused = focused
     section_connection()
     section_source()
