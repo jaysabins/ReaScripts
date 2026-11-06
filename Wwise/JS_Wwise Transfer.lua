@@ -1,10 +1,9 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.1.0
+-- @version 1.2.0
 -- @changelog
---   Connects over WebSocket (WAMP), like Wwise's own tools, when Mavriq Lua Sockets is installed. Needed for Wwise 2025.1, whose HTTP route returns 404.
---   Keeps one open connection to Wwise, so transfers are faster.
---   Falls back to HTTP otherwise, with a clearer error message.
+--   Back to HTTP only. Nothing extra to install (the Mavriq Lua Sockets option is removed).
+--   A refused connection now explains the fix: set "Allow connections from" to 127.0.0.1,::1 in Wwise's User Preferences.
 -- @provides
 --   [main] JS_Wwise Transfer - Quick send.lua
 --   [nomain] JS_WwiseTransfer_core.lua
@@ -50,7 +49,7 @@ local ctx = ImGui.CreateContext("Wwise Transfer")
 -- State
 ----------------------------------------------------------------------
 local S = core.load_settings()
-core.wamp_port, core.http_port = S.wamp_port, S.http_port
+core.http_port = S.http_port
 local conn, conn_err = nil, nil
 local plan = { entries = {}, errors = {} }
 local presets = core.load_presets()
@@ -76,7 +75,7 @@ local WILDCARDS = {
 }
 
 local function connect()
-  core.wamp_port, core.http_port = S.wamp_port, S.http_port
+  core.http_port = S.http_port
   conn, conn_err = core.connect()
   if conn and S.destination == "" then S.destination = conn.root .. "\\Default Work Unit" end
   if conn and S.leaf.voice and S.leaf.language == "" and conn.languages[1] then S.leaf.language = conn.languages[1] end
@@ -192,14 +191,6 @@ local function section_connection()
     ImGui.PushTextWrapPos(ctx, 0)
     ImGui.TextColored(ctx, COLOR_DIM, conn_err)
     ImGui.PopTextWrapPos(ctx)
-  end
-  if not core.has_websocket() then
-    ImGui.PushTextWrapPos(ctx, 0)
-    ImGui.TextColored(ctx, 0xF4D35EFF, "For the fast WebSocket connection (needed for Wwise 2025.1), install \"Mavriq Lua Sockets\" with ReaPack, then restart this script.")
-    ImGui.PopTextWrapPos(ctx)
-    if ImGui.SmallButton(ctx, "Copy Mavriq repository URL") then ImGui.SetClipboardText(ctx, core.MAVRIQ_REPO) end
-    ImGui.SameLine(ctx)
-    ImGui.TextDisabled(ctx, "ReaPack > Import repositories > paste > OK, then Browse packages > \"Mavriq Lua Sockets\" > Install")
   end
 end
 
@@ -471,20 +462,12 @@ end
 
 local function section_settings()
   if ImGui.CollapsingHeader(ctx, "Connection settings") then
-    ImGui.Text(ctx, "Connection type: " .. core.transport_name())
     ImGui.SetNextItemWidth(ctx, 100)
-    local c, v = ImGui.InputInt(ctx, "WAMP port", S.wamp_port)
-    if c then S.wamp_port = v; settings_changed() end
-    ImGui.SameLine(ctx)
-    ImGui.SetNextItemWidth(ctx, 100)
-    c, v = ImGui.InputInt(ctx, "HTTP port", S.http_port)
+    local c, v = ImGui.InputInt(ctx, "WAAPI HTTP port", S.http_port)
     if c then S.http_port = v; settings_changed() end
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Reconnect") then core.disconnect(); connect() end
     ImGui.TextColored(ctx, COLOR_DIM, "Must match Wwise > Project > User Preferences > Wwise Authoring API.")
-    if not core.has_websocket() then
-      ImGui.TextColored(ctx, COLOR_DIM, "HTTP is used because Mavriq Lua Sockets isn't installed (see below).")
-    end
   end
 end
 
