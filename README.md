@@ -26,6 +26,7 @@ Updates arrive automatically whenever ReaPack synchronizes.
 
 **Items**
 - **Build layer variations**: builds aligned layer variations (gunshots, impacts, etc.) from one track per layer, with an optional region per variation. Requires ReaImGui.
+- **Measure timing between selected layers**: lists every selected layer sorted by position with its offset from the first layer and from the previous one, in ms and seconds, ready to type into Wwise's Initial Delay. Based on a script by bfieser.
 
 **Loudness**
 - **Loudness Analyzer (language folders)**: measures LUFS and RMS across the project's `_Raw` language folders and writes a CSV. Requires SWS.
