@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.4.1"
+M.VERSION = "1.4.2"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -254,7 +254,10 @@ local CURL = IS_WIN and "curl.exe" or "/usr/bin/curl"
 
 local function parse_reply(exit_code, text, http)
   if exit_code ~= 0 or http == 0 then
-    if exit_code == 7 or exit_code == 28 or http == 0 or (text or ""):find("onnect") then
+    if exit_code == 28 then
+      return nil, "Wwise is busy and didn't answer in time.", "busy"
+    end
+    if exit_code == 7 or http == 0 or (text or ""):find("onnect") then
       return nil, "Couldn't reach Wwise. Is Wwise open with WAAPI enabled? " ..
         "(Project > User Preferences > Enable Wwise Authoring API, HTTP port " .. tostring(M.http_port) .. ")", "offline"
     end
@@ -284,16 +287,18 @@ local function write_request(uri, args, options)
   return base
 end
 
-local function curl_args(base)
-  return string.format('-s -S --max-time 120 -X POST -H "Content-Type: application/json" --data-binary "@%s.json" http://127.0.0.1:%d/waapi',
-    base, math.floor(tonumber(M.http_port) or 8090))
+local function curl_args(base, timeout)
+  return string.format('-s -S --max-time %g -X POST -H "Content-Type: application/json" --data-binary "@%s.json" http://127.0.0.1:%d/waapi',
+    timeout, base, math.floor(tonumber(M.http_port) or 8090))
 end
 
--- Blocking call (used by the quick-send script and outside coroutines).
-local function waapi_http(uri, args, options)
+-- Blocking, hidden call. `timeout` (seconds, default 120) caps how long REAPER waits;
+-- running out returns the error code "busy".
+local function waapi_http(uri, args, options, timeout)
+  timeout = timeout or 120
   local base = write_request(uri, args, options)
   if not base then return nil, "Could not write a temp file in " .. TMP end
-  local out = r.ExecProcess(CURL .. ' -w "\n@@HTTP %{http_code}" ' .. curl_args(base), 125000)
+  local out = r.ExecProcess(CURL .. ' -w "\n@@HTTP %{http_code}" ' .. curl_args(base, timeout), math.floor((timeout + 5) * 1000))
   os.remove(base .. ".json")
   if not out then return nil, "curl did not run." end
   local code, text = out:match("^(%-?%d+)\r?\n?(.*)$")
@@ -302,48 +307,10 @@ local function waapi_http(uri, args, options)
   return parse_reply(tonumber(code), text, http)
 end
 
-local function read_file(p)
-  local f = io.open(p, "rb")
-  if not f then return nil end
-  local d = f:read("*a"); f:close()
-  return d
-end
-
--- Non-blocking call: starts curl in the background and yields until it finishes,
--- so the window keeps drawing. Only used inside a coroutine (see M.async).
-local function waapi_http_async(uri, args, options)
-  local base = write_request(uri, args, options)
-  if not base then return nil, "Could not write a temp file in " .. TMP end
-  os.remove(base .. ".out"); os.remove(base .. ".code")
-  local cmd
-  if IS_WIN then
-    cmd = string.format('cmd.exe /C ""%s" -o "%s.out" -w "%%{http_code}" %s > "%s.code" 2>&1"', CURL, base, curl_args(base), base)
-  else
-    cmd = string.format('/bin/sh -c \'%s -o "%s.out" -w "%%{http_code}" %s > "%s.code" 2>&1\'', CURL, base, curl_args(base), base)
-  end
-  r.ExecProcess(cmd, -1)
-  local t0 = r.time_precise()
-  while true do
-    coroutine.yield()
-    local c = read_file(base .. ".code")
-    if c and c:match("%d%d%d%s*$") then
-      local http = tonumber(c:match("(%d%d%d)%s*$"))
-      local text = read_file(base .. ".out") or ""
-      os.remove(base .. ".json"); os.remove(base .. ".out"); os.remove(base .. ".code")
-      local errtext = c:gsub("%d%d%d%s*$", "")
-      return parse_reply(http == 0 and 7 or 0, http == 0 and errtext or text, http)
-    end
-    if r.time_precise() - t0 > 125 then return nil, "Wwise didn't answer within 2 minutes.", "offline" end
-  end
-end
-
-M.async = false -- the window turns this on; calls made inside a coroutine then don't block REAPER
-
 function M.disconnect() end
 
-function M.waapi(uri, args, options)
-  if M.async and coroutine.isyieldable() then return waapi_http_async(uri, args, options) end
-  return waapi_http(uri, args, options)
+function M.waapi(uri, args, options, timeout)
+  return waapi_http(uri, args, options, timeout)
 end
 
 -- Connection info: version, project name, languages, root path.
@@ -374,9 +341,9 @@ function M.connect()
 end
 
 -- First object selected in Wwise, as a path usable as an import destination.
-function M.wwise_selection_path()
-  local sel, err = M.waapi("ak.wwise.ui.getSelectedObjects", {}, { ["return"] = { "path", "type", "name" } })
-  if not sel then return nil, err end
+function M.wwise_selection_path(timeout)
+  local sel, err, code = M.waapi("ak.wwise.ui.getSelectedObjects", {}, { ["return"] = { "path", "type", "name" } }, timeout)
+  if not sel then return nil, err, code end
   local o = sel.objects and sel.objects[1]
   if not o then return nil, "Nothing is selected in Wwise." end
   local path = o.path
@@ -755,36 +722,85 @@ end
 
 local function regex_escape(t) return (t:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?%{%}|\\]", function(c) return "\\" .. c end)) end
 
+-- Every Wwise path an entry touches: its containers (below the destination) and the Sound.
+local function entry_paths(plan, e)
+  local out, p = {}, plan.destination
+  for _, n in ipairs(e.names or {}) do
+    p = p .. "\\" .. (n ~= "" and n or "Untitled")
+    out[#out + 1] = p
+  end
+  out[#out + 1] = e.plain
+  return out
+end
+
+local function apply_known(plan, known)
+  local existing = {}
+  for _, e in ipairs(plan.entries) do
+    if e.plain then
+      for _, p in ipairs(entry_paths(plan, e)) do
+        local id = known[p:lower()]
+        if id then existing[p:lower()] = id end
+      end
+    end
+  end
+  plan.dest_missing = nil
+  plan.existing = existing
+  for _, e in ipairs(plan.entries) do e.exists = e.plain and existing[e.plain:lower()] ~= nil end
+  return existing
+end
+
 -- Ask Wwise which planned objects already exist. Only asks about the names in
 -- the plan (not every object under the destination), so it stays fast in big
 -- projects. Marks e.exists and returns the set of existing plain paths.
-function M.mark_existing(plan)
+-- `known` (optional) is a cache: lowercase path -> id, or false when known to be
+-- missing. When it already answers every path, Wwise isn't asked at all.
+-- `timeout` (optional, seconds) caps how long REAPER waits for Wwise.
+function M.mark_existing(plan, timeout, known)
   if plan.destination == "" then return {} end
-  local names, seen = {}, {}
+  local names, seen, all_known = {}, {}, known ~= nil
   local function add(n) if n and n ~= "" and not seen[n] then seen[n] = true; names[#names + 1] = regex_escape(n) end end
   for _, e in ipairs(plan.entries) do
     if e.plain then
       for _, n in ipairs(e.names or {}) do add(n ~= "" and n or "Untitled") end
       add(e.name)
+      if all_known then
+        for _, p in ipairs(entry_paths(plan, e)) do
+          if known[p:lower()] == nil then all_known = false; break end
+        end
+      end
     end
   end
-  local existing = {}
-  if #names == 0 then plan.existing = existing; return existing end
+  if #names == 0 then plan.existing = {}; return plan.existing end
+  if all_known then return apply_known(plan, known) end
   local res, err, code = M.waapi("ak.wwise.core.object.get",
     { from = { path = { plan.destination } },
       transform = { { select = { "descendants" } }, { where = { "name:matches", "^(" .. table.concat(names, "|") .. ")$" } } } },
-    { ["return"] = { "path", "id" } })
+    { ["return"] = { "path", "id" } }, timeout)
   if not res then
-    if code == "offline" then return existing, "offline" end
+    if code == "offline" or code == "busy" then return {}, code end
     plan.dest_missing = true
     for _, e in ipairs(plan.entries) do e.exists = false end
-    return existing, err
+    return {}, err
   end
-  plan.dest_missing = nil
-  for _, o in ipairs(res["return"] or {}) do existing[o.path:lower()] = o.id end
-  plan.existing = existing
-  for _, e in ipairs(plan.entries) do e.exists = e.plain and existing[e.plain:lower()] ~= nil end
-  return existing
+  local found = {}
+  for _, o in ipairs(res["return"] or {}) do found[o.path:lower()] = o.id end
+  known = known or {}
+  for _, e in ipairs(plan.entries) do
+    if e.plain then
+      for _, p in ipairs(entry_paths(plan, e)) do known[p:lower()] = found[p:lower()] or false end
+    end
+  end
+  return apply_known(plan, known)
+end
+
+-- After a transfer, record what now exists in Wwise so the preview doesn't
+-- have to ask Wwise again while it is still busy with the import.
+function M.remember_transfer(plan, known)
+  for _, e in ipairs(plan.entries or {}) do
+    if e.plain and e.file then
+      for _, p in ipairs(entry_paths(plan, e)) do known[p:lower()] = known[p:lower()] or true end
+    end
+  end
 end
 
 -- Turn the plan into a tree shaped like Wwise's Project Explorer.
