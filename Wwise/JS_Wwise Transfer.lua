@@ -1,7 +1,7 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.0.0
--- @changelog Initial release
+-- @version 1.0.1
+-- @changelog Clearer error when the port answers but isn't WAAPI HTTP (e.g. WAMP and HTTP set to the same port)
 -- @provides
 --   [main] JS_Wwise Transfer - Quick send.lua
 --   [nomain] JS_WwiseTransfer_core.lua

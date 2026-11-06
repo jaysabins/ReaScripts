@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.0.0"
+M.VERSION = "1.0.1"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -247,7 +247,7 @@ function M.waapi(uri, args, options)
   if not f then return nil, "Could not write " .. req end
   f:write(body); f:close()
 
-  local cmd = string.format('%s -s -S --max-time 120 -X POST -H "Content-Type: application/json" --data-binary "@%s" http://127.0.0.1:%d/waapi',
+  local cmd = string.format('%s -s -S --max-time 120 -w "\n@@HTTP %%{http_code}" -X POST -H "Content-Type: application/json" --data-binary "@%s" http://127.0.0.1:%d/waapi',
     CURL, req, math.floor(tonumber(M.port) or 8090))
   local out = r.ExecProcess(cmd, 125000)
   if not out then return nil, "curl did not run." end
@@ -260,7 +260,14 @@ function M.waapi(uri, args, options)
     end
     return nil, "curl failed (" .. tostring(code) .. "): " .. tostring(text)
   end
-  if text == nil or text == "" then return {} end
+  local http = tonumber((text or ""):match("@@HTTP (%d+)%s*$"))
+  text = (text or ""):gsub("\r?\n?@@HTTP %d+%s*$", "")
+  if http == 404 or http == 400 or http == 426 then
+    return nil, "Port " .. tostring(M.port) .. " answered, but not with WAAPI over HTTP (HTTP " .. http .. "). " ..
+      "In Wwise > Project > User Preferences, the WAMP port and the HTTP port must be different " ..
+      "(defaults: WAMP 8080, HTTP 8090). Restart Wwise after changing them, and set this script's port to the HTTP one.", "offline"
+  end
+  if text == "" then return {} end
   local ok, res = pcall(json.decode, text)
   if not ok or type(res) ~= "table" then return nil, "Unexpected reply from Wwise: " .. tostring(text) end
   if type(res.uri) == "string" and res.uri:find("^ak%.") and res.message then
