@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="6c775393671c9ecb0efd5604330409efc5f6d544">
+<index version="1" name="Jay Sabins Scripts" commit="7d1d7d99a4e2e6d0f09a56267c7a364a8afbbffb">
   <category name="Batch Tools">
     <reapack name="JS_Folder_Batch_ImGui.lua" type="script" desc="JS Folder Batch Processor">
       <metadata>
@@ -180,6 +180,13 @@ A refused connection now explains the fix: set "Allow connections from" to 127.0
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/42637ac735a642971cd49557584aaa65b7eb26af/Wwise/JS_Wwise%20Transfer.lua</source>
         <source main="main" file="JS_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/42637ac735a642971cd49557584aaa65b7eb26af/Wwise/JS_Wwise%20Transfer%20-%20Quick%20send.lua</source>
         <source file="JS_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/42637ac735a642971cd49557584aaa65b7eb26af/Wwise/JS_WwiseTransfer_core.lua</source>
+      </version>
+      <version name="1.3.0" author="Jay Sabins" time="2026-11-06T22:37:21Z">
+        <changelog><![CDATA[Preview is now a Wwise-style tree: containers and Sounds nested as they'll appear in Wwise, with type, New/Exists status and Sound counts.
+Expand all / Collapse all buttons and a count of new objects.]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/5fbcebfd45f09dbcbbceb4a09458a49f4158d67e/Wwise/JS_Wwise%20Transfer.lua</source>
+        <source main="main" file="JS_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/5fbcebfd45f09dbcbbceb4a09458a49f4158d67e/Wwise/JS_Wwise%20Transfer%20-%20Quick%20send.lua</source>
+        <source file="JS_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/5fbcebfd45f09dbcbbceb4a09458a49f4158d67e/Wwise/JS_WwiseTransfer_core.lua</source>
       </version>
     </reapack>
   </category>
