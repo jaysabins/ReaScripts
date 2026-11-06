@@ -714,8 +714,62 @@ function M.mark_existing(plan)
   end
   plan.dest_missing = nil
   for _, o in ipairs(res["return"] or {}) do existing[o.path:lower()] = o.id end
+  plan.existing = existing
   for _, e in ipairs(plan.entries) do e.exists = e.plain and existing[e.plain:lower()] ~= nil end
   return existing
+end
+
+-- Turn the plan into a tree shaped like Wwise's Project Explorer.
+-- Node: { name, type, path, children = {...}, entry = e (Sounds only), status = "new"|"exists"|"duplicate"|nil,
+--         sounds = number of Sounds below, new_count = new objects below (incl. self) }
+function M.build_tree(plan, s, conn)
+  local root = { name = plan.destination ~= "" and plan.destination or "(no destination)", type = "Destination",
+                 path = plan.destination, children = {}, index = {}, sounds = 0, new_count = 0 }
+  local existing = plan.existing
+  local function status_of(path)
+    if not existing then return nil end
+    if plan.dest_missing then return "new" end
+    return existing[path:lower()] and "exists" or "new"
+  end
+  local sound_type = (conn and conn.new_types) and "Sound" or (s.leaf.voice and "Sound Voice" or "Sound SFX")
+  local unresolved = 0
+  for _, e in ipairs(plan.entries) do
+    if not e.plain then
+      unresolved = unresolved + 1
+    else
+      local node, path = root, plan.destination
+      local chain = { root }
+      for i, n in ipairs(e.names or {}) do
+        local nm = n ~= "" and n or "Untitled"
+        path = path .. "\\" .. nm
+        local key = nm:lower()
+        local child = node.index[key]
+        if not child then
+          child = { name = nm, type = s.rows[i] and s.rows[i].type or "?", path = path, children = {}, index = {},
+                    sounds = 0, new_count = 0, status = status_of(path) }
+          node.index[key] = child
+          node.children[#node.children + 1] = child
+        end
+        node = child
+        chain[#chain + 1] = node
+      end
+      local leaf = { name = e.name, type = sound_type, path = e.plain, entry = e, children = {}, index = {},
+                     sounds = 1, new_count = 0 }
+      leaf.status = e.duplicate and "duplicate" or status_of(e.plain)
+      node.children[#node.children + 1] = leaf
+      for _, c in ipairs(chain) do c.sounds = c.sounds + 1 end
+    end
+  end
+  -- Count new objects (containers and Sounds) per subtree.
+  local function count(n)
+    local c = (n.status == "new") and 1 or 0
+    for _, ch in ipairs(n.children) do c = c + count(ch) end
+    n.new_count = c
+    return c
+  end
+  count(root)
+  root.unresolved = unresolved
+  return root
 end
 
 ----------------------------------------------------------------------

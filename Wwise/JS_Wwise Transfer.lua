@@ -1,9 +1,9 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.2.0
+-- @version 1.3.0
 -- @changelog
---   Back to HTTP only. Nothing extra to install (the Mavriq Lua Sockets option is removed).
---   A refused connection now explains the fix: set "Allow connections from" to 127.0.0.1,::1 in Wwise's User Preferences.
+--   Preview is now a Wwise-style tree: containers and Sounds nested as they'll appear in Wwise, with type, New/Exists status and Sound counts.
+--   Expand all / Collapse all buttons and a count of new objects.
 -- @provides
 --   [main] JS_Wwise Transfer - Quick send.lua
 --   [nomain] JS_WwiseTransfer_core.lua
@@ -118,6 +118,7 @@ local function refresh_preview(force)
     local _, err = core.mark_existing(plan)
     if err == "offline" then conn = nil; conn_err = "Lost connection to Wwise." end
   end
+  plan.tree = core.build_tree(plan, s2, conn)
   last_sig = signature() -- building the plan can bump REAPER's change counter
   if dirty_settings then core.save_settings(S); dirty_settings = false end
 end
@@ -369,46 +370,109 @@ local function section_conflicts()
   if c then settings_changed() end
 end
 
+local TYPE_COLORS = {
+  ["Destination"] = 0xC8C8C8FF, ["Work Unit"] = 0xE0C060FF, ["Virtual Folder"] = 0xB0B0B0FF,
+  ["Physical Folder"] = 0xB0B0B0FF, ["Actor-Mixer"] = 0x6FA8FFFF, ["Random Container"] = 0xF2A65AFF,
+  ["Sequence Container"] = 0xE07FD0FF, ["Switch Container"] = 0x9B8CFFFF, ["Blend Container"] = 0x5FD3C8FF,
+  ["Sound SFX"] = 0x7BD88FFF, ["Sound Voice"] = 0x7BD88FFF, ["Sound"] = 0x7BD88FFF,
+}
+local TYPE_TAGS = {
+  ["Destination"] = "[DEST]", ["Work Unit"] = "[WU]", ["Virtual Folder"] = "[VF]", ["Physical Folder"] = "[PF]",
+  ["Actor-Mixer"] = "[AM]", ["Random Container"] = "[RND]", ["Sequence Container"] = "[SEQ]",
+  ["Switch Container"] = "[SW]", ["Blend Container"] = "[BLD]", ["Sound SFX"] = "[SFX]", ["Sound Voice"] = "[VO]",
+  ["Sound"] = "[SND]",
+}
+local KIND_LABEL = { direct = "Direct (no render)", render = "Render item", folder = "Render folder", project = "Render" }
+local tree_open_all = nil -- true/false for one frame to expand/collapse everything
+
+local function status_cell(st)
+  if st == "duplicate" then ImGui.TextColored(ctx, COLOR_BAD, "Duplicate")
+  elseif st == "exists" then ImGui.TextColored(ctx, COLOR_DIM, "Exists")
+  elseif st == "new" then ImGui.TextColored(ctx, COLOR_NEW, "New")
+  else ImGui.TextDisabled(ctx, "-") end
+end
+
+local function draw_node(node, depth)
+  ImGui.TableNextRow(ctx)
+  ImGui.TableNextColumn(ctx)
+  local is_leaf = #node.children == 0
+  local flags = ImGui.TreeNodeFlags_SpanFullWidth
+  if is_leaf then
+    flags = flags | ImGui.TreeNodeFlags_Leaf | ImGui.TreeNodeFlags_NoTreePushOnOpen
+  else
+    flags = flags | ImGui.TreeNodeFlags_DefaultOpen
+    if tree_open_all ~= nil then ImGui.SetNextItemOpen(ctx, tree_open_all, ImGui.Cond_Always) end
+  end
+  ImGui.PushStyleColor(ctx, ImGui.Col_Text, TYPE_COLORS[node.type] or 0xFFFFFFFF)
+  local tag = TYPE_TAGS[node.type] or "[?]"
+  local open = ImGui.TreeNodeEx(ctx, node.path or node.name, tag, flags)
+  ImGui.PopStyleColor(ctx)
+  ImGui.SameLine(ctx)
+  local label = node.name
+  if not is_leaf then label = label .. string.format("  (%d)", node.sounds) end
+  ImGui.Text(ctx, label)
+  if ImGui.IsItemHovered(ctx) then
+    local tip = node.path or ""
+    if node.entry then
+      tip = tip .. "\n" .. (KIND_LABEL[node.entry.kind] or "")
+      if node.entry.file then tip = tip .. "\nAudio: " .. node.entry.file end
+      if node.entry.origsub then tip = tip .. "\nOriginals\\" .. node.entry.origsub end
+    end
+    ImGui.SetTooltip(ctx, tip)
+  end
+  ImGui.TableNextColumn(ctx)
+  ImGui.TextColored(ctx, TYPE_COLORS[node.type] or 0xFFFFFFFF, node.type)
+  ImGui.TableNextColumn(ctx)
+  if depth > 0 then status_cell(node.status) end
+  ImGui.TableNextColumn(ctx)
+  if node.entry then ImGui.TextDisabled(ctx, KIND_LABEL[node.entry.kind] or "") end
+  if open and not is_leaf then
+    for i, ch in ipairs(node.children) do
+      ImGui.PushID(ctx, tostring(i))
+      draw_node(ch, depth + 1)
+      ImGui.PopID(ctx)
+    end
+    ImGui.TreePop(ctx)
+  end
+end
+
 local function section_preview()
   local n = #plan.entries
-  ImGui.SeparatorText(ctx, string.format("Preview (%d file%s)", n, n == 1 and "" or "s"))
+  ImGui.SeparatorText(ctx, string.format("Preview in Wwise (%d Sound%s)", n, n == 1 and "" or "s"))
   local problems = core.validate(S)
   for _, p in ipairs(problems) do ImGui.TextColored(ctx, COLOR_BAD, "- " .. p) end
   for _, p in ipairs(plan.errors or {}) do ImGui.TextColored(ctx, COLOR_BAD, "- " .. p) end
   if plan.dest_missing then ImGui.TextColored(ctx, COLOR_BAD, "- The import destination doesn't exist in Wwise.") end
 
-  local flags = ImGui.TableFlags_Borders | ImGui.TableFlags_RowBg | ImGui.TableFlags_ScrollY | ImGui.TableFlags_Resizable
-  local h = math.max(120, select(2, ImGui.GetContentRegionAvail(ctx)) - 60)
-  if ImGui.BeginTable(ctx, "preview", 3, flags, 0, h) then
-    ImGui.TableSetupScrollFreeze(ctx, 0, 1)
-    ImGui.TableSetupColumn(ctx, "Wwise object", ImGui.TableColumnFlags_WidthStretch, 4)
-    ImGui.TableSetupColumn(ctx, "Status", ImGui.TableColumnFlags_WidthFixed, 80)
-    ImGui.TableSetupColumn(ctx, "Audio", ImGui.TableColumnFlags_WidthFixed, 110)
-    ImGui.TableHeadersRow(ctx)
-    local dest = plan.destination or ""
-    for i, e in ipairs(plan.entries) do
-      ImGui.TableNextRow(ctx)
-      ImGui.TableNextColumn(ctx)
-      if e.plain then
-        local shown = e.plain
-        if dest ~= "" and shown:sub(1, #dest) == dest then shown = "..." .. shown:sub(#dest + 1) end
-        ImGui.Text(ctx, shown)
-        if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, e.path) end
-      else
-        ImGui.TextColored(ctx, COLOR_BAD, "(a wildcard didn't resolve for " .. (e.name or "?") .. ")")
-      end
-      ImGui.TableNextColumn(ctx)
-      if e.duplicate then ImGui.TextColored(ctx, COLOR_BAD, "Duplicate")
-      elseif e.exists == nil then ImGui.TextDisabled(ctx, "-")
-      elseif e.exists then ImGui.TextColored(ctx, COLOR_DIM, "Exists")
-      else ImGui.TextColored(ctx, COLOR_NEW, "New") end
-      ImGui.TableNextColumn(ctx)
-      local kind = ({ direct = "Direct (no render)", render = "Render item", folder = "Render folder", project = "Render" })[e.kind] or ""
-      ImGui.TextDisabled(ctx, kind)
-      if e.origsub and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Originals\\" .. e.origsub) end
+  local tree = plan.tree
+  if tree then
+    if tree.unresolved and tree.unresolved > 0 then
+      ImGui.TextColored(ctx, COLOR_BAD, string.format("- %d file(s) skipped: a wildcard in the structure didn't resolve.", tree.unresolved))
     end
+    if plan.existing then
+      ImGui.TextColored(ctx, COLOR_NEW, string.format("%d new object%s", tree.new_count, tree.new_count == 1 and "" or "s"))
+      ImGui.SameLine(ctx)
+      ImGui.TextDisabled(ctx, "will be created. Everything else already exists and will be updated.")
+    end
+    if ImGui.SmallButton(ctx, "Expand all") then tree_open_all = true end
+    ImGui.SameLine(ctx)
+    if ImGui.SmallButton(ctx, "Collapse all") then tree_open_all = false end
+  end
+
+  local flags = ImGui.TableFlags_BordersV | ImGui.TableFlags_BordersOuterH | ImGui.TableFlags_RowBg |
+                ImGui.TableFlags_ScrollY | ImGui.TableFlags_Resizable
+  local h = math.max(160, select(2, ImGui.GetContentRegionAvail(ctx)) - 60)
+  if ImGui.BeginTable(ctx, "previewtree", 4, flags, 0, h) then
+    ImGui.TableSetupScrollFreeze(ctx, 0, 1)
+    ImGui.TableSetupColumn(ctx, "Name", ImGui.TableColumnFlags_WidthStretch | ImGui.TableColumnFlags_NoHide, 4)
+    ImGui.TableSetupColumn(ctx, "Type", ImGui.TableColumnFlags_WidthFixed, 130)
+    ImGui.TableSetupColumn(ctx, "Status", ImGui.TableColumnFlags_WidthFixed, 70)
+    ImGui.TableSetupColumn(ctx, "Audio", ImGui.TableColumnFlags_WidthFixed, 120)
+    ImGui.TableHeadersRow(ctx)
+    if tree and #tree.children > 0 then draw_node(tree, 0) end
     ImGui.EndTable(ctx)
   end
+  tree_open_all = nil
 end
 
 local function do_transfer()
