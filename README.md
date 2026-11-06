@@ -21,6 +21,9 @@ Updates arrive automatically whenever ReaPack synchronizes.
 **Batch Tools**
 - **JS Folder Batch Processor**: batch-renders multi-language VO from a structured project folder, with per-language overrides and CSV logging. Requires SWS and ReaImGui.
 
+**FX**
+- **Screenshot track FX chain to Docs folder**: saves a PNG of every plugin on the selected track, numbered in chain order, into a `Docs` folder in the project folder. Requires js_ReaScriptAPI.
+
 **Loudness**
 - **JS Loudness Analyzer (language folders)**: measures LUFS and RMS across the project's `_Raw` language folders and writes a CSV. Requires SWS.
 - **JS Loudness Analyzer (selected items)**: measures LUFS, true peak and RMS of selected items without touching the project. Requires SWS.
