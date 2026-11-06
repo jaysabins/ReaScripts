@@ -1,4 +1,4 @@
--- JS Wwise Transfer: shared core (loaded by the Wwise Transfer scripts; not an action)
+-- Wwise Transfer: shared core (loaded by the Wwise Transfer scripts; not an action)
 -- Author: Jay Sabins
 
 local r = reaper
