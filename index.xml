@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="740a769b6ce26f3413f5520a62a9c9cdab4c33e4">
+<index version="1" name="Jay Sabins Scripts" commit="764880c43338f6f36522ef18226b0516247f37f8">
   <category name="Batch Tools">
     <reapack name="JS_Folder_Batch_ImGui.lua" type="script" desc="JS Folder Batch Processor">
       <metadata>
@@ -17,6 +17,25 @@
       </version>
     </reapack>
   </category>
+  <category name="FX">
+    <reapack name="JS_Screenshot track FX chain to Docs folder.lua" type="script" desc="Screenshot track FX chain to Docs folder">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Select a track and run. Each plugin in that track's FX chain is opened in its own window, one at a time in chain order, screenshotted, and closed again. The images are saved as PNGs in a "Docs" folder inside the project folder (created if needed), numbered in chain order: 01_ReaEQ.png, 02_ReaComp.png...\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Requires js_ReaScriptAPI (install it from ReaPack, then restart REAPER). The project must be saved first so the script knows where the project folder is.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Tips: don't move the mouse over or click on the plugin windows while it runs. If a plugin with a slow GUI comes out blank, raise WAIT_SECONDS at the top of the script.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Jay Sabins" time="2026-11-06T20:48:16Z">
+        <changelog><![CDATA[Initial public release]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/867c483be30ee4b7868ad3ef7efc78e389984764/FX/JS_Screenshot%20track%20FX%20chain%20to%20Docs%20folder.lua</source>
+      </version>
+    </reapack>
+  </category>
   <category name="Items">
     <reapack name="JS_Build layer variations.lua" type="script" desc="Build aligned layer variations (gunshots, impacts, etc.)">
       <metadata>
@@ -24,15 +43,24 @@
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
-{\pard \ql \f0 \sa180 \li0 \fi0 Each track = one layer. The items on that track (left to right) = that layer's variations. Select the layer items (or just the layer tracks) and run.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Each track = one layer. The items on that track (left to right) = that layer's variations. Select the layer items (or just the layer tracks), run the script, set options and click Build.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Default mode: builds N variations side by side, every layer aligned in each slot. Variation 1 = file 1 of every layer, variation 2 = file 2, etc. Layers with fewer files cycle (or pick randomly, if chosen). A layer with one file is reused in every variation. Combo mode: builds every possible combination of layer files.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Alignment: item start (default) or first transient per item. Optional: one region per variation, ready for Render > Project regions. Fully undoable.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Requires ReaImGui (install it from ReaPack).\par}
 }
 ]]></description>
       </metadata>
       <version name="1.0.0" author="Jay Sabins" time="2026-11-06T20:09:20Z">
         <changelog><![CDATA[Initial public release]]></changelog>
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/5cb9bceef964cfa09afeec546dcb3b1a8472a5c6/Items/JS_Build%20layer%20variations.lua</source>
+      </version>
+      <version name="1.1.0" author="Jay Sabins" time="2026-11-06T20:43:58Z">
+        <changelog><![CDATA[New ReaImGui window replaces the old text-box prompt.
+Window shows the selected layers and how many files each has, and updates live as you change the selection.
+Transient threshold is now adjustable in the window.
+Window stays open after Build so you can tweak and build again.
+Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/e4df78fc60340022b002a3c927f147935071c830/Items/JS_Build%20layer%20variations.lua</source>
       </version>
     </reapack>
   </category>
