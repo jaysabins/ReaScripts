@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.2.0"
+M.VERSION = "1.4.0"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -252,34 +252,20 @@ end
 
 local CURL = IS_WIN and "curl.exe" or "/usr/bin/curl"
 
-local function waapi_http(uri, args, options)
-  local body = json.encode({ uri = uri, args = args or {}, options = options or {} })
-  local req = TMP .. SEP .. "request.json"
-  local f = io.open(req, "wb")
-  if not f then return nil, "Could not write " .. req end
-  f:write(body); f:close()
-
-  local cmd = string.format('%s -s -S --max-time 120 -w "\n@@HTTP %%{http_code}" -X POST -H "Content-Type: application/json" --data-binary "@%s" http://127.0.0.1:%d/waapi',
-    CURL, req, math.floor(tonumber(M.http_port) or 8090))
-  local out = r.ExecProcess(cmd, 125000)
-  if not out then return nil, "curl did not run." end
-  local code, text = out:match("^(%-?%d+)\r?\n?(.*)$")
-  code = tonumber(code)
-  if code ~= 0 then
-    if code == 7 or code == 28 or (text or ""):find("onnect") then
+local function parse_reply(exit_code, text, http)
+  if exit_code ~= 0 or http == 0 then
+    if exit_code == 7 or exit_code == 28 or http == 0 or (text or ""):find("onnect") then
       return nil, "Couldn't reach Wwise. Is Wwise open with WAAPI enabled? " ..
         "(Project > User Preferences > Enable Wwise Authoring API, HTTP port " .. tostring(M.http_port) .. ")", "offline"
     end
-    return nil, "curl failed (" .. tostring(code) .. "): " .. tostring(text)
+    return nil, "curl failed (" .. tostring(exit_code) .. "): " .. tostring(text)
   end
-  local http = tonumber((text or ""):match("@@HTTP (%d+)%s*$"))
-  text = (text or ""):gsub("\r?\n?@@HTTP %d+%s*$", "")
   if http == 404 or http == 403 or http == 400 or http == 426 then
     return nil, "Wwise refused the connection (HTTP " .. http .. "). In Wwise > Project > User Preferences > " ..
       "Wwise Authoring API, set \"Allow connections from\" to 127.0.0.1,::1 and make sure the WAMP and HTTP " ..
       "ports are different (defaults 8080 and 8090). Then restart Wwise.", "offline"
   end
-  if text == "" then return {} end
+  if text == nil or text == "" then return {} end
   local ok, res = pcall(json.decode, text)
   if not ok or type(res) ~= "table" then return nil, "Unexpected reply from Wwise: " .. tostring(text) end
   if type(res.uri) == "string" and res.uri:find("^ak%.") and res.message then
@@ -288,9 +274,77 @@ local function waapi_http(uri, args, options)
   return res
 end
 
+local req_counter = 0
+local function write_request(uri, args, options)
+  req_counter = req_counter + 1
+  local base = TMP .. SEP .. "req" .. req_counter % 1000
+  local f = io.open(base .. ".json", "wb")
+  if not f then return nil end
+  f:write(json.encode({ uri = uri, args = args or {}, options = options or {} })); f:close()
+  return base
+end
+
+local function curl_args(base)
+  return string.format('-s -S --max-time 120 -X POST -H "Content-Type: application/json" --data-binary "@%s.json" http://127.0.0.1:%d/waapi',
+    base, math.floor(tonumber(M.http_port) or 8090))
+end
+
+-- Blocking call (used by the quick-send script and outside coroutines).
+local function waapi_http(uri, args, options)
+  local base = write_request(uri, args, options)
+  if not base then return nil, "Could not write a temp file in " .. TMP end
+  local out = r.ExecProcess(CURL .. ' -w "\n@@HTTP %{http_code}" ' .. curl_args(base), 125000)
+  os.remove(base .. ".json")
+  if not out then return nil, "curl did not run." end
+  local code, text = out:match("^(%-?%d+)\r?\n?(.*)$")
+  local http = tonumber((text or ""):match("@@HTTP (%d+)%s*$"))
+  text = (text or ""):gsub("\r?\n?@@HTTP %d+%s*$", "")
+  return parse_reply(tonumber(code), text, http)
+end
+
+local function read_file(p)
+  local f = io.open(p, "rb")
+  if not f then return nil end
+  local d = f:read("*a"); f:close()
+  return d
+end
+
+-- Non-blocking call: starts curl in the background and yields until it finishes,
+-- so the window keeps drawing. Only used inside a coroutine (see M.async).
+local function waapi_http_async(uri, args, options)
+  local base = write_request(uri, args, options)
+  if not base then return nil, "Could not write a temp file in " .. TMP end
+  os.remove(base .. ".out"); os.remove(base .. ".code")
+  local cmd
+  if IS_WIN then
+    cmd = string.format('cmd.exe /C ""%s" -o "%s.out" -w "%%{http_code}" %s > "%s.code" 2>&1"', CURL, base, curl_args(base), base)
+  else
+    cmd = string.format('/bin/sh -c \'%s -o "%s.out" -w "%%{http_code}" %s > "%s.code" 2>&1\'', CURL, base, curl_args(base), base)
+  end
+  r.ExecProcess(cmd, -1)
+  local t0 = r.time_precise()
+  while true do
+    coroutine.yield()
+    local c = read_file(base .. ".code")
+    if c and c:match("%d%d%d%s*$") then
+      local http = tonumber(c:match("(%d%d%d)%s*$"))
+      local text = read_file(base .. ".out") or ""
+      os.remove(base .. ".json"); os.remove(base .. ".out"); os.remove(base .. ".code")
+      local errtext = c:gsub("%d%d%d%s*$", "")
+      return parse_reply(http == 0 and 7 or 0, http == 0 and errtext or text, http)
+    end
+    if r.time_precise() - t0 > 125 then return nil, "Wwise didn't answer within 2 minutes.", "offline" end
+  end
+end
+
+M.async = false -- the window turns this on; calls made inside a coroutine then don't block REAPER
+
 function M.disconnect() end
 
-function M.waapi(uri, args, options) return waapi_http(uri, args, options) end
+function M.waapi(uri, args, options)
+  if M.async and coroutine.isyieldable() then return waapi_http_async(uri, args, options) end
+  return waapi_http(uri, args, options)
+end
 
 -- Connection info: version, project name, languages, root path.
 function M.connect()
@@ -699,13 +753,27 @@ function M.finish_paths(plan, s, conn)
   end
 end
 
--- Ask Wwise which planned objects already exist. Marks e.exists and returns the set of existing plain paths.
+local function regex_escape(t) return (t:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?%{%}|\\]", function(c) return "\\" .. c end)) end
+
+-- Ask Wwise which planned objects already exist. Only asks about the names in
+-- the plan (not every object under the destination), so it stays fast in big
+-- projects. Marks e.exists and returns the set of existing plain paths.
 function M.mark_existing(plan)
   if plan.destination == "" then return {} end
-  local res, err, code = M.waapi("ak.wwise.core.object.get",
-    { from = { path = { plan.destination } }, transform = { { select = { "descendants" } } } },
-    { ["return"] = { "path", "id" } })
+  local names, seen = {}, {}
+  local function add(n) if n and n ~= "" and not seen[n] then seen[n] = true; names[#names + 1] = regex_escape(n) end end
+  for _, e in ipairs(plan.entries) do
+    if e.plain then
+      for _, n in ipairs(e.names or {}) do add(n ~= "" and n or "Untitled") end
+      add(e.name)
+    end
+  end
   local existing = {}
+  if #names == 0 then plan.existing = existing; return existing end
+  local res, err, code = M.waapi("ak.wwise.core.object.get",
+    { from = { path = { plan.destination } },
+      transform = { { select = { "descendants" } }, { where = { "name:matches", "^(" .. table.concat(names, "|") .. ")$" } } } },
+    { ["return"] = { "path", "id" } })
   if not res then
     if code == "offline" then return existing, "offline" end
     plan.dest_missing = true
@@ -895,7 +963,13 @@ function M.render_command() r.Main_OnCommand(42230, 0) end
 -- Run a full transfer. Returns a summary table.
 function M.transfer(s, conn, on_status)
   local status = on_status or function() end
-  local summary = { errors = {}, created = 0, imported = 0, templates = 0, objects = {} }
+  local summary = { errors = {}, created = 0, imported = 0, templates = 0, objects = {}, timing = {} }
+  local tmark = r.time_precise()
+  local function lap(name)
+    local now = r.time_precise()
+    summary.timing[#summary.timing + 1] = { name, now - tmark }
+    tmark = now
+  end
   M.http_port = s.http_port
 
   if not conn then
@@ -924,11 +998,15 @@ function M.transfer(s, conn, on_status)
   summary.plan = plan
   for _, e in ipairs(plan.errors) do summary.errors[#summary.errors + 1] = e end
   if #plan.entries == 0 then return summary end
+  lap("Read project")
+  status("Checking Wwise...")
   local existing = M.mark_existing(plan)
+  lap("Check existing objects")
 
   status("Rendering...")
   local ok, rerr = do_render(s, plan)
   if not ok then summary.errors[#summary.errors + 1] = "Render failed: " .. tostring(rerr); return summary end
+  lap("Render")
 
   local imports = json.array()
   for _, e in ipairs(plan.entries) do
@@ -964,6 +1042,7 @@ function M.transfer(s, conn, on_status)
     return summary
   end
   summary.imported = #imports
+  lap("Wwise import")
 
   local ids = json.array()
   for _, o in ipairs(res.objects or {}) do
@@ -1000,10 +1079,13 @@ function M.transfer(s, conn, on_status)
     else summary.errors[#summary.errors + 1] = "Template " .. template .. ": " .. tostring(perr) end
   end
 
+  if next(by_template) then lap("Property templates") end
   M.waapi("ak.wwise.core.undo.endGroup", { displayName = "Wwise Transfer from REAPER" })
 
   if s.select_in_wwise and #ids > 0 then
+    status("Selecting in Wwise...")
     M.waapi("ak.wwise.ui.commands.execute", { command = "FindInProjectExplorerSyncGroup1", objects = ids })
+    lap("Select in Wwise")
   end
 
   -- Clean up temp renders (Wwise copied them into Originals).
