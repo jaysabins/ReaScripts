@@ -9,7 +9,7 @@ local script_dir = debug.getinfo(1, "S").source:match("^@?(.*[\\/])") or ""
 local core = dofile(script_dir .. "JS_WwiseTransfer_core.lua")
 
 local s = core.load_settings()
-core.port = s.port
+core.wamp_port, core.http_port = s.wamp_port, s.http_port
 
 local summary = core.transfer(s)
 
