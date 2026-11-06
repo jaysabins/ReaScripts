@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="7d1d7d99a4e2e6d0f09a56267c7a364a8afbbffb">
+<index version="1" name="Jay Sabins Scripts" commit="df82c0722ea19b2de91ee9bb93430d93a2191e91">
   <category name="Batch Tools">
     <reapack name="JS_Folder_Batch_ImGui.lua" type="script" desc="JS Folder Batch Processor">
       <metadata>
@@ -101,6 +101,24 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
     </reapack>
   </category>
   <category name="Rename">
+    <reapack name="JS_Name items by track and number per region.lua" type="script" desc="Name items by track and number them per region">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Renames items to their track's name plus a counter: Footsteps_01, Footsteps_02... The counter starts again at 01 inside each region and counts left to right. Each track keeps its own count, so two tracks in the same region both start at 01.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Which items: the selected items. If no items are selected, every item on the selected tracks is used.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Works on normal items (the take is renamed) and on empty items such as folder items (the item notes are set, which is the text REAPER shows on an empty item).\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Items that don't start inside a region are left alone (change SKIP_OUTSIDE_REGIONS below to number them too). If regions overlap, the one that starts latest wins. Fully undoable.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Jay Sabins" time="2026-11-06T22:51:44Z">
+        <changelog><![CDATA[Initial public release]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/3125c5a2cff97a37ccf9c61e90dae2e93470c3e7/Rename/JS_Name%20items%20by%20track%20and%20number%20per%20region.lua</source>
+      </version>
+    </reapack>
     <reapack name="JS_Rename and number items with region name.lua" type="script" desc="Rename and number items with region name">
       <metadata>
         <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
