@@ -19,7 +19,7 @@ Updates arrive automatically whenever ReaPack synchronizes.
 ## Scripts
 
 **Batch Tools**
-- **JS Folder Batch Processor**: batch-renders multi-language VO from a structured project folder, with per-language overrides and CSV logging. Requires SWS and ReaImGui.
+- **Folder Batch Processor**: batch-renders multi-language VO from a structured project folder, with per-language overrides and CSV logging. Requires SWS and ReaImGui.
 
 **FX**
 - **Screenshot track FX chain to Docs folder**: saves a PNG of every plugin on the selected track, numbered in chain order, into `Docs\<Track name>` in the project folder. Requires js_ReaScriptAPI.
@@ -28,8 +28,8 @@ Updates arrive automatically whenever ReaPack synchronizes.
 - **Build layer variations**: builds aligned layer variations (gunshots, impacts, etc.) from one track per layer, with an optional region per variation. Requires ReaImGui.
 
 **Loudness**
-- **JS Loudness Analyzer (language folders)**: measures LUFS and RMS across the project's `_Raw` language folders and writes a CSV. Requires SWS.
-- **JS Loudness Analyzer (selected items)**: measures LUFS, true peak and RMS of selected items without touching the project. Requires SWS.
+- **Loudness Analyzer (language folders)**: measures LUFS and RMS across the project's `_Raw` language folders and writes a CSV. Requires SWS.
+- **Loudness Analyzer (selected items)**: measures LUFS, true peak and RMS of selected items without touching the project. Requires SWS.
 
 **Rename**
 - **Rename and number items with region name**: renames selected items to their region name plus a counter (`Region_01`, `Region_02`...).
