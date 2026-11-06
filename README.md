@@ -22,7 +22,7 @@ Updates arrive automatically whenever ReaPack synchronizes.
 - **JS Folder Batch Processor**: batch-renders multi-language VO from a structured project folder, with per-language overrides and CSV logging. Requires SWS and ReaImGui.
 
 **FX**
-- **Screenshot track FX chain to Docs folder**: saves a PNG of every plugin on the selected track, numbered in chain order, into a `Docs` folder in the project folder. Requires js_ReaScriptAPI.
+- **Screenshot track FX chain to Docs folder**: saves a PNG of every plugin on the selected track, numbered in chain order, into `Docs\<Track name>` in the project folder. Requires js_ReaScriptAPI.
 
 **Items**
 - **Build layer variations**: builds aligned layer variations (gunshots, impacts, etc.) from one track per layer, with an optional region per variation. Requires ReaImGui.

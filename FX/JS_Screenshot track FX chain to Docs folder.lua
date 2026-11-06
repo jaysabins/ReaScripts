@@ -1,11 +1,11 @@
 -- @description Screenshot track FX chain to Docs folder
 -- @author Jay Sabins
--- @version 1.0.0
--- @changelog Initial public release
+-- @version 1.1.0
+-- @changelog Screenshots now go into a subfolder of Docs named after the track (Docs\<Track name>\)
 -- @about
 --   Select a track and run. Each plugin in that track's FX chain is opened in its
 --   own window, one at a time in chain order, screenshotted, and closed again.
---   The images are saved as PNGs in a "Docs" folder inside the project folder
+--   The images are saved as PNGs in Docs\<Track name>\ inside the project folder
 --   (created if needed), numbered in chain order: 01_ReaEQ.png, 02_ReaComp.png...
 --
 --   Requires js_ReaScriptAPI (install it from ReaPack, then restart REAPER).
@@ -23,7 +23,7 @@ local TITLE = "Screenshot FX Chain"
 ----------------------------------------------------------------------
 local DOCS_FOLDER_NAME   = "Docs"  -- folder created inside the project folder
 local WAIT_SECONDS       = 1.0     -- time each plugin gets to draw its GUI before the shot
-local TRACK_SUBFOLDER    = false   -- true = save into Docs\<Track name>\ (handy for documenting several tracks)
+local TRACK_SUBFOLDER    = true    -- true = save into Docs\<Track name>\, false = straight into Docs\
 local KEEP_VENDOR_IN_NAME = false  -- true = 01_ReaEQ (Cockos).png, false = 01_ReaEQ.png
 local OPEN_FOLDER_WHEN_DONE = true -- open the Docs folder in Explorer when finished
 local INCLUDE_OFFLINE    = false   -- offline plugins have no GUI, so they're skipped by default
