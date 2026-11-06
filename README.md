@@ -24,6 +24,9 @@ Updates arrive automatically whenever ReaPack synchronizes.
 **FX**
 - **Screenshot track FX chain to Docs folder**: saves a PNG of every plugin on the selected track, numbered in chain order, into a `Docs` folder in the project folder. Requires js_ReaScriptAPI.
 
+**Items**
+- **Build layer variations**: builds aligned layer variations (gunshots, impacts, etc.) from one track per layer, with an optional region per variation. Requires ReaImGui.
+
 **Loudness**
 - **JS Loudness Analyzer (language folders)**: measures LUFS and RMS across the project's `_Raw` language folders and writes a CSV. Requires SWS.
 - **JS Loudness Analyzer (selected items)**: measures LUFS, true peak and RMS of selected items without touching the project. Requires SWS.
