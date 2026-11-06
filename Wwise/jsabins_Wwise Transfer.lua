@@ -5,8 +5,8 @@
 --   Preview is now a Wwise-style tree: containers and Sounds nested as they'll appear in Wwise, with type, New/Exists status and Sound counts.
 --   Expand all / Collapse all buttons and a count of new objects.
 -- @provides
---   [main] JS_Wwise Transfer - Quick send.lua
---   [nomain] JS_WwiseTransfer_core.lua
+--   [main] jsabins_Wwise Transfer - Quick send.lua
+--   [nomain] jsabins_WwiseTransfer_core.lua
 -- @about
 --   # Wwise Transfer
 --
@@ -33,7 +33,7 @@
 
 local r = reaper
 local script_dir = debug.getinfo(1, "S").source:match("^@?(.*[\\/])") or ""
-local core = dofile(script_dir .. "JS_WwiseTransfer_core.lua")
+local core = dofile(script_dir .. "jsabins_WwiseTransfer_core.lua")
 
 if not r.ImGui_GetBuiltinPath then
   r.ShowMessageBox("This script needs ReaImGui.\nInstall it from Extensions > ReaPack > Browse packages (search \"ReaImGui\"), then restart REAPER.",

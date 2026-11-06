@@ -1,4 +1,4 @@
-# JS Loudness Analyzer v1.1
+# Loudness Analyzer v1.1
 
 **Written by:** Jay Sabins (based on a script written by Daniel Petras)
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-JS Loudness Analyzer measures the loudness of every audio file in a set of language folders and writes the results to a CSV. Each file is imported onto its matching track in REAPER, measured, and (optionally) removed again. It's useful for checking multi-language VO deliveries against loudness specs before or after processing.
+Loudness Analyzer measures the loudness of every audio file in a set of language folders and writes the results to a CSV. Each file is imported onto its matching track in REAPER, measured, and (optionally) removed again. It's useful for checking multi-language VO deliveries against loudness specs before or after processing.
 
 For each file it reports:
 
@@ -49,7 +49,7 @@ Supported audio formats: WAV, BWF, AIF/AIFF, FLAC, MP3, OGG, Opus, M4A, WavPack.
 1. Open and **save** your REAPER project. The script uses the `.rpp` location to find `_Raw` and `Data`.
 2. Create one track per language, named to match the folders in `_Raw` (e.g. `English`, `French`, `Spanish`).
 3. Open the ReaScript console (**View > ReaScript console**, or it opens automatically when the script prints) so you can see progress.
-4. Run `JS_Utility_LoudnessAnalyzer.lua` from the Actions list or Scripts menu.
+4. Run `jsabins_Utility_LoudnessAnalyzer.lua` from the Actions list or Scripts menu.
 5. When it finishes, the console shows how many files were analyzed and where the CSV was saved.
 
 The whole run is a single undo step, so **Ctrl+Z** reverses it.

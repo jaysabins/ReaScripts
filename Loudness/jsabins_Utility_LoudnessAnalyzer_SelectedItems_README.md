@@ -1,4 +1,4 @@
-# JS Loudness Analyzer (Selected Items) v1.0
+# Loudness Analyzer (Selected Items) v1.0
 
 **Written by:** Jay Sabins (based on DP_Utility_LoudnessAnalyzer by Daniel Petras)
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-JS Loudness Analyzer (Selected Items) measures the loudness of whatever audio items you have selected in REAPER. It shows the results in the console and can also save them to a CSV or copy them to the clipboard.
+Loudness Analyzer (Selected Items) measures the loudness of whatever audio items you have selected in REAPER. It shows the results in the console and can also save them to a CSV or copy them to the clipboard.
 
 It doesn't need any special folder setup, and it doesn't change your project. Nothing is imported, moved or deleted.
 
@@ -31,7 +31,7 @@ For each item it reports:
 ## Running the Script
 
 1. Select one or more audio items on the timeline.
-2. Run `JS_Utility_LoudnessAnalyzer_SelectedItems.lua` from the Actions list or Scripts menu.
+2. Run `jsabins_Utility_LoudnessAnalyzer_SelectedItems.lua` from the Actions list or Scripts menu.
 3. The ReaScript console opens with a results table, the CSV location (if enabled) and how long the analysis took.
 
 If no items are selected, a message box asks you to select some first.

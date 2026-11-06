@@ -1,11 +1,11 @@
--- @description JS Loudness Analyzer (language folders)
+-- @description Loudness Analyzer (language folders)
 -- @author Jay Sabins
 -- @version 1.1.0
 -- @changelog Initial public release
 -- @about Measures LUFS and RMS for every file in the project's _Raw language folders and writes a CSV to Data. Requires SWS.
 
 -------------------------------------------------------------------------------
--- JS Loudness Analyzer v1.1
+-- Loudness Analyzer v1.1
 -------------------------------------------------------------------------------
 -- Written by: Jay Sabins (based on a script by Daniel Petras)
 
@@ -264,7 +264,7 @@ if not DISABLE_SCRIPT then
   local ok = main()
 
   reaper.PreventUIRefresh(-1)
-  reaper.Undo_EndBlock("JS Loudness Analyzer", -1)
+  reaper.Undo_EndBlock("Loudness Analyzer", -1)
   reaper.UpdateArrange()
 
   if ok and CLOSE_AFTER_PROCESS then

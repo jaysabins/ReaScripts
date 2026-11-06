@@ -1,11 +1,11 @@
--- @description JS Loudness Analyzer (selected items)
+-- @description Loudness Analyzer (selected items)
 -- @author Jay Sabins
 -- @version 1.0.0
 -- @changelog Initial public release
 -- @about Measures LUFS, true peak and RMS of selected items without modifying the project. Prints to the console and optionally writes a CSV. Requires SWS.
 
 -------------------------------------------------------------------------------
--- JS Loudness Analyzer (Selected Items) v1.0
+-- Loudness Analyzer (Selected Items) v1.0
 -------------------------------------------------------------------------------
 -- By: Jay Sabins
 
@@ -248,13 +248,13 @@ end
 
 local function main()
   if not reaper.NF_AnalyzeTakeLoudness then
-    reaper.MB("This script needs the SWS extension.\nhttps://www.sws-extension.org/", "JS Loudness Analyzer", 0)
+    reaper.MB("This script needs the SWS extension.\nhttps://www.sws-extension.org/", "Loudness Analyzer", 0)
     return
   end
 
   local count = reaper.CountSelectedMediaItems(0)
   if count == 0 then
-    reaper.MB("Select one or more audio items first.", "JS Loudness Analyzer", 0)
+    reaper.MB("Select one or more audio items first.", "Loudness Analyzer", 0)
     return
   end
 

@@ -1,11 +1,11 @@
--- @description JS Folder Batch Processor
+-- @description Folder Batch Processor
 -- @author Jay Sabins, Daniel Petras
 -- @version 2.0.0
 -- @changelog Initial public release
 -- @about Batch-renders multi-language VO from a structured project folder (_Raw to _Processed) with per-language overrides and CSV logging. Requires SWS and ReaImGui.
 
 -------------------------------------------------------------------------------
--- JS FOLDER BATCH PROCESSOR v2.0
+-- FOLDER BATCH PROCESSOR v2.0
 -------------------------------------------------------------------------------
 -- Original by: Daniel Petras and Jay Sabins
 -- Ported to ReaImGui with per-language overrides and progress tracking
@@ -36,7 +36,7 @@ end
 -- GLOBAL STATE
 ------------------------------------------------------------------------------------------------
 
-local ctx = reaper.ImGui_CreateContext("JS Folder Batch v2.0")
+local ctx = reaper.ImGui_CreateContext("Folder Batch v2.0")
 local sans_serif = reaper.ImGui_CreateFont("sans-serif", 13)
 reaper.ImGui_Attach(ctx, sans_serif)
 
@@ -391,7 +391,7 @@ end
 local function draw_gui()
 
   reaper.ImGui_SetNextWindowSize(ctx, 600, 520, reaper.ImGui_Cond_FirstUseEver())
-  local visible, win_open = reaper.ImGui_Begin(ctx, "JS Folder Batch Processor v2.0", true)
+  local visible, win_open = reaper.ImGui_Begin(ctx, "Folder Batch Processor v2.0", true)
   open = win_open
 
   if not visible then
@@ -554,7 +554,7 @@ local function loop()
   reaper.ImGui_PopFont(ctx)
 
   if not ok then
-    reaper.ShowConsoleMsg("JS ImGui Error: " .. tostring(err) .. "\n")
+    reaper.ShowConsoleMsg("Folder Batch ImGui Error: " .. tostring(err) .. "\n")
     return
   end
 

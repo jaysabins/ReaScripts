@@ -1,4 +1,4 @@
-# JS Folder Batch Processor v2.0
+# Folder Batch Processor v2.0
 
 **Written by:** Daniel Petras and Jay Sabins  
 **GUI:** ReaImGui (ported from Lokasenna GUI v2)
@@ -7,7 +7,7 @@
 
 ## Overview
 
-JS Folder Batch Processor automates rendering multi-language voice-over assets in REAPER. Point it at a structured project folder, configure your render settings, and it will import raw audio files language by language, render them out to `_Processed`, and log everything to a CSV — all in one click.
+Folder Batch Processor automates rendering multi-language voice-over assets in REAPER. Point it at a structured project folder, configure your render settings, and it will import raw audio files language by language, render them out to `_Processed`, and log everything to a CSV — all in one click.
 
 ---
 
@@ -51,7 +51,7 @@ MyProject/
 ## Running the Script
 
 1. Open your REAPER project (`.rpp` file)
-2. Run `JS_Folder_Batch_ImGui.lua` from the REAPER Actions list or Scripts menu
+2. Run `jsabins_Folder_Batch_ImGui.lua` from the REAPER Actions list or Scripts menu
 3. The script window opens with three tabs:
 
 ### Tab 1 — Global Settings
