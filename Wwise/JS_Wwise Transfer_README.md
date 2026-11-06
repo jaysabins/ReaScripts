@@ -9,10 +9,15 @@ The package installs two actions:
 
 ## One-time setup
 
-1. Install **ReaImGui** from Extensions > ReaPack > Browse packages (search "ReaImGui"), then restart REAPER.
-2. In Wwise, open **Project > User Preferences**, tick **Enable Wwise Authoring API**, and keep the HTTP port at **8090**.
+1. Install **ReaImGui** from Extensions > ReaPack > Browse packages (search "ReaImGui").
+2. Install **Mavriq Lua Sockets**. It lets the script hold one fast WebSocket connection to Wwise, the same way Wwise's own tools connect. Wwise 2025.1 needs it.
+   1. Go to Extensions > ReaPack > **Import repositories...**.
+   2. Paste `https://github.com/mavriq-dev/public-reascripts/raw/master/index.xml` and click OK.
+   3. Go to Extensions > ReaPack > **Browse packages**, search **Mavriq Lua Sockets**, right-click it, choose **Install**, then click **Apply**.
+3. Restart REAPER.
+4. In Wwise, go to **Project > User Preferences** and tick **Enable Wwise Authoring API**. Leave the WAMP port at **8080** and the HTTP port at **8090**. They must be different from each other.
 
-You need Windows 10 or 11, which come with `curl.exe`. The script uses it to talk to Wwise.
+Without Mavriq Lua Sockets, the script falls back to Wwise's HTTP connection through `curl.exe`. That only works on older Wwise versions. Wwise 2025.1 answers that route with "404 Not Found".
 
 ## The window, top to bottom
 

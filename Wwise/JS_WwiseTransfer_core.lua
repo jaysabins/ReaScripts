@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.0.0"
+M.VERSION = "1.1.0"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -168,7 +168,8 @@ function M.default_settings()
     conflict = "useExisting",
     apply_template = "always",
     select_in_wwise = true,
-    port = 8090,
+    wamp_port = 8080,
+    http_port = 8090,
   }
 end
 
@@ -179,6 +180,8 @@ local function merge_defaults(s)
   if type(s.leaf) ~= "table" then s.leaf = d.leaf end
   for k, v in pairs(d.leaf) do if s.leaf[k] == nil then s.leaf[k] = v end end
   if type(s.rows) ~= "table" then s.rows = {} end
+  if s.port and s.http_port == 8090 then s.http_port = s.port end -- settings from 1.0.x
+  s.port = nil
   return s
 end
 
@@ -231,24 +234,229 @@ function M.apply_preset(s, p)
 end
 
 ----------------------------------------------------------------------
--- WAAPI over HTTP (curl, run hidden through ExecProcess)
+-- WAAPI transport
+-- 1. WAMP over WebSocket (what Wwise's own tools use), via LuaSocket from
+--    the free "Mavriq Lua Sockets" ReaPack package. One persistent connection.
+-- 2. Fallback: WAAPI over HTTP with curl (older Wwise versions).
 ----------------------------------------------------------------------
 local TMP = (os.getenv("TEMP") or os.getenv("TMPDIR") or r.GetResourcePath()) .. SEP .. M.EXT
 r.RecursiveCreateDirectory(TMP, 0)
 M.TMP = TMP
-M.port = 8090
+M.wamp_port = 8080
+M.http_port = 8090
+
+M.MAVRIQ_REPO = "https://github.com/mavriq-dev/public-reascripts/raw/master/index.xml"
+
+local socket_lib = nil
+local function load_socket()
+  if socket_lib ~= nil then return socket_lib or nil end
+  local ok, s = pcall(require, "socket.core")
+  if not ok then
+    local res = r.GetResourcePath()
+    local ext = IS_WIN and "dll" or "so"
+    local dirs = {
+      res .. "/Scripts/Mavriq ReaScript Repository/Various/Mavriq-Lua-Sockets/",
+      res .. "/Scripts/Mavriq ReaScript Repository/Various/Mavriq-Lua-Batteries/bin/",
+    }
+    for _, d in ipairs(dirs) do
+      package.cpath = package.cpath .. ";" .. d .. "?." .. ext
+      package.path = package.path .. ";" .. d .. "?.lua"
+    end
+    ok, s = pcall(require, "socket.core")
+  end
+  socket_lib = ok and type(s) == "table" and s.tcp and s or false
+  return socket_lib or nil
+end
+
+function M.has_websocket() return load_socket() ~= nil end
+
+-- Base64 (for the WebSocket handshake key)
+local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local function b64(data)
+  return ((data:gsub(".", function(x)
+    local bits, b = "", x:byte()
+    for i = 8, 1, -1 do bits = bits .. (b % 2 ^ i - b % 2 ^ (i - 1) > 0 and "1" or "0") end
+    return bits
+  end) .. "0000"):gsub("%d%d%d?%d?%d?%d?", function(x)
+    if #x < 6 then return "" end
+    local c = 0
+    for i = 1, 6 do c = c + (x:sub(i, i) == "1" and 2 ^ (6 - i) or 0) end
+    return B64:sub(c + 1, c + 1)
+  end) .. ({ "", "==", "=" })[#data % 3 + 1])
+end
+M._b64 = b64
+
+local ws = nil       -- { sock = , next_id = }
+
+local function ws_close()
+  if ws and ws.sock then pcall(function() ws.sock:close() end) end
+  ws = nil
+end
+M.disconnect = ws_close
+
+local function recv_exact(sock, n)
+  local data, err, partial = sock:receive(n)
+  if data then return data end
+  return nil, err, partial
+end
+
+local function ws_send(sock, payload, opcode)
+  opcode = opcode or 0x1
+  local len = #payload
+  local hdr
+  if len < 126 then hdr = string.char(0x80 | opcode, 0x80 | len)
+  elseif len < 65536 then hdr = string.char(0x80 | opcode, 0x80 | 126, len >> 8, len & 0xFF)
+  else
+    hdr = string.char(0x80 | opcode, 0x80 | 127, 0, 0, 0, 0,
+      (len >> 24) & 0xFF, (len >> 16) & 0xFF, (len >> 8) & 0xFF, len & 0xFF)
+  end
+  local m = { math.random(0, 255), math.random(0, 255), math.random(0, 255), math.random(0, 255) }
+  local out, chunk = {}, {}
+  for i = 1, len do
+    chunk[#chunk + 1] = string.char(payload:byte(i) ~ m[(i - 1) % 4 + 1])
+    if #chunk == 4096 then out[#out + 1] = table.concat(chunk); chunk = {} end
+  end
+  out[#out + 1] = table.concat(chunk)
+  local frame = hdr .. string.char(m[1], m[2], m[3], m[4]) .. table.concat(out)
+  local i = 1
+  while i <= #frame do
+    local sent, err, partial = sock:send(frame, i)
+    if not sent then
+      if err == "timeout" and partial and partial >= i then i = partial + 1
+      else return nil, err end
+    else
+      i = sent + 1
+    end
+  end
+  return true
+end
+
+-- Read one complete text message (handles fragmentation, ping/pong, close).
+local function ws_recv(sock)
+  local parts = {}
+  while true do
+    local h, err = recv_exact(sock, 2)
+    if not h then return nil, err end
+    local b1, b2 = h:byte(1, 2)
+    local fin, opcode = (b1 & 0x80) ~= 0, b1 & 0x0F
+    local masked, len = (b2 & 0x80) ~= 0, b2 & 0x7F
+    if len == 126 then
+      local e = recv_exact(sock, 2); if not e then return nil, "closed" end
+      len = (e:byte(1) << 8) | e:byte(2)
+    elseif len == 127 then
+      local e = recv_exact(sock, 8); if not e then return nil, "closed" end
+      len = 0
+      for k = 1, 8 do len = (len << 8) | e:byte(k) end
+    end
+    local mask = masked and recv_exact(sock, 4) or nil
+    local payload = len > 0 and recv_exact(sock, len) or ""
+    if not payload then return nil, "closed" end
+    if mask then
+      local t = {}
+      for k = 1, #payload do t[k] = string.char(payload:byte(k) ~ mask:byte((k - 1) % 4 + 1)) end
+      payload = table.concat(t)
+    end
+    if opcode == 0x8 then return nil, "closed"
+    elseif opcode == 0x9 then ws_send(sock, payload, 0xA)
+    elseif opcode == 0xA then -- pong, ignore
+    else
+      parts[#parts + 1] = payload
+      if fin then return table.concat(parts) end
+    end
+  end
+end
+
+local function ws_open()
+  local socket = load_socket()
+  if not socket then return nil, "nosocket" end
+  local sock = socket.tcp()
+  sock:settimeout(3)
+  local ok, err = sock:connect("127.0.0.1", math.floor(tonumber(M.wamp_port) or 8080))
+  if not ok then
+    pcall(function() sock:close() end)
+    return nil, "Couldn't reach Wwise on port " .. tostring(M.wamp_port) .. ". Is Wwise open with WAAPI enabled? " ..
+      "(Project > User Preferences > Enable Wwise Authoring API; WAMP port " .. tostring(M.wamp_port) .. ")", "offline"
+  end
+  local key = {}
+  for k = 1, 16 do key[k] = string.char(math.random(0, 255)) end
+  local req = "GET /waapi HTTP/1.1\r\nHost: 127.0.0.1:" .. tostring(M.wamp_port) ..
+    "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: " .. b64(table.concat(key)) ..
+    "\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: wamp.2.json\r\n\r\n"
+  sock:send(req)
+  local status = sock:receive("*l")
+  if not status or not status:find(" 101") then
+    pcall(function() sock:close() end)
+    return nil, "Wwise refused the WebSocket connection (" .. tostring(status) .. ")."
+  end
+  repeat local line = sock:receive("*l") until not line or line == ""
+  sock:settimeout(120)
+  local ok2, serr = ws_send(sock, json.encode({ 1, "realm1", { roles = { caller = {}, subscriber = {} } } }))
+  if not ok2 then pcall(function() sock:close() end); return nil, "WebSocket send failed: " .. tostring(serr) end
+  local msg = ws_recv(sock)
+  local okd, welcome = pcall(json.decode, msg or "")
+  if not okd or type(welcome) ~= "table" or welcome[1] ~= 2 then
+    pcall(function() sock:close() end)
+    return nil, "Wwise didn't accept the WAMP session: " .. tostring(msg)
+  end
+  ws = { sock = sock, next_id = 1 }
+  return ws
+end
+
+local function format_error(uri, kw)
+  local detail = (type(kw) == "table" and kw.message) or uri or "unknown error"
+  if type(kw) == "table" and kw.details and kw.details.log then
+    local lines = {}
+    for _, l in ipairs(kw.details.log) do lines[#lines + 1] = type(l) == "table" and (l.message or json.encode(l)) or tostring(l) end
+    detail = detail .. "\n" .. table.concat(lines, "\n")
+  end
+  return detail
+end
+
+local function waapi_wamp(uri, args, options, retried)
+  if not ws then
+    local c, err, code = ws_open()
+    if not c then return nil, err, code end
+  end
+  local id = ws.next_id
+  ws.next_id = id + 1
+  local ok, err = ws_send(ws.sock, json.encode({ 48, id, options or {}, uri, json.array(), args or {} }))
+  if not ok then
+    ws_close()
+    if not retried then return waapi_wamp(uri, args, options, true) end
+    return nil, "Lost connection to Wwise (" .. tostring(err) .. ")", "offline"
+  end
+  while true do
+    local msg, rerr = ws_recv(ws.sock)
+    if not msg then
+      ws_close()
+      if not retried and rerr == "closed" then return waapi_wamp(uri, args, options, true) end
+      return nil, "Lost connection to Wwise (" .. tostring(rerr) .. ")", "offline"
+    end
+    local okd, m = pcall(json.decode, msg)
+    if okd and type(m) == "table" then
+      if m[1] == 50 and m[2] == id then
+        return m[5] or {}
+      elseif m[1] == 8 and m[3] == id then
+        return nil, format_error(m[5], m[7]), m[5]
+      elseif m[1] == 3 or m[1] == 6 then -- ABORT / GOODBYE
+        ws_close()
+        return nil, "Wwise closed the session.", "offline"
+      end
+    end
+  end
+end
 
 local CURL = IS_WIN and "curl.exe" or "/usr/bin/curl"
 
-function M.waapi(uri, args, options)
+local function waapi_http(uri, args, options)
   local body = json.encode({ uri = uri, args = args or {}, options = options or {} })
   local req = TMP .. SEP .. "request.json"
   local f = io.open(req, "wb")
   if not f then return nil, "Could not write " .. req end
   f:write(body); f:close()
 
-  local cmd = string.format('%s -s -S --max-time 120 -X POST -H "Content-Type: application/json" --data-binary "@%s" http://127.0.0.1:%d/waapi',
-    CURL, req, math.floor(tonumber(M.port) or 8090))
+  local cmd = string.format('%s -s -S --max-time 120 -w "\n@@HTTP %%{http_code}" -X POST -H "Content-Type: application/json" --data-binary "@%s" http://127.0.0.1:%d/waapi',
+    CURL, req, math.floor(tonumber(M.http_port) or 8090))
   local out = r.ExecProcess(cmd, 125000)
   if not out then return nil, "curl did not run." end
   local code, text = out:match("^(%-?%d+)\r?\n?(.*)$")
@@ -256,23 +464,31 @@ function M.waapi(uri, args, options)
   if code ~= 0 then
     if code == 7 or code == 28 or (text or ""):find("onnect") then
       return nil, "Couldn't reach Wwise. Is Wwise open with WAAPI enabled? " ..
-        "(Project > User Preferences > Enable Wwise Authoring API, HTTP port " .. tostring(M.port) .. ")", "offline"
+        "(Project > User Preferences > Enable Wwise Authoring API, HTTP port " .. tostring(M.http_port) .. ")", "offline"
     end
     return nil, "curl failed (" .. tostring(code) .. "): " .. tostring(text)
   end
-  if text == nil or text == "" then return {} end
+  local http = tonumber((text or ""):match("@@HTTP (%d+)%s*$"))
+  text = (text or ""):gsub("\r?\n?@@HTTP %d+%s*$", "")
+  if http == 404 or http == 400 or http == 426 then
+    return nil, "Wwise didn't accept the HTTP connection (HTTP " .. http .. "). " ..
+      "Install \"Mavriq Lua Sockets\" from ReaPack so the script can use Wwise's WebSocket connection instead " ..
+      "(see the Wwise Transfer README).", "offline"
+  end
+  if text == "" then return {} end
   local ok, res = pcall(json.decode, text)
   if not ok or type(res) ~= "table" then return nil, "Unexpected reply from Wwise: " .. tostring(text) end
   if type(res.uri) == "string" and res.uri:find("^ak%.") and res.message then
-    local detail = res.message
-    if res.details and res.details.log then
-      local lines = {}
-      for _, l in ipairs(res.details.log) do lines[#lines + 1] = type(l) == "table" and (l.message or json.encode(l)) or tostring(l) end
-      detail = detail .. "\n" .. table.concat(lines, "\n")
-    end
-    return nil, detail, res.uri
+    return nil, format_error(res.uri, res), res.uri
   end
   return res
+end
+
+function M.transport_name() return load_socket() and "WebSocket" or "HTTP" end
+
+function M.waapi(uri, args, options)
+  if load_socket() then return waapi_wamp(uri, args, options) end
+  return waapi_http(uri, args, options)
 end
 
 -- Connection info: version, project name, languages, root path.
@@ -825,7 +1041,7 @@ function M.render_command() r.Main_OnCommand(42230, 0) end
 function M.transfer(s, conn, on_status)
   local status = on_status or function() end
   local summary = { errors = {}, created = 0, imported = 0, templates = 0, objects = {} }
-  M.port = s.port
+  M.wamp_port, M.http_port = s.wamp_port, s.http_port
 
   if not conn then
     local c, err = M.connect()
