@@ -1,10 +1,9 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.4.0
+-- @version 1.4.1
 -- @changelog
---   Much faster in big Wwise projects: the existing-object check only asks about the objects being transferred.
---   REAPER stays responsive while the window talks to Wwise (calls run in the background).
---   The transfer summary shows how long each step took.
+--   Fixed a command prompt window flashing open and closed over and over while the window is open.
+--   The Wwise selection is now read when you switch back to the window (or with the Refresh button), not on a timer.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -58,7 +57,8 @@ local preset_name = ""
 local selected_row = 0           -- 0 = leaf
 local summary = nil
 local status_line = ""
-local last_sig, last_check, last_sel_poll = nil, 0, 0
+local last_sig, last_check, want_sel_poll = nil, 0, true
+local was_focused = true
 local wwise_sel_path = nil
 local dirty_settings = false
 local open_summary = false
@@ -101,8 +101,8 @@ local function signature()
                         tostring(r.EnumProjects(-1)) }, "|")
 end
 
--- Background work runs in coroutines: WAAPI calls inside them don't block REAPER.
-core.async = true
+-- Work runs in coroutines so it can be spread across frames. WAAPI calls use the hidden,
+-- blocking curl path: the non-blocking path flashes a console window on Windows.
 local bg_task, transfer_task = nil, nil
 
 local function run_task(task)
@@ -137,8 +137,8 @@ local function refresh_preview(force)
   if transfer_task then return end
   if bg_task then bg_task = run_task(bg_task); return end
   local now = r.time_precise()
-  local poll = S.use_wwise_selection and conn and now - last_sel_poll > 1.5
-  if poll then last_sel_poll = now end
+  local poll = S.use_wwise_selection and conn and want_sel_poll
+  if poll then want_sel_poll = false end
   if not force and not poll and now - last_check < 0.3 then return end
   last_check = now
   local sig = signature()
@@ -258,8 +258,10 @@ local function section_destination()
   ImGui.SeparatorText(ctx, "Wwise destination")
   local c
   c, S.use_wwise_selection = ImGui.Checkbox(ctx, "Always use the object selected in Wwise", S.use_wwise_selection)
-  if c then settings_changed(); last_sel_poll = 0 end
+  if c then settings_changed(); want_sel_poll = true end
   if S.use_wwise_selection then
+    if ImGui.SmallButton(ctx, "Refresh##selpoll") then want_sel_poll = true end
+    ImGui.SameLine(ctx)
     ImGui.TextColored(ctx, COLOR_DIM, "Import destination: " .. (wwise_sel_path or "(nothing selected in Wwise)"))
   else
     S.destination = input("Import destination##dest", S.destination, "\\Actor-Mixer Hierarchy\\Default Work Unit", -170)
@@ -592,6 +594,10 @@ local function loop()
   ImGui.SetNextWindowSize(ctx, 760, 820, ImGui.Cond_FirstUseEver)
   local visible, open = ImGui.Begin(ctx, "Wwise Transfer", true)
   if visible then
+    -- Re-read the Wwise selection when coming back to this window (e.g. after clicking in Wwise).
+    local focused = ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows)
+    if focused and not was_focused then want_sel_poll = true end
+    was_focused = focused
     section_connection()
     section_source()
     section_destination()
