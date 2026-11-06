@@ -1,9 +1,10 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.3.0
+-- @version 1.4.0
 -- @changelog
---   Preview is now a Wwise-style tree: containers and Sounds nested as they'll appear in Wwise, with type, New/Exists status and Sound counts.
---   Expand all / Collapse all buttons and a count of new objects.
+--   Much faster in big Wwise projects: the existing-object check only asks about the objects being transferred.
+--   REAPER stays responsive while the window talks to Wwise (calls run in the background).
+--   The transfer summary shows how long each step took.
 -- @provides
 --   [main] JS_Wwise Transfer - Quick send.lua
 --   [nomain] JS_WwiseTransfer_core.lua
@@ -100,27 +101,60 @@ local function signature()
                         tostring(r.EnumProjects(-1)) }, "|")
 end
 
+-- Background work runs in coroutines: WAAPI calls inside them don't block REAPER.
+core.async = true
+local bg_task, transfer_task = nil, nil
+
+local function run_task(task)
+  if not task then return nil end
+  local ok, err = coroutine.resume(task)
+  if not ok then status_line = "Error: " .. tostring(err); return nil end
+  if coroutine.status(task) == "dead" then return nil end
+  return task
+end
+
+local function refresh_job(poll_selection, sig)
+  return coroutine.create(function()
+    if poll_selection then
+      local p = core.wwise_selection_path()
+      if p ~= wwise_sel_path then wwise_sel_path = p end
+    end
+    local s2 = core.json.decode(core.json.encode(S))
+    s2.destination = current_destination()
+    local newplan = core.build_plan(s2, conn)
+    local after = signature()
+    if conn and newplan.destination ~= "" then
+      local _, err = core.mark_existing(newplan)
+      if err == "offline" then conn = nil; conn_err = "Lost connection to Wwise." end
+    end
+    newplan.tree = core.build_tree(newplan, s2, conn)
+    plan = newplan
+    if sig then last_sig = after end -- building the plan can bump REAPER's change counter
+  end)
+end
+
 local function refresh_preview(force)
+  if transfer_task then return end
+  if bg_task then bg_task = run_task(bg_task); return end
   local now = r.time_precise()
-  if S.use_wwise_selection and conn and now - last_sel_poll > 2 then
-    last_sel_poll = now
-    local p = core.wwise_selection_path()
-    if p ~= wwise_sel_path then wwise_sel_path = p; last_sig = nil end
-  end
-  if not force and now - last_check < 0.3 then return end
+  local poll = S.use_wwise_selection and conn and now - last_sel_poll > 1.5
+  if poll then last_sel_poll = now end
+  if not force and not poll and now - last_check < 0.3 then return end
   last_check = now
   local sig = signature()
-  if sig == last_sig and not force then return end
-  local s2 = core.json.decode(core.json.encode(S))
-  s2.destination = current_destination()
-  plan = core.build_plan(s2, conn)
-  if conn and plan.destination ~= "" then
-    local _, err = core.mark_existing(plan)
-    if err == "offline" then conn = nil; conn_err = "Lost connection to Wwise." end
-  end
-  plan.tree = core.build_tree(plan, s2, conn)
-  last_sig = signature() -- building the plan can bump REAPER's change counter
   if dirty_settings then core.save_settings(S); dirty_settings = false end
+  if sig == last_sig and not force and not poll then return end
+  if poll and sig == last_sig and not force then
+    -- Only the Wwise selection might have changed: check it, rebuild only if it did.
+    bg_task = coroutine.create(function()
+      local p = core.wwise_selection_path()
+      if p ~= wwise_sel_path then wwise_sel_path = p; last_sig = nil end
+    end)
+  else
+    last_sig = sig
+    bg_task = refresh_job(false, true)
+  end
+  bg_task = run_task(bg_task)
 end
 
 ----------------------------------------------------------------------
@@ -480,19 +514,25 @@ local function do_transfer()
   status_line = "Transferring..."
   local s2 = core.json.decode(core.json.encode(S))
   local t0 = r.time_precise()
-  summary = core.transfer(s2, conn, function(msg) status_line = msg end)
-  summary.seconds = r.time_precise() - t0
-  summary.destination = s2.destination
-  status_line = ""
-  open_summary = true
-  last_sig = nil
+  bg_task = nil
+  transfer_task = coroutine.create(function()
+    summary = core.transfer(s2, conn, function(msg) status_line = msg end)
+    summary.seconds = r.time_precise() - t0
+    summary.destination = s2.destination
+    status_line = ""
+    open_summary = true
+    last_sig = nil
+  end)
+  transfer_task = run_task(transfer_task)
 end
 
 local function section_transfer()
   local problems = core.validate(S)
   local can = conn and #plan.entries > 0 and #problems == 0 and current_destination() ~= ""
   if not can then ImGui.BeginDisabled(ctx) end
-  if ImGui.Button(ctx, "Transfer to Wwise", -1, 34) then do_transfer() end
+  if transfer_task then ImGui.BeginDisabled(ctx) end
+  if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", -1, 34) and not transfer_task then do_transfer() end
+  if transfer_task then ImGui.EndDisabled(ctx) end
   if not can then ImGui.EndDisabled(ctx) end
   if status_line ~= "" then ImGui.TextColored(ctx, COLOR_DIM, status_line) end
 end
@@ -509,6 +549,14 @@ local function summary_popup()
     ImGui.Text(ctx, string.format("Objects created: %d", s.created or 0))
     if (s.templates or 0) > 0 then ImGui.Text(ctx, string.format("Templates applied: %d", s.templates)) end
     if s.seconds then ImGui.TextDisabled(ctx, string.format("Took %.2f s", s.seconds)) end
+    if s.timing and #s.timing > 0 then
+      local parts = {}
+      for _, t in ipairs(s.timing) do parts[#parts + 1] = string.format("%s %.2fs", t[1], t[2]) end
+      ImGui.PushTextWrapPos(ctx, 500)
+      ImGui.TextDisabled(ctx, table.concat(parts, "  |  "))
+      ImGui.PopTextWrapPos(ctx)
+      if ImGui.SmallButton(ctx, "Copy timing") then ImGui.SetClipboardText(ctx, table.concat(parts, "\n")) end
+    end
     if #s.errors > 0 then
       ImGui.Separator(ctx)
       ImGui.PushTextWrapPos(ctx, 500)
@@ -539,6 +587,7 @@ end
 -- Main loop
 ----------------------------------------------------------------------
 local function loop()
+  if transfer_task then transfer_task = run_task(transfer_task) end
   refresh_preview(false)
   ImGui.SetNextWindowSize(ctx, 760, 820, ImGui.Cond_FirstUseEver)
   local visible, open = ImGui.Begin(ctx, "Wwise Transfer", true)
