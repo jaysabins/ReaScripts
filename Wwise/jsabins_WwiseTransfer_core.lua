@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.5.1"
+M.VERSION = "1.5.2"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -298,12 +298,21 @@ local function waapi_http(uri, args, options, timeout)
   timeout = timeout or 120
   local base = write_request(uri, args, options)
   if not base then return nil, "Could not write a temp file in " .. TMP end
-  local out = r.ExecProcess(CURL .. ' -w "\n@@HTTP %{http_code}" ' .. curl_args(base, timeout), math.floor((timeout + 5) * 1000))
+  -- The reply body goes to a file, not stdout: REAPER doesn't drain the stdout pipe
+  -- while it waits, so a big reply (like an import's) made curl block until the
+  -- ExecProcess timeout. Only the short status line comes back on stdout.
+  os.remove(base .. ".out")
+  local out = r.ExecProcess(CURL .. ' -o "' .. base .. '.out" -w "@@HTTP %{http_code}" ' .. curl_args(base, timeout),
+    math.floor((timeout + 5) * 1000))
   os.remove(base .. ".json")
+  local body
+  local bf = io.open(base .. ".out", "rb")
+  if bf then body = bf:read("*a"); bf:close(); os.remove(base .. ".out") end
   if not out then return nil, "curl did not run." end
   local code, text = out:match("^(%-?%d+)\r?\n?(.*)$")
   local http = tonumber((text or ""):match("@@HTTP (%d+)%s*$"))
-  text = (text or ""):gsub("\r?\n?@@HTTP %d+%s*$", "")
+  text = (text or ""):gsub("@@HTTP %d+%s*$", "")
+  if http and http > 0 then text = body or "" end -- otherwise keep curl's error message
   return parse_reply(tonumber(code), text, http)
 end
 
@@ -523,7 +532,8 @@ local function resolve_originals(s)
   local res = resolve_pattern("@" .. s.originals_subfolder:gsub("/", "\\") .. "/@")
   local out = {}
   for i, p in ipairs(res) do
-    out[i] = p:gsub("^@", ""):gsub("/@$", ""):gsub("/", "\\")
+    -- REAPER adds "-001", "-002"... when several files would get the same name; drop that too.
+    out[i] = p:gsub("^@", ""):gsub("/@%-?%d*$", ""):gsub("/", "\\")
   end
   return out
 end

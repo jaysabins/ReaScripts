@@ -1,9 +1,11 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.5.1
+-- @version 1.5.2
 -- @changelog
---   Fixed: with "Always use the object selected in Wwise" on, the destination stayed empty (and Transfer greyed out) until you left and came back to the window.
---   When the Transfer button is greyed out, the bar next to it says why (and so does its tooltip).
+--   Fixed REAPER freezing for about 2 minutes after a transfer: big replies from Wwise (like the import's) made the script wait until a timeout.
+--   Fixed an "@-001"-style folder appearing in the Originals subfolder path.
+--   Settings > Diagnostics: a log of slow moments (what the script was doing and for how long) to track down freezes.
+--   With "Always use the object selected in Wwise" on, the Sounds the transfer selects in Wwise no longer become the next import destination.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -110,6 +112,31 @@ local function signature()
                         tostring(r.EnumProjects(-1)) }, "|")
 end
 
+----------------------------------------------------------------------
+-- Diagnostics: a log of slow moments (frames where this script worked for a
+-- long time, or where REAPER didn't run the script for a while).
+----------------------------------------------------------------------
+local slow_log, frame_notes = {}, {}
+local last_frame_end, last_transfer_end = nil, nil
+local function note(text) frame_notes[#frame_notes + 1] = text end
+do
+  local waapi = core.waapi
+  core.waapi = function(uri, args, options, timeout)
+    local t = r.time_precise()
+    local a, b, c = waapi(uri, args, options, timeout)
+    note(string.format("%s %.0fms%s", uri:gsub("^ak%.wwise%.", ""), (r.time_precise() - t) * 1000,
+      a and "" or (" (" .. tostring(type(c) == "string" and c or "error") .. ")")))
+    return a, b, c
+  end
+end
+
+-- Objects our own transfer just selected in Wwise ("Select imported Sounds in Wwise").
+-- That selection must not become the next import destination.
+local imported_paths = {}
+local function own_selection(o)
+  return type(o) == "table" and o.path and imported_paths[o.path:lower()] or false
+end
+
 -- Work runs in coroutines so it can be spread across frames. WAAPI calls use the hidden,
 -- blocking curl path: the non-blocking path flashes a console window on Windows.
 local bg_task, transfer_task = nil, nil
@@ -125,12 +152,14 @@ end
 local function refresh_job(poll_selection, sig)
   return coroutine.create(function()
     if poll_selection then
-      local p, _, code = core.wwise_selection_path(PREVIEW_TIMEOUT)
-      if code ~= "busy" and p ~= wwise_sel_path then wwise_sel_path = p end
+      local p, _, x = core.wwise_selection_path(PREVIEW_TIMEOUT)
+      if x ~= "busy" and not own_selection(x) and p ~= wwise_sel_path then wwise_sel_path = p end
     end
     local s2 = core.json.decode(core.json.encode(S))
     s2.destination = current_destination()
+    local tb = r.time_precise()
     local newplan = core.build_plan(s2, conn)
+    note(string.format("read project %.0fms (%d Sounds)", (r.time_precise() - tb) * 1000, #newplan.entries))
     local after = signature()
     if conn and newplan.destination ~= "" then
       if known_dest ~= newplan.destination then known_existing, known_dest = {}, newplan.destination end
@@ -162,9 +191,9 @@ local function refresh_preview(force)
   if poll and sig == last_sig and not force then
     -- Only the Wwise selection might have changed: check it, rebuild only if it did.
     bg_task = coroutine.create(function()
-      local p, _, code = core.wwise_selection_path(PREVIEW_TIMEOUT)
-      if code == "busy" then sel_poll_at = r.time_precise() + RETRY_DELAY
-      elseif p ~= wwise_sel_path then wwise_sel_path = p; last_sig = nil end
+      local p, _, x = core.wwise_selection_path(PREVIEW_TIMEOUT)
+      if x == "busy" then sel_poll_at = r.time_precise() + RETRY_DELAY
+      elseif not own_selection(x) and p ~= wwise_sel_path then wwise_sel_path = p; last_sig = nil end
     end)
   else
     last_sig = sig
@@ -550,6 +579,10 @@ local function do_transfer()
     status_line = ""
     open_summary = true
     -- Remember what was just created, so the preview doesn't query Wwise while it's still busy importing.
+    imported_paths = {}
+    for _, o in ipairs(summary.objects or {}) do if o.path then imported_paths[o.path:lower()] = true end end
+    last_transfer_end = r.time_precise()
+    note("transfer " .. string.format("%.0fms", (summary.seconds or 0) * 1000))
     if summary.plan and summary.imported > 0 then
       if known_dest ~= summary.plan.destination then known_existing, known_dest = {}, summary.plan.destination end
       core.remember_transfer(summary.plan, known_existing)
@@ -668,6 +701,18 @@ local function settings_popup()
   if c then settings_changed() end
   ImGui.Dummy(ctx, 0, 6)
 
+  ImGui.SeparatorText(ctx, "Diagnostics")
+  ImGui.PushTextWrapPos(ctx, 480)
+  ImGui.TextColored(ctx, COLOR_DIM, string.format("Slow moments recorded: %d. If REAPER stutters or freezes, " ..
+    "copy this log and send it over.", #slow_log))
+  ImGui.PopTextWrapPos(ctx)
+  if ImGui.Button(ctx, "Copy slow-moment log") then
+    ImGui.SetClipboardText(ctx, "Wwise Transfer " .. core.VERSION .. "\n" .. table.concat(slow_log, "\n"))
+  end
+  ImGui.SameLine(ctx)
+  if ImGui.Button(ctx, "Clear log") then slow_log = {} end
+  ImGui.Dummy(ctx, 0, 6)
+
   ImGui.Separator(ctx)
   ImGui.TextDisabled(ctx, "Wwise Transfer " .. core.VERSION)
   ImGui.SameLine(ctx)
@@ -681,7 +726,35 @@ end
 ----------------------------------------------------------------------
 -- Main loop
 ----------------------------------------------------------------------
+local function log_frame(t0, gap)
+  local work = r.time_precise() - t0
+  if work > 0.1 or gap > 0.25 then
+    local since = last_transfer_end and string.format("  [%.1fs after transfer]", t0 - last_transfer_end) or ""
+    local line = string.format("%s  script %.0fms  REAPER busy before %.0fms%s  %s", os.date("%H:%M:%S"),
+      work * 1000, gap * 1000, since, table.concat(frame_notes, ", "))
+    slow_log[#slow_log + 1] = line
+    if #slow_log > 60 then table.remove(slow_log, 1) end
+  end
+  frame_notes = {}
+  last_frame_end = r.time_precise()
+end
+
+local loop_body
 local function loop()
+  local t0 = r.time_precise()
+  -- Time between the end of our last frame and now: normally ~33 ms. Much more means
+  -- REAPER itself (or another script) was busy and didn't give us a turn.
+  local gap = last_frame_end and math.max(0, t0 - last_frame_end - 0.034) or 0
+  local open = loop_body()
+  log_frame(t0, gap)
+  if open then
+    r.defer(loop)
+  else
+    core.save_settings(S)
+  end
+end
+
+loop_body = function()
   if transfer_task then transfer_task = run_task(transfer_task) end
   refresh_preview(false)
   ImGui.SetNextWindowSize(ctx, 1180, 760, ImGui.Cond_FirstUseEver)
@@ -716,11 +789,7 @@ local function loop()
     settings_popup()
     ImGui.End(ctx)
   end
-  if open then
-    r.defer(loop)
-  else
-    core.save_settings(S)
-  end
+  return open
 end
 
 connect()
