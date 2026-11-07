@@ -1,8 +1,8 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.5.3
+-- @version 1.5.4
 -- @changelog
---   Switching project tabs with the window open now loads that project's settings (before, the window kept showing and saving the previous project's).
+--   Fixed "Not connected to Wwise" (curl error 26) in 1.5.3.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
