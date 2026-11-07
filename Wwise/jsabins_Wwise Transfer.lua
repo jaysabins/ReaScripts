@@ -1,10 +1,9 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.4.2
+-- @version 1.5.0
 -- @changelog
---   REAPER no longer hangs after a transfer while Wwise is still busy with the import.
---   The preview remembers what already exists in Wwise and only asks Wwise again when something changes.
---   The preview never waits on Wwise for more than a moment; if Wwise is busy it tries again a few seconds later.
+--   New Settings button (top right) with the connection, render and after-transfer preferences, so the main window is less crowded.
+--   Rendering preferences, "Apply property templates" and "Select in Wwise afterwards" moved into Settings.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -70,6 +69,7 @@ local function forget_existing() known_existing = {} end
 local wwise_sel_path = nil
 local dirty_settings = false
 local open_summary = false
+local open_settings = false
 
 local COLOR_OK = 0x6BCB77FF
 local COLOR_BAD = 0xFF6B6BFF
@@ -238,6 +238,14 @@ local function section_connection()
   end
   ImGui.SameLine(ctx)
   if ImGui.SmallButton(ctx, conn and "Refresh" or "Connect") then connect() end
+  -- Settings button, right-aligned on the same line.
+  local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
+  local bw = ImGui.CalcTextSize(ctx, "Settings") + pad_x * 2
+  ImGui.SameLine(ctx)
+  local avail = ImGui.GetContentRegionAvail(ctx)
+  if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
+  if ImGui.Button(ctx, "Settings") then open_settings = true end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Connection, render and after-transfer preferences") end
   if not conn and conn_err then
     ImGui.PushTextWrapPos(ctx, 0)
     ImGui.TextColored(ctx, COLOR_DIM, conn_err)
@@ -251,17 +259,8 @@ local function section_source()
   changed, S.source = combo("##source", { { "items", "Selected items" }, { "render", "REAPER render settings (regions, stems, matrix...)" } }, S.source, 340)
   if changed then settings_changed() end
   if S.source == "items" then
-    local c
-    c, S.skip_render_untouched = ImGui.Checkbox(ctx, "Import untouched WAV files directly (no render)", S.skip_render_untouched)
-    if c then settings_changed() end
-    help("An item that plays a whole WAV file with no trims, FX, fades, pitch or volume changes\nis imported straight from disk. This is the fastest path.")
-    c, S.items_via_master = ImGui.Checkbox(ctx, "Render items through track FX and master", S.items_via_master)
-    if c then settings_changed() end
-    c, S.folders_via_master = ImGui.Checkbox(ctx, "Render folder items through master", S.folders_via_master)
-    if c then settings_changed() end
-    help("An empty item on a folder track renders the folder's mix (folder + children)\nover that item's time range, named after the item.")
-    c, S.mono_to_mono = ImGui.Checkbox(ctx, "Mono items render as mono files", S.mono_to_mono)
-    if c then settings_changed() end
+    ImGui.SameLine(ctx)
+    ImGui.TextColored(ctx, COLOR_DIM, "How items render: see Settings.")
   else
     if ImGui.Button(ctx, "Open render settings...") then r.Main_OnCommand(40015, 0) end
     ImGui.SameLine(ctx)
@@ -415,10 +414,6 @@ local function section_conflicts()
   ImGui.SeparatorText(ctx, "If objects already exist")
   local c
   c, S.conflict = combo("If a Sound or container exists", core.CONFLICT_OPS, S.conflict, 300)
-  if c then settings_changed() end
-  c, S.apply_template = combo("Apply property templates", core.TEMPLATE_OPS, S.apply_template, 300)
-  if c then settings_changed() end
-  c, S.select_in_wwise = ImGui.Checkbox(ctx, "Select imported Sounds in Wwise afterwards", S.select_in_wwise)
   if c then settings_changed() end
 end
 
@@ -596,15 +591,52 @@ local function summary_popup()
   end
 end
 
-local function section_settings()
-  if ImGui.CollapsingHeader(ctx, "Connection settings") then
-    ImGui.SetNextItemWidth(ctx, 100)
-    local c, v = ImGui.InputInt(ctx, "WAAPI HTTP port", S.http_port)
-    if c then S.http_port = v; settings_changed() end
-    ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Reconnect") then core.disconnect(); connect() end
-    ImGui.TextColored(ctx, COLOR_DIM, "Must match Wwise > Project > User Preferences > Wwise Authoring API.")
-  end
+local function settings_popup()
+  if open_settings then ImGui.OpenPopup(ctx, "Settings"); open_settings = false end
+  ImGui.SetNextWindowSize(ctx, 500, 0, ImGui.Cond_Appearing)
+  if not ImGui.BeginPopupModal(ctx, "Settings", nil, ImGui.WindowFlags_AlwaysAutoResize) then return end
+  local c, v
+
+  ImGui.SeparatorText(ctx, "Connection")
+  ImGui.SetNextItemWidth(ctx, 100)
+  c, v = ImGui.InputInt(ctx, "WAAPI HTTP port", S.http_port)
+  if c then S.http_port = v; settings_changed() end
+  ImGui.SameLine(ctx)
+  if ImGui.Button(ctx, "Reconnect") then core.disconnect(); connect() end
+  ImGui.PushTextWrapPos(ctx, 480)
+  ImGui.TextColored(ctx, COLOR_DIM, "Must match Wwise > Project > User Preferences > Wwise Authoring API (default 8090). " ..
+    "\"Allow connections from\" there should be 127.0.0.1,::1.")
+  ImGui.PopTextWrapPos(ctx)
+  ImGui.Dummy(ctx, 0, 4)
+
+  ImGui.SeparatorText(ctx, "Rendering selected items")
+  c, S.skip_render_untouched = ImGui.Checkbox(ctx, "Import untouched WAV files directly (no render)", S.skip_render_untouched)
+  if c then settings_changed() end
+  help("An item that plays a whole WAV file with no trims, FX, fades, pitch or volume changes\nis imported straight from disk. This is the fastest path.")
+  c, S.items_via_master = ImGui.Checkbox(ctx, "Render items through track FX and master", S.items_via_master)
+  if c then settings_changed() end
+  c, S.folders_via_master = ImGui.Checkbox(ctx, "Render folder items through master", S.folders_via_master)
+  if c then settings_changed() end
+  help("An empty item on a folder track renders the folder's mix (folder + children)\nover that item's time range, named after the item.")
+  c, S.mono_to_mono = ImGui.Checkbox(ctx, "Mono items render as mono files", S.mono_to_mono)
+  if c then settings_changed() end
+  ImGui.Dummy(ctx, 0, 4)
+
+  ImGui.SeparatorText(ctx, "Transfer")
+  c, S.apply_template = combo("Apply property templates", core.TEMPLATE_OPS, S.apply_template, 260)
+  if c then settings_changed() end
+  c, S.select_in_wwise = ImGui.Checkbox(ctx, "Select imported Sounds in Wwise afterwards", S.select_in_wwise)
+  if c then settings_changed() end
+  ImGui.Dummy(ctx, 0, 6)
+
+  ImGui.Separator(ctx)
+  ImGui.TextDisabled(ctx, "Wwise Transfer " .. core.VERSION)
+  ImGui.SameLine(ctx)
+  local w = 80
+  local avail = ImGui.GetContentRegionAvail(ctx)
+  if avail > w then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - w) end
+  if ImGui.Button(ctx, "Close", w) or ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then ImGui.CloseCurrentPopup(ctx) end
+  ImGui.EndPopup(ctx)
 end
 
 ----------------------------------------------------------------------
@@ -629,10 +661,10 @@ local function loop()
     section_destination()
     section_hierarchy()
     section_conflicts()
-    section_settings()
     section_preview()
     section_transfer()
     summary_popup()
+    settings_popup()
     ImGui.End(ctx)
   end
   if open then
