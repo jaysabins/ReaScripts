@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.5.2"
+M.VERSION = "1.5.3"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -198,10 +198,13 @@ function M.load_settings()
   return M.default_settings()
 end
 
-function M.save_settings(s)
+-- Saved in the project (so it comes back with the project) and as the default
+-- for projects that don't have their own yet. `proj` defaults to the current project.
+function M.save_settings(s, proj)
+  proj = proj or 0
   local txt = json.encode(s)
-  local _, old = r.GetProjExtState(0, M.EXT, "settings")
-  if old ~= txt then r.SetProjExtState(0, M.EXT, "settings", txt) end
+  local _, old = r.GetProjExtState(proj, M.EXT, "settings")
+  if old ~= txt then r.SetProjExtState(proj, M.EXT, "settings", txt) end
   r.SetExtState(M.EXT, "last_settings", txt, true)
 end
 

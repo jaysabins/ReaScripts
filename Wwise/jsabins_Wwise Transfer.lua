@@ -1,11 +1,8 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.5.2
+-- @version 1.5.3
 -- @changelog
---   Fixed REAPER freezing for about 2 minutes after a transfer: big replies from Wwise (like the import's) made the script wait until a timeout.
---   Fixed an "@-001"-style folder appearing in the Originals subfolder path.
---   Settings > Diagnostics: a log of slow moments (what the script was doing and for how long) to track down freezes.
---   With "Always use the object selected in Wwise" on, the Sounds the transfer selects in Wwise no longer become the next import destination.
+--   Switching project tabs with the window open now loads that project's settings (before, the window kept showing and saving the previous project's).
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -754,7 +751,25 @@ local function loop()
   end
 end
 
+-- Settings live in each project. When you switch project tabs, save any pending
+-- change into the project it belongs to and load the new project's settings.
+local cur_proj = r.EnumProjects(-1)
+local function follow_project_tab()
+  local proj = r.EnumProjects(-1)
+  if proj == cur_proj then return end
+  if dirty_settings and cur_proj and r.ValidatePtr(cur_proj, "ReaProject*") then core.save_settings(S, cur_proj) end
+  dirty_settings = false
+  cur_proj = proj
+  S = core.load_settings()
+  core.http_port = S.http_port
+  plan = { entries = {}, errors = {} }
+  forget_existing()
+  sel_poll_at = 0
+  last_sig = nil
+end
+
 loop_body = function()
+  if not transfer_task then follow_project_tab() end
   if transfer_task then transfer_task = run_task(transfer_task) end
   refresh_preview(false)
   ImGui.SetNextWindowSize(ctx, 1180, 760, ImGui.Cond_FirstUseEver)
