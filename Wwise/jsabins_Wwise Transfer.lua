@@ -1,11 +1,9 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.5.0
+-- @version 1.5.1
 -- @changelog
---   New Settings button (top right) with the connection, render and after-transfer preferences, so the main window is less crowded.
---   Rendering preferences, "Apply property templates" and "Select in Wwise afterwards" moved into Settings.
---   New layout: setup on the left, a bigger Wwise preview on the right, Transfer button under the preview.
---   Each structure level's property template, move and remove options are in its "..." button.
+--   Fixed: with "Always use the object selected in Wwise" on, the destination stayed empty (and Transfer greyed out) until you left and came back to the window.
+--   When the Transfer button is greyed out, the bar next to it says why (and so does its tooltip).
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -170,7 +168,7 @@ local function refresh_preview(force)
     end)
   else
     last_sig = sig
-    bg_task = refresh_job(false, true)
+    bg_task = refresh_job(poll, true) -- also read the Wwise selection if it was due
   end
   bg_task = run_task(bg_task)
 end
@@ -564,11 +562,21 @@ end
 
 local function section_transfer()
   local problems = core.validate(S)
-  local can = conn and #plan.entries > 0 and #problems == 0 and current_destination() ~= ""
+  -- Why the button is greyed out (first reason wins).
+  local why
+  if not conn then why = "Not connected to Wwise. Click Connect at the top."
+  elseif current_destination() == "" then
+    why = S.use_wwise_selection and "Select a parent object in Wwise (or untick \"Always use the object selected in Wwise\")."
+      or "Set an import destination."
+  elseif #problems > 0 then why = problems[1]
+  elseif #plan.entries == 0 then why = (plan.errors and plan.errors[1]) or "Select one or more items in REAPER."
+  end
+  local can = why == nil
   ImGui.Separator(ctx)
   ImGui.Dummy(ctx, 0, 2)
   local bw = 260
   local text = status_line
+  if text == "" and why then text = why end
   if text == "" then
     local n = #plan.entries
     text = string.format("%d Sound%s  ->  %s", n, n == 1 and "" or "s", current_destination() ~= "" and current_destination() or "(no destination)")
@@ -576,7 +584,7 @@ local function section_transfer()
   local avail = ImGui.GetContentRegionAvail(ctx)
   ImGui.AlignTextToFramePadding(ctx)
   ImGui.PushTextWrapPos(ctx, math.max(80, avail - bw - 12))
-  ImGui.TextColored(ctx, COLOR_DIM, text)
+  ImGui.TextColored(ctx, (why and status_line == "") and 0xF4D35EFF or COLOR_DIM, text)
   ImGui.PopTextWrapPos(ctx)
   ImGui.SameLine(ctx)
   avail = ImGui.GetContentRegionAvail(ctx)
@@ -584,6 +592,7 @@ local function section_transfer()
   if not can or transfer_task then ImGui.BeginDisabled(ctx) end
   if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", bw, 34) and not transfer_task then do_transfer() end
   if not can or transfer_task then ImGui.EndDisabled(ctx) end
+  if why and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then ImGui.SetTooltip(ctx, why) end
 end
 
 local function summary_popup()
