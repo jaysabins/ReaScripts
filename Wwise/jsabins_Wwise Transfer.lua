@@ -1,10 +1,11 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.4.2
+-- @version 1.5.0
 -- @changelog
---   REAPER no longer hangs after a transfer while Wwise is still busy with the import.
---   The preview remembers what already exists in Wwise and only asks Wwise again when something changes.
---   The preview never waits on Wwise for more than a moment; if Wwise is busy it tries again a few seconds later.
+--   New Settings button (top right) with the connection, render and after-transfer preferences, so the main window is less crowded.
+--   Rendering preferences, "Apply property templates" and "Select in Wwise afterwards" moved into Settings.
+--   New layout: setup on the left, a bigger Wwise preview on the right, Transfer button under the preview.
+--   Each structure level's property template, move and remove options are in its "..." button.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -70,6 +71,7 @@ local function forget_existing() known_existing = {} end
 local wwise_sel_path = nil
 local dirty_settings = false
 local open_summary = false
+local open_settings = false
 
 local COLOR_OK = 0x6BCB77FF
 local COLOR_BAD = 0xFF6B6BFF
@@ -238,6 +240,14 @@ local function section_connection()
   end
   ImGui.SameLine(ctx)
   if ImGui.SmallButton(ctx, conn and "Refresh" or "Connect") then connect() end
+  -- Settings button, right-aligned on the same line.
+  local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
+  local bw = ImGui.CalcTextSize(ctx, "Settings") + pad_x * 2
+  ImGui.SameLine(ctx)
+  local avail = ImGui.GetContentRegionAvail(ctx)
+  if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
+  if ImGui.Button(ctx, "Settings") then open_settings = true end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Connection, render and after-transfer preferences") end
   if not conn and conn_err then
     ImGui.PushTextWrapPos(ctx, 0)
     ImGui.TextColored(ctx, COLOR_DIM, conn_err)
@@ -245,29 +255,22 @@ local function section_connection()
   end
 end
 
+local function dim_label(text) ImGui.TextColored(ctx, COLOR_DIM, text) end
+
 local function section_source()
   ImGui.SeparatorText(ctx, "Source")
   local changed
-  changed, S.source = combo("##source", { { "items", "Selected items" }, { "render", "REAPER render settings (regions, stems, matrix...)" } }, S.source, 340)
+  changed, S.source = combo("##source", { { "items", "Selected items" }, { "render", "REAPER render settings (regions, stems, matrix...)" } }, S.source, -1)
   if changed then settings_changed() end
-  if S.source == "items" then
-    local c
-    c, S.skip_render_untouched = ImGui.Checkbox(ctx, "Import untouched WAV files directly (no render)", S.skip_render_untouched)
-    if c then settings_changed() end
-    help("An item that plays a whole WAV file with no trims, FX, fades, pitch or volume changes\nis imported straight from disk. This is the fastest path.")
-    c, S.items_via_master = ImGui.Checkbox(ctx, "Render items through track FX and master", S.items_via_master)
-    if c then settings_changed() end
-    c, S.folders_via_master = ImGui.Checkbox(ctx, "Render folder items through master", S.folders_via_master)
-    if c then settings_changed() end
-    help("An empty item on a folder track renders the folder's mix (folder + children)\nover that item's time range, named after the item.")
-    c, S.mono_to_mono = ImGui.Checkbox(ctx, "Mono items render as mono files", S.mono_to_mono)
-    if c then settings_changed() end
-  else
-    if ImGui.Button(ctx, "Open render settings...") then r.Main_OnCommand(40015, 0) end
+  if S.source == "render" then
+    if ImGui.Button(ctx, "Render settings...") then r.Main_OnCommand(40015, 0) end
     ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Region render matrix...") then r.Main_OnCommand(41888, 0) end
-    ImGui.TextColored(ctx, COLOR_DIM, "Files render where your render settings say, then import from there.")
+    if ImGui.Button(ctx, "Region matrix...") then r.Main_OnCommand(41888, 0) end
+    ImGui.PushTextWrapPos(ctx, 0)
+    dim_label("Files render where your render settings say, then import from there.")
+    ImGui.PopTextWrapPos(ctx)
   end
+  ImGui.Dummy(ctx, 0, 4)
 end
 
 local function section_destination()
@@ -278,25 +281,65 @@ local function section_destination()
   if S.use_wwise_selection then
     if ImGui.SmallButton(ctx, "Refresh##selpoll") then sel_poll_at = 0; forget_existing(); last_sig = nil end
     ImGui.SameLine(ctx)
-    ImGui.TextColored(ctx, COLOR_DIM, "Import destination: " .. (wwise_sel_path or "(nothing selected in Wwise)"))
+    ImGui.PushTextWrapPos(ctx, 0)
+    ImGui.Text(ctx, wwise_sel_path or "(nothing selected in Wwise)")
+    ImGui.PopTextWrapPos(ctx)
   else
-    S.destination = input("Import destination##dest", S.destination, "\\Actor-Mixer Hierarchy\\Default Work Unit", -170)
+    S.destination = input("##dest", S.destination, "\\Containers\\Default Work Unit", -86)
     from_wwise_button("dest", function(p) S.destination = p end)
   end
-  S.originals_subfolder = input("Originals subfolder##orig", S.originals_subfolder, "optional, e.g. Weapons\\$region", -170)
+  ImGui.Dummy(ctx, 0, 2)
+  dim_label("Originals subfolder")
+  S.originals_subfolder = input("##orig", S.originals_subfolder, "optional, e.g. Weapons\\$region", -30)
   wildcard_menu("orig", function(w) S.originals_subfolder = S.originals_subfolder .. w end)
+  dim_label("If a Sound or container already exists")
+  c, S.conflict = combo("##conflict", core.CONFLICT_OPS, S.conflict, -1)
+  if c then settings_changed() end
+  ImGui.Dummy(ctx, 0, 4)
+end
+
+-- Per-level options popup: property template, move, remove.
+local function level_options(id, get_t, set_t, row_index)
+  local has = (get_t() or "") ~= ""
+  if ImGui.Button(ctx, (has and "T" or "...") .. "##opt" .. id, -1) then ImGui.OpenPopup(ctx, "lvlopt" .. id) end
+  if ImGui.IsItemHovered(ctx) then
+    ImGui.SetTooltip(ctx, has and ("Property template: " .. get_t()) or "Property template, move, remove")
+  end
+  local action
+  if ImGui.BeginPopup(ctx, "lvlopt" .. id) then
+    dim_label("Property template (optional)")
+    ImGui.SetNextItemWidth(ctx, 320)
+    local ch, v = ImGui.InputTextWithHint(ctx, "##tmpl", "\\Templates\\...", get_t() or "")
+    if ch then set_t(v); settings_changed() end
+    ImGui.SameLine(ctx)
+    if ImGui.Button(ctx, "From Wwise##t") then
+      local _, err, o = core.wwise_selection_path()
+      if o then set_t(o.path); settings_changed() else status_line = err or "" end
+    end
+    if row_index then
+      ImGui.Separator(ctx)
+      if ImGui.Button(ctx, "Move up") then action = "up"; ImGui.CloseCurrentPopup(ctx) end
+      ImGui.SameLine(ctx)
+      if ImGui.Button(ctx, "Move down") then action = "down"; ImGui.CloseCurrentPopup(ctx) end
+      ImGui.SameLine(ctx)
+      if ImGui.Button(ctx, "Remove level") then action = "remove"; ImGui.CloseCurrentPopup(ctx) end
+    end
+    ImGui.EndPopup(ctx)
+  end
+  return action
 end
 
 local function section_hierarchy()
-  ImGui.SeparatorText(ctx, "Wwise structure (hierarchy mapping)")
-  ImGui.TextColored(ctx, COLOR_DIM, "Levels created under the destination, top to bottom. Names can use wildcards.")
+  ImGui.SeparatorText(ctx, "Wwise structure")
+  ImGui.PushTextWrapPos(ctx, 0)
+  dim_label("Levels created under the destination, top to bottom. Names can use wildcards.")
+  ImGui.PopTextWrapPos(ctx)
 
-  local flags = ImGui.TableFlags_Borders | ImGui.TableFlags_RowBg | ImGui.TableFlags_SizingStretchProp
-  if ImGui.BeginTable(ctx, "map", 4, flags) then
-    ImGui.TableSetupColumn(ctx, "Type", ImGui.TableColumnFlags_WidthFixed, 160)
-    ImGui.TableSetupColumn(ctx, "Name", ImGui.TableColumnFlags_WidthStretch, 2)
-    ImGui.TableSetupColumn(ctx, "Property template", ImGui.TableColumnFlags_WidthStretch, 2)
-    ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, 96)
+  local flags = ImGui.TableFlags_RowBg | ImGui.TableFlags_BordersInnerV
+  if ImGui.BeginTable(ctx, "map", 3, flags) then
+    ImGui.TableSetupColumn(ctx, "Type", ImGui.TableColumnFlags_WidthFixed, 150)
+    ImGui.TableSetupColumn(ctx, "Name", ImGui.TableColumnFlags_WidthStretch)
+    ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, 30)
     ImGui.TableHeadersRow(ctx)
 
     local remove, move = nil, nil
@@ -314,21 +357,10 @@ local function section_hierarchy()
       if ImGui.IsItemActive(ctx) then selected_row = i end
       wildcard_menu("r" .. i, function(w) row.name = (row.name or "") .. w end)
       ImGui.TableNextColumn(ctx)
-      ImGui.SetNextItemWidth(ctx, -28)
-      ch, v = ImGui.InputTextWithHint(ctx, "##tmpl", "optional", row.template or "")
-      if ch then row.template = v; settings_changed() end
-      ImGui.SameLine(ctx)
-      if ImGui.Button(ctx, "W##t") then
-        local _, err, o = core.wwise_selection_path()
-        if o then row.template = o.path; settings_changed() else status_line = err or "" end
-      end
-      if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Use the object selected in Wwise as this level's property template") end
-      ImGui.TableNextColumn(ctx)
-      if ImGui.SmallButton(ctx, "Up") and i > 1 then move = { i, i - 1 } end
-      ImGui.SameLine(ctx)
-      if ImGui.SmallButton(ctx, "Dn") and i < #S.rows then move = { i, i + 1 } end
-      ImGui.SameLine(ctx)
-      if ImGui.SmallButton(ctx, "X") then remove = i end
+      local act = level_options("r" .. i, function() return row.template end, function(t) row.template = t end, i)
+      if act == "up" and i > 1 then move = { i, i - 1 }
+      elseif act == "down" and i < #S.rows then move = { i, i + 1 }
+      elseif act == "remove" then remove = i end
       ImGui.PopID(ctx)
     end
 
@@ -348,17 +380,7 @@ local function section_hierarchy()
     if ch then S.leaf.name = v; settings_changed() end
     wildcard_menu("leaf", function(w) S.leaf.name = S.leaf.name .. w end)
     ImGui.TableNextColumn(ctx)
-    ImGui.SetNextItemWidth(ctx, -28)
-    ch, v = ImGui.InputTextWithHint(ctx, "##leaftmpl", "optional", S.leaf.template)
-    if ch then S.leaf.template = v; settings_changed() end
-    ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "W##lt") then
-      local _, err, o = core.wwise_selection_path()
-      if o then S.leaf.template = o.path; settings_changed() else status_line = err or "" end
-    end
-    if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Use the object selected in Wwise as the Sounds' property template") end
-    ImGui.TableNextColumn(ctx)
-    ImGui.TextDisabled(ctx, "Sound")
+    level_options("leaf", function() return S.leaf.template end, function(t) S.leaf.template = t end, nil)
     ImGui.PopID(ctx)
     ImGui.EndTable(ctx)
 
@@ -411,16 +433,6 @@ local function section_hierarchy()
   end
 end
 
-local function section_conflicts()
-  ImGui.SeparatorText(ctx, "If objects already exist")
-  local c
-  c, S.conflict = combo("If a Sound or container exists", core.CONFLICT_OPS, S.conflict, 300)
-  if c then settings_changed() end
-  c, S.apply_template = combo("Apply property templates", core.TEMPLATE_OPS, S.apply_template, 300)
-  if c then settings_changed() end
-  c, S.select_in_wwise = ImGui.Checkbox(ctx, "Select imported Sounds in Wwise afterwards", S.select_in_wwise)
-  if c then settings_changed() end
-end
 
 local TYPE_COLORS = {
   ["Destination"] = 0xC8C8C8FF, ["Work Unit"] = 0xE0C060FF, ["Virtual Folder"] = 0xB0B0B0FF,
@@ -513,7 +525,7 @@ local function section_preview()
 
   local flags = ImGui.TableFlags_BordersV | ImGui.TableFlags_BordersOuterH | ImGui.TableFlags_RowBg |
                 ImGui.TableFlags_ScrollY | ImGui.TableFlags_Resizable
-  local h = math.max(160, select(2, ImGui.GetContentRegionAvail(ctx)) - 60)
+  local h = math.max(160, select(2, ImGui.GetContentRegionAvail(ctx)) - 52)
   if ImGui.BeginTable(ctx, "previewtree", 4, flags, 0, h) then
     ImGui.TableSetupScrollFreeze(ctx, 0, 1)
     ImGui.TableSetupColumn(ctx, "Name", ImGui.TableColumnFlags_WidthStretch | ImGui.TableColumnFlags_NoHide, 4)
@@ -553,12 +565,25 @@ end
 local function section_transfer()
   local problems = core.validate(S)
   local can = conn and #plan.entries > 0 and #problems == 0 and current_destination() ~= ""
-  if not can then ImGui.BeginDisabled(ctx) end
-  if transfer_task then ImGui.BeginDisabled(ctx) end
-  if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", -1, 34) and not transfer_task then do_transfer() end
-  if transfer_task then ImGui.EndDisabled(ctx) end
-  if not can then ImGui.EndDisabled(ctx) end
-  if status_line ~= "" then ImGui.TextColored(ctx, COLOR_DIM, status_line) end
+  ImGui.Separator(ctx)
+  ImGui.Dummy(ctx, 0, 2)
+  local bw = 260
+  local text = status_line
+  if text == "" then
+    local n = #plan.entries
+    text = string.format("%d Sound%s  ->  %s", n, n == 1 and "" or "s", current_destination() ~= "" and current_destination() or "(no destination)")
+  end
+  local avail = ImGui.GetContentRegionAvail(ctx)
+  ImGui.AlignTextToFramePadding(ctx)
+  ImGui.PushTextWrapPos(ctx, math.max(80, avail - bw - 12))
+  ImGui.TextColored(ctx, COLOR_DIM, text)
+  ImGui.PopTextWrapPos(ctx)
+  ImGui.SameLine(ctx)
+  avail = ImGui.GetContentRegionAvail(ctx)
+  if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
+  if not can or transfer_task then ImGui.BeginDisabled(ctx) end
+  if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", bw, 34) and not transfer_task then do_transfer() end
+  if not can or transfer_task then ImGui.EndDisabled(ctx) end
 end
 
 local function summary_popup()
@@ -596,15 +621,52 @@ local function summary_popup()
   end
 end
 
-local function section_settings()
-  if ImGui.CollapsingHeader(ctx, "Connection settings") then
-    ImGui.SetNextItemWidth(ctx, 100)
-    local c, v = ImGui.InputInt(ctx, "WAAPI HTTP port", S.http_port)
-    if c then S.http_port = v; settings_changed() end
-    ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Reconnect") then core.disconnect(); connect() end
-    ImGui.TextColored(ctx, COLOR_DIM, "Must match Wwise > Project > User Preferences > Wwise Authoring API.")
-  end
+local function settings_popup()
+  if open_settings then ImGui.OpenPopup(ctx, "Settings"); open_settings = false end
+  ImGui.SetNextWindowSize(ctx, 500, 0, ImGui.Cond_Appearing)
+  if not ImGui.BeginPopupModal(ctx, "Settings", nil, ImGui.WindowFlags_AlwaysAutoResize) then return end
+  local c, v
+
+  ImGui.SeparatorText(ctx, "Connection")
+  ImGui.SetNextItemWidth(ctx, 100)
+  c, v = ImGui.InputInt(ctx, "WAAPI HTTP port", S.http_port)
+  if c then S.http_port = v; settings_changed() end
+  ImGui.SameLine(ctx)
+  if ImGui.Button(ctx, "Reconnect") then core.disconnect(); connect() end
+  ImGui.PushTextWrapPos(ctx, 480)
+  ImGui.TextColored(ctx, COLOR_DIM, "Must match Wwise > Project > User Preferences > Wwise Authoring API (default 8090). " ..
+    "\"Allow connections from\" there should be 127.0.0.1,::1.")
+  ImGui.PopTextWrapPos(ctx)
+  ImGui.Dummy(ctx, 0, 4)
+
+  ImGui.SeparatorText(ctx, "Rendering selected items")
+  c, S.skip_render_untouched = ImGui.Checkbox(ctx, "Import untouched WAV files directly (no render)", S.skip_render_untouched)
+  if c then settings_changed() end
+  help("An item that plays a whole WAV file with no trims, FX, fades, pitch or volume changes\nis imported straight from disk. This is the fastest path.")
+  c, S.items_via_master = ImGui.Checkbox(ctx, "Render items through track FX and master", S.items_via_master)
+  if c then settings_changed() end
+  c, S.folders_via_master = ImGui.Checkbox(ctx, "Render folder items through master", S.folders_via_master)
+  if c then settings_changed() end
+  help("An empty item on a folder track renders the folder's mix (folder + children)\nover that item's time range, named after the item.")
+  c, S.mono_to_mono = ImGui.Checkbox(ctx, "Mono items render as mono files", S.mono_to_mono)
+  if c then settings_changed() end
+  ImGui.Dummy(ctx, 0, 4)
+
+  ImGui.SeparatorText(ctx, "Transfer")
+  c, S.apply_template = combo("Apply property templates", core.TEMPLATE_OPS, S.apply_template, 260)
+  if c then settings_changed() end
+  c, S.select_in_wwise = ImGui.Checkbox(ctx, "Select imported Sounds in Wwise afterwards", S.select_in_wwise)
+  if c then settings_changed() end
+  ImGui.Dummy(ctx, 0, 6)
+
+  ImGui.Separator(ctx)
+  ImGui.TextDisabled(ctx, "Wwise Transfer " .. core.VERSION)
+  ImGui.SameLine(ctx)
+  local w = 80
+  local avail = ImGui.GetContentRegionAvail(ctx)
+  if avail > w then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - w) end
+  if ImGui.Button(ctx, "Close", w) or ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then ImGui.CloseCurrentPopup(ctx) end
+  ImGui.EndPopup(ctx)
 end
 
 ----------------------------------------------------------------------
@@ -613,7 +675,7 @@ end
 local function loop()
   if transfer_task then transfer_task = run_task(transfer_task) end
   refresh_preview(false)
-  ImGui.SetNextWindowSize(ctx, 760, 820, ImGui.Cond_FirstUseEver)
+  ImGui.SetNextWindowSize(ctx, 1180, 760, ImGui.Cond_FirstUseEver)
   local visible, open = ImGui.Begin(ctx, "Wwise Transfer", true)
   if visible then
     -- Re-read the Wwise selection when coming back to this window (e.g. after clicking in Wwise).
@@ -625,14 +687,24 @@ local function loop()
     end
     was_focused = focused
     section_connection()
-    section_source()
-    section_destination()
-    section_hierarchy()
-    section_conflicts()
-    section_settings()
-    section_preview()
-    section_transfer()
+    ImGui.Spacing(ctx)
+    -- Layout: setup on the left, preview + transfer on the right.
+    local avail_w = ImGui.GetContentRegionAvail(ctx)
+    local left_w = math.floor(math.max(340, math.min(440, avail_w * 0.42)))
+    if ImGui.BeginChild(ctx, "setup", left_w, 0, ImGui.ChildFlags_Border) then
+      section_source()
+      section_destination()
+      section_hierarchy()
+      ImGui.EndChild(ctx)
+    end
+    ImGui.SameLine(ctx)
+    if ImGui.BeginChild(ctx, "previewpane", 0, 0) then
+      section_preview()
+      section_transfer()
+      ImGui.EndChild(ctx)
+    end
     summary_popup()
+    settings_popup()
     ImGui.End(ctx)
   end
   if open then
