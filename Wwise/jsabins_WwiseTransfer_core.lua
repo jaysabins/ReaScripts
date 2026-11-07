@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.5.3"
+M.VERSION = "1.5.4"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -305,7 +305,7 @@ local function waapi_http(uri, args, options, timeout)
   -- while it waits, so a big reply (like an import's) made curl block until the
   -- ExecProcess timeout. Only the short status line comes back on stdout.
   os.remove(base .. ".out")
-  local out = r.ExecProcess(CURL .. ' -o "' .. base .. '.out" -w "@@HTTP %{http_code}" ' .. curl_args(base, timeout),
+  local out = r.ExecProcess(CURL .. ' -o "' .. base .. '.out" -w "HTTP=%{http_code}" ' .. curl_args(base, timeout),
     math.floor((timeout + 5) * 1000))
   os.remove(base .. ".json")
   local body
@@ -313,8 +313,8 @@ local function waapi_http(uri, args, options, timeout)
   if bf then body = bf:read("*a"); bf:close(); os.remove(base .. ".out") end
   if not out then return nil, "curl did not run." end
   local code, text = out:match("^(%-?%d+)\r?\n?(.*)$")
-  local http = tonumber((text or ""):match("@@HTTP (%d+)%s*$"))
-  text = (text or ""):gsub("@@HTTP %d+%s*$", "")
+  local http = tonumber((text or ""):match("HTTP=(%d+)%s*$"))
+  text = (text or ""):gsub("HTTP=%d+%s*$", "")
   if http and http > 0 then text = body or "" end -- otherwise keep curl's error message
   return parse_reply(tonumber(code), text, http)
 end
