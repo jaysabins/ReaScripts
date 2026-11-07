@@ -2,6 +2,8 @@
 -- @author Jay Sabins
 -- @version 1.5.2
 -- @changelog
+--   Fixed REAPER freezing for about 2 minutes after a transfer: big replies from Wwise (like the import's) made the script wait until a timeout.
+--   Fixed an "@-001"-style folder appearing in the Originals subfolder path.
 --   Settings > Diagnostics: a log of slow moments (what the script was doing and for how long) to track down freezes.
 --   With "Always use the object selected in Wwise" on, the Sounds the transfer selects in Wwise no longer become the next import destination.
 -- @provides
