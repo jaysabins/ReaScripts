@@ -2,6 +2,7 @@
 -- @author Jay Sabins
 -- @version 1.6.3
 -- @changelog
+--   Cleaner one-line header: status dot, Wwise project and version on the right next to Refresh and Settings. Connection problems show as a banner.
 --   Preview: the Type column is gone; hover over a row's [tag] (or its name) to see its type.
 --   Originals subfolder: new Browse button opens a folder picker in the Wwise project's Originals folder. Typing and wildcards still work.
 -- @provides
@@ -268,27 +269,61 @@ end
 -- Sections
 ----------------------------------------------------------------------
 local function section_connection()
-  if conn then
-    ImGui.TextColored(ctx, COLOR_OK, "Connected")
-    ImGui.SameLine(ctx)
-    ImGui.Text(ctx, "to " .. (conn.version or "Wwise") .. (conn.project and ("  -  project " .. conn.project) or ""))
-  else
-    ImGui.TextColored(ctx, COLOR_BAD, "Not connected to Wwise")
-  end
-  ImGui.SameLine(ctx)
-  if ImGui.SmallButton(ctx, conn and "Refresh" or "Connect") then connect() end
-  -- Settings button, right-aligned on the same line.
+  -- One-line toolbar: version on the left; status dot, project, Wwise version, Refresh/Connect
+  -- and Settings on the right. A connection problem shows as a banner underneath.
+  local spacing = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
   local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
-  local bw = ImGui.CalcTextSize(ctx, "Settings") + pad_x * 2
+  local function bw(t) return ImGui.CalcTextSize(ctx, t) + pad_x * 2 end
+  local lh = ImGui.GetFrameHeight(ctx)
+  local dot = 8
+
+  ImGui.AlignTextToFramePadding(ctx)
+  ImGui.TextDisabled(ctx, "Wwise Transfer " .. core.VERSION)
+
+  local name = conn and (conn.project or "Wwise") or "Not connected"
+  local ver = conn and (conn.version or "") or ""
+  local btn = conn and "Refresh" or "Connect"
+  local widths = { dot, ImGui.CalcTextSize(ctx, name) }
+  if ver ~= "" then widths[#widths + 1] = ImGui.CalcTextSize(ctx, ver) end
+  widths[#widths + 1] = spacing          -- divider
+  widths[#widths + 1] = bw(btn)
+  widths[#widths + 1] = bw("Settings")
+  local w = spacing * (#widths - 1)
+  for _, x in ipairs(widths) do w = w + x end
   ImGui.SameLine(ctx)
   local avail = ImGui.GetContentRegionAvail(ctx)
-  if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
+  if avail > w then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - w) end
+
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local x, y = ImGui.GetCursorScreenPos(ctx)
+  ImGui.DrawList_AddCircleFilled(dl, x + dot / 2, y + lh / 2, dot / 2, conn and COLOR_OK or COLOR_BAD)
+  ImGui.Dummy(ctx, dot, lh)
+  ImGui.SameLine(ctx)
+  ImGui.AlignTextToFramePadding(ctx)
+  if conn then ImGui.Text(ctx, name) else ImGui.TextColored(ctx, COLOR_BAD, name) end
+  if conn and conn.project_path and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, conn.project_path) end
+  if ver ~= "" then ImGui.SameLine(ctx); ImGui.TextDisabled(ctx, ver) end
+  ImGui.SameLine(ctx)
+  x, y = ImGui.GetCursorScreenPos(ctx)
+  ImGui.DrawList_AddLine(dl, x + spacing / 2, y + 4, x + spacing / 2, y + lh - 4, 0x3A4456FF)
+  ImGui.Dummy(ctx, spacing, lh)
+  ImGui.SameLine(ctx)
+  if ImGui.Button(ctx, btn) then connect() end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, conn and "Reconnect and re-read the Wwise project" or "Connect to Wwise") end
+  ImGui.SameLine(ctx)
   if ImGui.Button(ctx, "Settings") then open_settings = true end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Connection, render and after-transfer preferences") end
+
   if not conn and conn_err then
-    ImGui.PushTextWrapPos(ctx, 0)
-    ImGui.TextColored(ctx, COLOR_DIM, conn_err)
-    ImGui.PopTextWrapPos(ctx)
+    ImGui.PushStyleColor(ctx, ImGui.Col_ChildBg, 0x2A2213FF)
+    ImGui.PushStyleColor(ctx, ImGui.Col_Border, 0x4A3C1FFF)
+    if ImGui.BeginChild(ctx, "connerr", 0, 0, ImGui.ChildFlags_Border | ImGui.ChildFlags_AutoResizeY) then
+      ImGui.PushTextWrapPos(ctx, 0)
+      ImGui.TextColored(ctx, 0xF3D6A0FF, conn_err)
+      ImGui.PopTextWrapPos(ctx)
+      ImGui.EndChild(ctx)
+    end
+    ImGui.PopStyleColor(ctx, 2)
   end
 end
 

@@ -20,7 +20,7 @@ You need Windows 10 or 11, which come with `curl.exe`. The script uses it to tal
 
 ## The window
 
-The connection to Wwise shows along the top, with a **Settings** button on the right. Below it, the setup is on the left and a preview of what will be created in Wwise is on the right. The **Transfer to Wwise** button sits under the preview.
+A thin toolbar runs along the top. On the right, a green dot shows you're connected, followed by the Wwise project name and version, then **Refresh** and **Settings**. When Wwise can't be reached, the dot turns red, the button becomes **Connect**, and a yellow banner under the toolbar says what went wrong. Below it, the setup is on the left and a preview of what will be created in Wwise is on the right. The **Transfer to Wwise** button sits under the preview.
 
 ### Setup (left)
 
