@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="7b7ef0e172ac6102aec0b9f99df71080b3a75492">
+<index version="1" name="Jay Sabins Scripts" commit="7e32fc8c649ad16c8abe92d8d5fdc0a2d03bc97a">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -256,6 +256,16 @@ With "Always use the object selected in Wwise" on, the Sounds the transfer selec
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/7b7ef0e172ac6102aec0b9f99df71080b3a75492/Wwise/jsabins_Wwise%20Transfer.lua</source>
         <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/7b7ef0e172ac6102aec0b9f99df71080b3a75492/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
         <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/7b7ef0e172ac6102aec0b9f99df71080b3a75492/Wwise/jsabins_WwiseTransfer_core.lua</source>
+      </version>
+      <version name="1.6.1" author="Jay Sabins" time="2026-11-08T19:03:33Z">
+        <changelog><![CDATA[Preview: new "Originals file" column (the file name Wwise will store in Originals). Right-click a column header to choose which columns are shown; the choice is remembered.
+Settings: background opacity slider for the window.
+Settings: "Keep rendered files in" folder for item renders (relative to the project folder, wildcards allowed). Empty keeps the old behaviour (temporary files).
+Preview: "Collapse all" now folds the containers that hold Sounds, so the container layout stays visible.
+Settings: clearer wording for when property templates are applied.]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/7e32fc8c649ad16c8abe92d8d5fdc0a2d03bc97a/Wwise/jsabins_Wwise%20Transfer.lua</source>
+        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/7e32fc8c649ad16c8abe92d8d5fdc0a2d03bc97a/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/7e32fc8c649ad16c8abe92d8d5fdc0a2d03bc97a/Wwise/jsabins_WwiseTransfer_core.lua</source>
       </version>
     </reapack>
   </category>
