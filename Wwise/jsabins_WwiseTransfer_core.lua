@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.6.0"
+M.VERSION = "1.6.1"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -152,7 +152,7 @@ M.CONFLICT_OPS = { { "useExisting", "Use existing (replace audio, keep object)" 
                    { "replaceExisting", "Replace (delete and re-create)" },
                    { "createNew", "Create new (rename new objects)" } }
 M.DELAY_TARGETS = { { "container", "Layer containers (level above the Sounds)" }, { "sound", "Each Sound" } }
-M.TEMPLATE_OPS = { { "always", "Always" }, { "new", "New objects only" } }
+M.TEMPLATE_OPS = { { "always", "All objects (new and existing)" }, { "new", "New objects only" } }
 
 function M.default_settings()
   return {

@@ -1,8 +1,8 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.6.0
+-- @version 1.6.1
 -- @changelog
---   New: "Set Initial Delay from layer timing". Select all your layers; each layer's start offset within its shot becomes the Initial Delay of its layer container (or of each Sound). Shown in the preview, applied on transfer, or right away to objects already in Wwise.
+--   Settings: clearer wording for when property templates are applied.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -743,8 +743,11 @@ local function settings_popup()
   ImGui.Dummy(ctx, 0, 4)
 
   ImGui.SeparatorText(ctx, "Transfer")
-  c, S.apply_template = combo("Apply property templates", core.TEMPLATE_OPS, S.apply_template, 260)
+  dim_label("Paste each level's property template onto:")
+  c, S.apply_template = combo("##apply_template", core.TEMPLATE_OPS, S.apply_template, 320)
   if c then settings_changed() end
+  help("Templates are set per Structure level with its \"...\" button.\n" ..
+    "\"New objects only\" leaves objects that already existed in Wwise as they are.")
   c, S.select_in_wwise = ImGui.Checkbox(ctx, "Select imported Sounds in Wwise afterwards", S.select_in_wwise)
   if c then settings_changed() end
   ImGui.Dummy(ctx, 0, 6)
