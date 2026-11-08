@@ -1,8 +1,8 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.6.2
+-- @version 1.6.3
 -- @changelog
---   Window opacity at 100% is now fully solid (ImGui's default background is slightly see-through). Popups are solid too.
+--   Originals subfolder: new Browse button opens a folder picker in the Wwise project's Originals folder. Typing and wildcards still work.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -326,6 +326,26 @@ local function section_source()
   ImGui.Dummy(ctx, 0, 4)
 end
 
+-- Pick the Originals subfolder in a folder dialog that opens in the Wwise project's
+-- Originals\SFX (or Voices\<language>) folder.
+local function browse_originals()
+  if not conn then status_line = "Connect to Wwise first, so its Originals folder can be found."; return end
+  if S.leaf.voice and (S.leaf.language or "") == "" then status_line = "Pick a voice language first."; return end
+  local orig = core.wwise_originals_dir(conn)
+  if not orig then status_line = "Couldn't find the Wwise project's Originals folder."; return end
+  local root = orig .. "\\" .. core.originals_root(S)
+  local starts = { root, orig }
+  local cur = S.originals_subfolder or ""
+  if cur ~= "" and not cur:find("$", 1, true) then table.insert(starts, 1, root .. "\\" .. cur:gsub("/", "\\")) end
+  local f, err = core.browse_folder("Choose the Originals subfolder. It must be inside " .. root, starts)
+  if not f then if err then status_line = err end return end
+  local rel = core.relative_to(f, root)
+  if not rel then status_line = "Pick a folder inside " .. root .. ". Wwise keeps imported audio there."; return end
+  S.originals_subfolder = rel
+  status_line = ""
+  settings_changed()
+end
+
 local function section_destination()
   ImGui.SeparatorText(ctx, "Wwise destination")
   local c
@@ -343,8 +363,11 @@ local function section_destination()
   end
   ImGui.Dummy(ctx, 0, 2)
   dim_label("Originals subfolder")
-  S.originals_subfolder = input("##orig", S.originals_subfolder, "optional, e.g. Weapons\\$region", -30)
+  S.originals_subfolder = input("##orig", S.originals_subfolder, "optional, e.g. Weapons\\$region", -96)
   wildcard_menu("orig", function(w) S.originals_subfolder = S.originals_subfolder .. w end)
+  ImGui.SameLine(ctx)
+  if ImGui.Button(ctx, "Browse##orig") then browse_originals() end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Pick a folder inside the Wwise project's Originals folder") end
   dim_label("If a Sound or container already exists")
   c, S.conflict = combo("##conflict", core.CONFLICT_OPS, S.conflict, -1)
   if c then settings_changed() end

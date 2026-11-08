@@ -35,7 +35,7 @@ The connection to Wwise shows along the top, with a **Settings** button on the r
 **Wwise destination.**
 
 - By default the sounds go into whatever is selected in Wwise. You can untick **Always use the object selected in Wwise** and type a fixed path instead, or click **From Wwise** to fill it in.
-- **Originals subfolder** sets where Wwise stores the WAVs. It accepts wildcards, for example `Weapons\$region`.
+- **Originals subfolder** sets where Wwise stores the WAVs. It accepts wildcards, for example `Weapons\$region`. **Browse** opens a folder picker inside the Wwise project's Originals folder (Originals\SFX, or Voices\<language> for Sound Voice), so you can pick or create the folder instead of typing it.
 - **If a Sound or container already exists** has three choices:
   - **Use existing** keeps the object and replaces its audio.
   - **Replace** deletes the object and creates it again.

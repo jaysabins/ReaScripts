@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.6.2"
+M.VERSION = "1.6.3"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -412,6 +412,69 @@ function M.wwise_selection_path(timeout)
     path = path:match("^(.*)\\[^\\]+$") -- use its parent
   end
   return path, nil, o
+end
+
+-- The Wwise project's Originals folder on disk. Asks Wwise (2021.1+), else assumes
+-- <project folder>\Originals.
+function M.wwise_originals_dir(conn)
+  local info = M.waapi("ak.wwise.core.getProjectInfo", {}, nil, 3)
+  local d = info and info.directories and info.directories.originals
+  if (not d or d == "") and conn and conn.project_path then
+    d = conn.project_path:match("^(.*)[\\/][^\\/]*$")
+    if d then d = d .. "\\Originals" end
+  end
+  if not d or d == "" then return nil end
+  return (d:gsub("/", "\\"):gsub("\\+$", ""))
+end
+
+-- "D:\Game\Originals\SFX\Weapons\Pistol" relative to "D:\Game\Originals\SFX" -> "Weapons\Pistol".
+-- Returns "" for the root itself and nil for a folder outside it.
+function M.relative_to(path, root)
+  local function norm(p) return ((p or ""):gsub("/", "\\"):gsub("\\+$", "")) end
+  path, root = norm(path), norm(root)
+  if path:lower() == root:lower() then return "" end
+  if path:sub(1, #root + 1):lower() == (root .. "\\"):lower() then return path:sub(#root + 2) end
+  return nil
+end
+
+-- Folder picker. Uses the js_ReaScriptAPI extension when it's installed, otherwise Windows'
+-- own folder dialog through PowerShell (nothing extra to install). `starts` is a list of
+-- folders to open at; the first one that exists is used. Returns the folder, or nil.
+function M.browse_folder(title, starts)
+  if r.JS_Dialog_BrowseForFolder then
+    local start = starts[1] or ""
+    local ok, f = r.JS_Dialog_BrowseForFolder(title, start)
+    if ok == 1 and f and f ~= "" then return f end
+    return nil
+  end
+  if not r.GetOS():match("^Win") then return nil, "The folder picker needs Windows or the js_ReaScriptAPI extension." end
+  local base = TMP .. SEP .. "browse_" .. math.random(100000, 999999)
+  local function q(s) return "'" .. (s or ""):gsub("'", "''") .. "'" end
+  local list = {}
+  for i, p in ipairs(starts) do list[i] = q(p) end
+  local ps = table.concat({
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "$d = New-Object System.Windows.Forms.FolderBrowserDialog",
+    "$d.Description = " .. q(title),
+    "$d.ShowNewFolderButton = $true",
+    "foreach ($p in @(" .. table.concat(list, ",") .. ")) { if ($p -and (Test-Path -LiteralPath $p)) { $d.SelectedPath = $p; break } }",
+    "$owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false }",
+    "$res = $d.ShowDialog($owner)",
+    "if ($res -eq [System.Windows.Forms.DialogResult]::OK) { [IO.File]::WriteAllText(" .. q(base .. ".txt") ..
+      ", $d.SelectedPath, (New-Object System.Text.UTF8Encoding $false)) }",
+  }, "\r\n")
+  local f = io.open(base .. ".ps1", "wb")
+  if not f then return nil, "Couldn't write the folder picker script to " .. TMP end
+  f:write("\239\187\191", ps) -- UTF-8 BOM, so PowerShell reads non-English folder names correctly
+  f:close()
+  r.ExecProcess('powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File "' ..
+    base .. '.ps1"', 600000)
+  local out
+  local rf = io.open(base .. ".txt", "rb")
+  if rf then out = rf:read("*a"); rf:close() end
+  os.remove(base .. ".ps1"); os.remove(base .. ".txt")
+  if out and out ~= "" then return out end
+  return nil
 end
 
 ----------------------------------------------------------------------
