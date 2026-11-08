@@ -4,6 +4,8 @@
 -- @changelog
 --   Preview: new "Originals file" column (the file name Wwise will store in Originals). Right-click a column header to choose which columns are shown; the choice is remembered.
 --   Settings: background opacity slider for the window.
+--   Settings: "Keep rendered files in" folder for item renders (relative to the project folder, wildcards allowed). Empty keeps the old behaviour (temporary files).
+--   Preview: "Collapse all" now folds the containers that hold Sounds, so the container layout stays visible.
 --   Settings: clearer wording for when property templates are applied.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
@@ -539,7 +541,12 @@ local function draw_node(node, depth)
     flags = flags | ImGui.TreeNodeFlags_Leaf | ImGui.TreeNodeFlags_NoTreePushOnOpen
   else
     flags = flags | ImGui.TreeNodeFlags_DefaultOpen
-    if tree_open_all ~= nil then ImGui.SetNextItemOpen(ctx, tree_open_all, ImGui.Cond_Always) end
+    if tree_open_all ~= nil then
+      -- "Collapse all" folds only the containers that hold Sounds, so the container layout stays visible.
+      local holds_sounds = false
+      for _, ch in ipairs(node.children) do if #ch.children == 0 then holds_sounds = true; break end end
+      ImGui.SetNextItemOpen(ctx, tree_open_all or not holds_sounds, ImGui.Cond_Always)
+    end
   end
   ImGui.PushStyleColor(ctx, ImGui.Col_Text, TYPE_COLORS[node.type] or 0xFFFFFFFF)
   local tag = TYPE_TAGS[node.type] or "[?]"
@@ -796,6 +803,18 @@ local function settings_popup()
   help("An empty item on a folder track renders the folder's mix (folder + children)\nover that item's time range, named after the item.")
   c, S.mono_to_mono = ImGui.Checkbox(ctx, "Mono items render as mono files", S.mono_to_mono)
   if c then settings_changed() end
+  ImGui.Dummy(ctx, 0, 2)
+  dim_label("Keep rendered files in")
+  S.render_folder = input("##renderfolder", S.render_folder, "(empty: temporary, deleted after the transfer)", 380)
+  wildcard_menu("rf", function(w) S.render_folder = S.render_folder .. w end)
+  help("A folder for the files rendered from selected items, e.g. Renders or Renders\\$project.\n" ..
+    "Relative paths start in the project folder. REAPER wildcards are allowed.\n" ..
+    "A file there with the same name as a new render is replaced.\n" ..
+    "Untouched WAV items aren't rendered (they import straight from disk) unless that option is off.")
+  do
+    local base, rest = core.render_folder_parts(S)
+    if base then ImGui.TextDisabled(ctx, base .. ((rest ~= "") and ("\\" .. rest:gsub("/", "\\")) or "")) end
+  end
   ImGui.Dummy(ctx, 0, 4)
 
   ImGui.SeparatorText(ctx, "Transfer")

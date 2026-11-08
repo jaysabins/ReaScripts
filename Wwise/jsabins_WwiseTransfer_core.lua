@@ -161,6 +161,33 @@ function M.originals_root(s)
   return "SFX"
 end
 
+-- Folder of the current project file (or REAPER's project path for an unsaved project).
+function M.project_dir()
+  local _, fn = r.EnumProjects(-1)
+  local d = fn and fn ~= "" and fn:match("^(.*)[\\/]") or nil
+  if not d or d == "" then d = r.GetProjectPath() end
+  return d
+end
+
+-- Split the "Keep rendered files in" setting into a real folder and a wildcard part for
+-- RENDER_PATTERN: "Renders\$project\$region" -> "<project folder>\Renders", "$project/$region".
+-- A relative path is relative to the project folder. Returns nil when renders are temporary.
+function M.render_folder_parts(s)
+  local f = (s.render_folder or ""):gsub("^%s+", ""):gsub("[%s\\/]+$", "")
+  if f == "" then return nil end
+  local absolute = f:match("^%a:") or f:match("^[\\/]")
+  local segs = {}
+  for seg in (f .. "\\"):gmatch("(.-)[\\/]") do segs[#segs + 1] = seg end
+  local fixed, rest = {}, {}
+  for _, seg in ipairs(segs) do
+    if #rest > 0 or seg:find("$", 1, true) then rest[#rest + 1] = seg else fixed[#fixed + 1] = seg end
+  end
+  local base = table.concat(fixed, SEP)
+  if not absolute then base = M.project_dir() .. (base ~= "" and (SEP .. base) or "") end
+  if base == "" then base = SEP end
+  return base, table.concat(rest, "/")
+end
+
 ----------------------------------------------------------------------
 -- Settings (per project, with a global fallback) and presets
 ----------------------------------------------------------------------
@@ -182,6 +209,7 @@ function M.default_settings()
     use_wwise_selection = true,      -- destination = Wwise selection at transfer time
     destination = "",
     originals_subfolder = "",
+    render_folder = "",              -- keep item renders here ("" = temp folder, deleted after transfer)
     rows = {},                       -- { { type=, name=, template= } }  containers, top to bottom
     leaf = { voice = false, name = "", template = "", language = "" },
     conflict = "useExisting",
@@ -1017,7 +1045,9 @@ local function do_render(s, plan)
   if s.source ~= "render" and #renders == 0 then return true end
 
   local outdir = TMP .. SEP .. os.time() .. "_" .. math.random(1000, 9999)
-  plan.outdir = outdir
+  local keep_base, prefix = M.render_folder_parts(s)
+  if keep_base then outdir = keep_base else plan.outdir = outdir end
+  prefix = (prefix and prefix ~= "") and (prefix .. "/") or ""
   return with_temp_state(function(snap)
     if s.source == "render" then
       M.render_command()
@@ -1035,6 +1065,15 @@ local function do_render(s, plan)
     set_n("RENDER_ADDTOPROJ", 0)
     set_n("RENDER_TAILFLAG", 0)
 
+    -- Where REAPER will write each token's file (the folder setting can contain wildcards).
+    local where, made = {}, {}
+    local function note_targets(pattern)
+      for _, t in ipairs(targets_for(pattern)) do
+        where[basename_noext(t)] = t
+        os.remove(t) -- a leftover token file would make REAPER ask about overwriting
+      end
+    end
+
     local items = {}
     for _, e in ipairs(renders) do
       if e.kind == "render" then
@@ -1047,7 +1086,7 @@ local function do_render(s, plan)
       select_items(items)
       set_n("RENDER_SETTINGS", (s.items_via_master and 64 or 32) | (s.mono_to_mono and 16 or 0))
       set_n("RENDER_BOUNDSFLAG", 4)
-      set_s("RENDER_PATTERN", "$item")
+      note_targets(prefix .. "$item")
       M.render_command()
     end
     for _, e in ipairs(renders) do
@@ -1057,17 +1096,21 @@ local function do_render(s, plan)
         set_n("RENDER_BOUNDSFLAG", 0)
         set_n("RENDER_STARTPOS", e.pos)
         set_n("RENDER_ENDPOS", e.pos + e.len)
-        set_s("RENDER_PATTERN", e.token)
+        note_targets(prefix .. e.token)
         M.render_command()
       end
-      local p = outdir .. SEP .. e.token .. ".wav"
+      local p = where[e.token] or (outdir .. SEP .. e.token .. ".wav")
       if file_exists(p) then
         -- Wwise names the file in Originals after the file, so give it the Sound's name.
-        local final = outdir .. SEP .. e.name .. ".wav"
+        local dir = p:match("^(.*)[\\/][^\\/]*$") or outdir
+        local final = dir .. SEP .. e.name .. ".wav"
+        -- In the kept-renders folder, a file from an earlier transfer is replaced.
+        if keep_base and not made[final:lower()] and file_exists(final) then os.remove(final) end
         local n = 1
-        while file_exists(final) do n = n + 1; final = outdir .. SEP .. e.name .. "_" .. n .. ".wav" end
+        while file_exists(final) do n = n + 1; final = dir .. SEP .. e.name .. "_" .. n .. ".wav" end
         if os.rename(p, final) then e.file = final else e.file = p end
-        e.temp = true
+        made[e.file:lower()] = true
+        e.temp = not keep_base
       end
     end
     return true
