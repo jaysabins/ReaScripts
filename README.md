@@ -45,7 +45,7 @@ https://github.com/jaysabins/reascripts/raw/main/index.xml
 - **List installed plugins**: writes a text list of every plugin REAPER knows about, grouped by format.
 
 **Wwise**
-- **Wwise Transfer**: sends audio from REAPER straight into Wwise over WAAPI, in the spirit of ReaWwise but built with Lua and ReaImGui. Source is the selected items or your render settings; builds the Wwise hierarchy above each Sound from wildcards like `$region` and `$track`, with property templates, live preview, conflict handling, presets, and one Wwise undo per transfer. Can set Initial Delay from layer timing. Installs a second action, **Wwise Transfer - Quick send**, that transfers with the last settings without opening the window. Requires ReaImGui and Wwise with WAAPI enabled (see its README for the Wwise settings).
+- **Wwise Transfer**: sends audio from REAPER straight into Wwise over WAAPI, in the spirit of ReaWwise but built with Lua and ReaImGui. Source is the selected items or your render settings. It builds the Wwise hierarchy above each Sound from wildcards like `$region` and `$track`, with property templates, conflict handling, presets, and one Wwise undo per transfer. Can set Initial Delay from the timing between selected layers. The preview shows each object's status, Originals file name and Initial Delay, and you right-click a column header to choose columns. You can keep item renders in a folder of your choice (wildcards allowed), and Settings also has the window's opacity. Installs a second action, **Wwise Transfer - Quick send**, that transfers with the last settings without opening the window. Requires ReaImGui and Wwise with WAAPI enabled (see its README for the Wwise settings).
 
 Scripts with more to explain have their own README in their folder.
 
