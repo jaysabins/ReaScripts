@@ -1,8 +1,8 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.5.4
+-- @version 1.6.0
 -- @changelog
---   Fixed "Not connected to Wwise" (curl error 26) in 1.5.3.
+--   New: "Set Initial Delay from layer timing". Select all your layers; each layer's start offset within its shot becomes the Initial Delay of its layer container (or of each Sound). Shown in the preview, applied on transfer, or right away to objects already in Wwise.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -167,6 +167,7 @@ local function refresh_job(poll_selection, sig)
         retry_at = r.time_precise() + RETRY_DELAY
       elseif status_line:find("^Wwise is busy") then status_line = "" end
     end
+    if s2.set_initial_delay then newplan.delays, newplan.delay_warnings = core.layer_delays(newplan, s2) end
     newplan.tree = core.build_tree(newplan, s2, conn)
     plan = newplan
     if sig then last_sig = after end -- building the plan can bump REAPER's change counter
@@ -279,6 +280,23 @@ local function section_connection()
   end
 end
 
+-- Write the preview's initial delays to objects that already exist in Wwise (one undo step).
+local function apply_delays_now()
+  local todo, skipped = {}, 0
+  local existing = plan.existing or {}
+  for path, v in pairs(plan.delays or {}) do
+    if existing[path:lower()] then todo[path] = v else skipped = skipped + 1 end
+  end
+  core.waapi("ak.wwise.core.undo.beginGroup")
+  local n, err = core.apply_delays(todo)
+  core.waapi("ak.wwise.core.undo.endGroup", { displayName = "Wwise Transfer: set initial delays" })
+  if err then status_line = "Couldn't set initial delays: " .. tostring(err)
+  else
+    status_line = string.format("Set Initial Delay on %d object%s.", n, n == 1 and "" or "s") ..
+      (skipped > 0 and string.format(" %d not in Wwise yet (they get it when you transfer).", skipped) or "")
+  end
+end
+
 local function dim_label(text) ImGui.TextColored(ctx, COLOR_DIM, text) end
 
 local function section_source()
@@ -319,6 +337,25 @@ local function section_destination()
   dim_label("If a Sound or container already exists")
   c, S.conflict = combo("##conflict", core.CONFLICT_OPS, S.conflict, -1)
   if c then settings_changed() end
+  ImGui.Dummy(ctx, 0, 2)
+  c, S.set_initial_delay = ImGui.Checkbox(ctx, "Set Initial Delay from layer timing", S.set_initial_delay)
+  if c then settings_changed() end
+  help("Select all your layers (e.g. every Muzzle and Tail item). Items that overlap in time\n" ..
+    "count as one shot; each layer's Initial Delay is how far it starts after the\n" ..
+    "shot's first item. Leave a gap between shots. The delays show in the preview.")
+  if S.set_initial_delay then
+    c, S.delay_target = combo("##delaytarget", core.DELAY_TARGETS, S.delay_target, -1)
+    if c then settings_changed() end
+    local n = 0
+    for _ in pairs(plan.delays or {}) do n = n + 1 end
+    local can = conn and n > 0
+    if not can then ImGui.BeginDisabled(ctx) end
+    if ImGui.Button(ctx, "Set delays on existing objects now") then apply_delays_now() end
+    if not can then ImGui.EndDisabled(ctx) end
+    if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then
+      ImGui.SetTooltip(ctx, "Write the delays to the objects that already exist in Wwise, without transferring audio.")
+    end
+  end
   ImGui.Dummy(ctx, 0, 4)
 end
 
@@ -514,6 +551,8 @@ local function draw_node(node, depth)
   if depth > 0 then status_cell(node.status) end
   ImGui.TableNextColumn(ctx)
   if node.entry then ImGui.TextDisabled(ctx, KIND_LABEL[node.entry.kind] or "") end
+  ImGui.TableNextColumn(ctx)
+  if node.delay then ImGui.Text(ctx, string.format("%.0f ms", node.delay * 1000)) end
   if open and not is_leaf then
     for i, ch in ipairs(node.children) do
       ImGui.PushID(ctx, tostring(i))
@@ -530,6 +569,11 @@ local function section_preview()
   local problems = core.validate(S)
   for _, p in ipairs(problems) do ImGui.TextColored(ctx, COLOR_BAD, "- " .. p) end
   for _, p in ipairs(plan.errors or {}) do ImGui.TextColored(ctx, COLOR_BAD, "- " .. p) end
+  if plan.delay_warnings and #plan.delay_warnings > 0 then
+    ImGui.PushTextWrapPos(ctx, 0)
+    for _, w in ipairs(plan.delay_warnings) do ImGui.TextColored(ctx, 0xF4D35EFF, "- Initial delay: " .. w) end
+    ImGui.PopTextWrapPos(ctx)
+  end
   if plan.dest_missing then ImGui.TextColored(ctx, COLOR_BAD, "- The import destination doesn't exist in Wwise.") end
 
   local tree = plan.tree
@@ -550,12 +594,13 @@ local function section_preview()
   local flags = ImGui.TableFlags_BordersV | ImGui.TableFlags_BordersOuterH | ImGui.TableFlags_RowBg |
                 ImGui.TableFlags_ScrollY | ImGui.TableFlags_Resizable
   local h = math.max(160, select(2, ImGui.GetContentRegionAvail(ctx)) - 52)
-  if ImGui.BeginTable(ctx, "previewtree", 4, flags, 0, h) then
+  if ImGui.BeginTable(ctx, "previewtree", 5, flags, 0, h) then
     ImGui.TableSetupScrollFreeze(ctx, 0, 1)
     ImGui.TableSetupColumn(ctx, "Name", ImGui.TableColumnFlags_WidthStretch | ImGui.TableColumnFlags_NoHide, 4)
     ImGui.TableSetupColumn(ctx, "Type", ImGui.TableColumnFlags_WidthFixed, 130)
     ImGui.TableSetupColumn(ctx, "Status", ImGui.TableColumnFlags_WidthFixed, 70)
     ImGui.TableSetupColumn(ctx, "Audio", ImGui.TableColumnFlags_WidthFixed, 120)
+    ImGui.TableSetupColumn(ctx, "Initial delay", ImGui.TableColumnFlags_WidthFixed, 80)
     ImGui.TableHeadersRow(ctx)
     if tree and #tree.children > 0 then draw_node(tree, 0) end
     ImGui.EndTable(ctx)
@@ -636,6 +681,12 @@ local function summary_popup()
     ImGui.Text(ctx, string.format("Audio files imported: %d", s.imported or 0))
     ImGui.Text(ctx, string.format("Objects created: %d", s.created or 0))
     if (s.templates or 0) > 0 then ImGui.Text(ctx, string.format("Templates applied: %d", s.templates)) end
+    if (s.delays or 0) > 0 then ImGui.Text(ctx, string.format("Initial delays set: %d", s.delays)) end
+    if s.notes and #s.notes > 0 then
+      ImGui.PushTextWrapPos(ctx, 500)
+      for _, n in ipairs(s.notes) do ImGui.TextColored(ctx, COLOR_DIM, "- " .. n) end
+      ImGui.PopTextWrapPos(ctx)
+    end
     if s.seconds then ImGui.TextDisabled(ctx, string.format("Took %.2f s", s.seconds)) end
     if s.timing and #s.timing > 0 then
       local parts = {}

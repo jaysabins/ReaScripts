@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.5.4"
+M.VERSION = "1.6.0"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -151,6 +151,7 @@ M.CONTAINER_TYPES = { "Virtual Folder", "Actor-Mixer", "Random Container", "Sequ
 M.CONFLICT_OPS = { { "useExisting", "Use existing (replace audio, keep object)" },
                    { "replaceExisting", "Replace (delete and re-create)" },
                    { "createNew", "Create new (rename new objects)" } }
+M.DELAY_TARGETS = { { "container", "Layer containers (level above the Sounds)" }, { "sound", "Each Sound" } }
 M.TEMPLATE_OPS = { { "always", "Always" }, { "new", "New objects only" } }
 
 function M.default_settings()
@@ -168,6 +169,8 @@ function M.default_settings()
     conflict = "useExisting",
     apply_template = "always",
     select_in_wwise = true,
+    set_initial_delay = false,       -- write layer timing into Wwise's Initial Delay
+    delay_target = "container",      -- "container" (level above the Sounds) or "sound"
     http_port = 8090,
   }
 end
@@ -816,6 +819,73 @@ function M.remember_transfer(plan, known)
   end
 end
 
+----------------------------------------------------------------------
+-- Initial delay from layer timing
+----------------------------------------------------------------------
+-- Items that overlap in time form one "shot" (e.g. Muzzle_01 + Tail_01). Each item's
+-- delay is its start minus the shot's earliest start. With target "container", each
+-- layer container (the level above the Sounds) gets the smallest delay among its
+-- Sounds; with "sound", every Sound gets its own. Returns { [plain path] = seconds }
+-- plus a list of warnings.
+local function parent_path(p) return p:match("^(.*)\\[^\\]+$") end
+
+function M.layer_delays(plan, s)
+  local list = {}
+  for _, e in ipairs(plan.entries or {}) do
+    if e.plain and e.item and r.ValidatePtr(e.item, "MediaItem*") then
+      local pos = r.GetMediaItemInfo_Value(e.item, "D_POSITION")
+      list[#list + 1] = { e = e, pos = pos, fin = pos + r.GetMediaItemInfo_Value(e.item, "D_LENGTH") }
+    end
+  end
+  table.sort(list, function(a, b) return a.pos < b.pos end)
+  local g
+  for _, x in ipairs(list) do
+    if not g or x.pos >= g.fin - 1e-9 then g = { start = x.pos, fin = x.fin } else g.fin = math.max(g.fin, x.fin) end
+    x.delay = x.pos - g.start
+  end
+  local out, warnings = {}, {}
+  local by_container = (s.delay_target or "container") == "container" and #(s.rows or {}) > 0
+  if by_container then
+    local lo, hi = {}, {}
+    for _, x in ipairs(list) do
+      local c = parent_path(x.e.plain)
+      if c then
+        lo[c] = math.min(lo[c] or math.huge, x.delay)
+        hi[c] = math.max(hi[c] or -math.huge, x.delay)
+      end
+    end
+    for c, v in pairs(lo) do
+      out[c] = v
+      if hi[c] - v > 0.001 then
+        warnings[#warnings + 1] = string.format("%s: its Sounds start %.0f to %.0f ms after their shot; the container gets %.0f ms.",
+          c:match("[^\\]+$") or c, v * 1000, hi[c] * 1000, v * 1000)
+      end
+    end
+  else
+    for _, x in ipairs(list) do out[x.e.plain] = x.delay end
+  end
+  return out, warnings
+end
+
+-- Write Initial Delay (seconds) on Wwise objects given by path. Returns count, error.
+function M.apply_delays(delays, timeout)
+  local objs = json.array()
+  for path, v in pairs(delays) do
+    objs[#objs + 1] = { object = path, ["@InitialDelay"] = math.floor(v * 10000 + 0.5) / 10000 }
+  end
+  if #objs == 0 then return 0 end
+  local res, err = M.waapi("ak.wwise.core.object.set", { objects = objs }, nil, timeout)
+  if res then return #objs end
+  -- Older Wwise (before 2022.1) has no object.set: one call per object.
+  local n, last = 0, err
+  for _, o in ipairs(objs) do
+    local ok, e2 = M.waapi("ak.wwise.core.object.setProperty", { object = o.object, property = "InitialDelay", value = o["@InitialDelay"] }, nil, timeout)
+    if ok then n = n + 1 else last = e2 end
+  end
+  if n == 0 then return 0, last end
+  return n
+end
+
 -- Turn the plan into a tree shaped like Wwise's Project Explorer.
 -- Node: { name, type, path, children = {...}, entry = e (Sounds only), status = "new"|"exists"|"duplicate"|nil,
 --         sounds = number of Sounds below, new_count = new objects below (incl. self) }
@@ -843,7 +913,7 @@ function M.build_tree(plan, s, conn)
         local child = node.index[key]
         if not child then
           child = { name = nm, type = s.rows[i] and s.rows[i].type or "?", path = path, children = {}, index = {},
-                    sounds = 0, new_count = 0, status = status_of(path) }
+                    sounds = 0, new_count = 0, status = status_of(path), delay = plan.delays and plan.delays[path] }
           node.index[key] = child
           node.children[#node.children + 1] = child
         end
@@ -851,7 +921,7 @@ function M.build_tree(plan, s, conn)
         chain[#chain + 1] = node
       end
       local leaf = { name = e.name, type = sound_type, path = e.plain, entry = e, children = {}, index = {},
-                     sounds = 1, new_count = 0 }
+                     sounds = 1, new_count = 0, delay = plan.delays and plan.delays[e.plain] }
       leaf.status = e.duplicate and "duplicate" or status_of(e.plain)
       node.children[#node.children + 1] = leaf
       for _, c in ipairs(chain) do c.sounds = c.sounds + 1 end
@@ -1109,6 +1179,17 @@ function M.transfer(s, conn, on_status)
   end
 
   if next(by_template) then lap("Property templates") end
+
+  -- Initial delay from layer timing (after templates, so a template can't overwrite it).
+  if s.set_initial_delay then
+    status("Setting initial delays...")
+    local delays, warns = M.layer_delays(plan, s)
+    local n, derr = M.apply_delays(delays)
+    summary.delays = n
+    summary.notes = warns
+    if derr then summary.errors[#summary.errors + 1] = "Initial delay: " .. tostring(derr) end
+    lap("Initial delays")
+  end
   M.waapi("ak.wwise.core.undo.endGroup", { displayName = "Wwise Transfer from REAPER" })
 
   if s.select_in_wwise and #ids > 0 then
