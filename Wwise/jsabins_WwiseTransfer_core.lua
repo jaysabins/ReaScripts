@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.6.4"
+M.VERSION = "1.6.5"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 

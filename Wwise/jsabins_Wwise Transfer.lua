@@ -1,8 +1,8 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.6.4
+-- @version 1.6.5
 -- @changelog
---   Header: shows the Wwise version number again (it only said "Wwise"), and the script version is only in Settings now.
+--   Header: connection status, project and Wwise version on the left with a refresh icon; Settings is a gear icon on the right.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -267,47 +267,66 @@ end
 ----------------------------------------------------------------------
 -- Sections
 ----------------------------------------------------------------------
+-- Icon buttons. ImGui's font has no icon glyphs, so the icons are drawn with the draw list.
+local function icon_button(id, draw, tip)
+  local size = ImGui.GetFrameHeight(ctx)
+  local pressed = ImGui.Button(ctx, "##" .. id, size, size)
+  local hovered = ImGui.IsItemHovered(ctx)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  local x2, y2 = ImGui.GetItemRectMax(ctx)
+  draw(ImGui.GetWindowDrawList(ctx), (x1 + x2) / 2, (y1 + y2) / 2, ImGui.GetColor(ctx, ImGui.Col_Text))
+  if hovered and tip then ImGui.SetTooltip(ctx, tip) end
+  return pressed
+end
+
+local function draw_refresh(dl, cx, cy, col)
+  local r, a0 = 5.5, math.rad(-40)
+  ImGui.DrawList_PathArcTo(dl, cx, cy, r, a0, math.rad(250), 24)
+  ImGui.DrawList_PathStroke(dl, col, ImGui.DrawFlags_None, 1.8)
+  -- Arrowhead at the start of the arc.
+  local ex, ey = cx + r * math.cos(a0), cy + r * math.sin(a0)
+  local tx, ty = math.sin(a0), -math.cos(a0)   -- along the arc, away from it
+  local nx, ny = math.cos(a0), math.sin(a0)    -- across the arc
+  ImGui.DrawList_AddTriangleFilled(dl, ex + tx * 4, ey + ty * 4, ex + nx * 3.2, ey + ny * 3.2,
+    ex - nx * 3.2, ey - ny * 3.2, col)
+end
+
+local function draw_gear(dl, cx, cy, col)
+  for k = 0, 7 do
+    local a = k * math.pi / 4
+    ImGui.DrawList_AddLine(dl, cx + math.cos(a) * 4.5, cy + math.sin(a) * 4.5,
+      cx + math.cos(a) * 7.5, cy + math.sin(a) * 7.5, col, 2.6)
+  end
+  ImGui.DrawList_AddCircle(dl, cx, cy, 4.6, col, 0, 2.6)
+end
+
 local function section_connection()
-  -- One-line toolbar, right-aligned: status dot, project, Wwise version, Refresh/Connect and
-  -- Settings. A connection problem shows as a banner underneath.
-  local spacing = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
-  local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
-  local function bw(t) return ImGui.CalcTextSize(ctx, t) + pad_x * 2 end
+  -- Left: status dot, Wwise project, Wwise version and a refresh icon. Right: the Settings gear.
+  -- A connection problem shows as a banner underneath.
   local lh = ImGui.GetFrameHeight(ctx)
   local dot = 8
-
-  local name = conn and (conn.project or "Wwise") or "Not connected"
-  local ver = conn and (conn.version or "") or ""
-  local btn = conn and "Refresh" or "Connect"
-  local widths = { dot, ImGui.CalcTextSize(ctx, name) }
-  if ver ~= "" then widths[#widths + 1] = ImGui.CalcTextSize(ctx, ver) end
-  widths[#widths + 1] = spacing          -- divider
-  widths[#widths + 1] = bw(btn)
-  widths[#widths + 1] = bw("Settings")
-  local w = spacing * (#widths - 1)
-  for _, x in ipairs(widths) do w = w + x end
-  local avail = ImGui.GetContentRegionAvail(ctx)
-  if avail > w then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - w) end
-
   local dl = ImGui.GetWindowDrawList(ctx)
   local x, y = ImGui.GetCursorScreenPos(ctx)
   ImGui.DrawList_AddCircleFilled(dl, x + dot / 2, y + lh / 2, dot / 2, conn and COLOR_OK or COLOR_BAD)
   ImGui.Dummy(ctx, dot, lh)
   ImGui.SameLine(ctx)
   ImGui.AlignTextToFramePadding(ctx)
-  if conn then ImGui.Text(ctx, name) else ImGui.TextColored(ctx, COLOR_BAD, name) end
-  if conn and conn.project_path and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, conn.project_path) end
-  if ver ~= "" then ImGui.SameLine(ctx); ImGui.TextDisabled(ctx, ver) end
+  if conn then
+    ImGui.Text(ctx, conn.project or "Wwise")
+    if conn.project_path and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, conn.project_path) end
+    if (conn.version or "") ~= "" then ImGui.SameLine(ctx); ImGui.TextDisabled(ctx, conn.version) end
+    ImGui.SameLine(ctx)
+    if icon_button("refresh", draw_refresh, "Reconnect and re-read the Wwise project") then connect() end
+  else
+    ImGui.TextColored(ctx, COLOR_BAD, "Not connected")
+    ImGui.SameLine(ctx)
+    if ImGui.Button(ctx, "Connect") then connect() end
+  end
+
   ImGui.SameLine(ctx)
-  x, y = ImGui.GetCursorScreenPos(ctx)
-  ImGui.DrawList_AddLine(dl, x + spacing / 2, y + 4, x + spacing / 2, y + lh - 4, 0x3A4456FF)
-  ImGui.Dummy(ctx, spacing, lh)
-  ImGui.SameLine(ctx)
-  if ImGui.Button(ctx, btn) then connect() end
-  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, conn and "Reconnect and re-read the Wwise project" or "Connect to Wwise") end
-  ImGui.SameLine(ctx)
-  if ImGui.Button(ctx, "Settings") then open_settings = true end
-  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Connection, render and after-transfer preferences") end
+  local avail = ImGui.GetContentRegionAvail(ctx)
+  if avail > lh then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - lh) end
+  if icon_button("settings", draw_gear, "Settings: connection, rendering, transfer and window") then open_settings = true end
 
   if not conn and conn_err then
     ImGui.PushStyleColor(ctx, ImGui.Col_ChildBg, 0x2A2213FF)
