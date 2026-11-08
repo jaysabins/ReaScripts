@@ -1,11 +1,8 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.6.3
+-- @version 1.6.4
 -- @changelog
---   Preview: Status shows New in green and Exists in orange.
---   Cleaner one-line header: status dot, Wwise project and version on the right next to Refresh and Settings. Connection problems show as a banner.
---   Preview: the Type column is gone; hover over a row's [tag] (or its name) to see its type.
---   Originals subfolder: new Browse button opens a folder picker in the Wwise project's Originals folder. Typing and wildcards still work.
+--   Header: shows the Wwise version number again (it only said "Wwise"), and the script version is only in Settings now.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -271,16 +268,13 @@ end
 -- Sections
 ----------------------------------------------------------------------
 local function section_connection()
-  -- One-line toolbar: version on the left; status dot, project, Wwise version, Refresh/Connect
-  -- and Settings on the right. A connection problem shows as a banner underneath.
+  -- One-line toolbar, right-aligned: status dot, project, Wwise version, Refresh/Connect and
+  -- Settings. A connection problem shows as a banner underneath.
   local spacing = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
   local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
   local function bw(t) return ImGui.CalcTextSize(ctx, t) + pad_x * 2 end
   local lh = ImGui.GetFrameHeight(ctx)
   local dot = 8
-
-  ImGui.AlignTextToFramePadding(ctx)
-  ImGui.TextDisabled(ctx, "Wwise Transfer " .. core.VERSION)
 
   local name = conn and (conn.project or "Wwise") or "Not connected"
   local ver = conn and (conn.version or "") or ""
@@ -292,7 +286,6 @@ local function section_connection()
   widths[#widths + 1] = bw("Settings")
   local w = spacing * (#widths - 1)
   for _, x in ipairs(widths) do w = w + x end
-  ImGui.SameLine(ctx)
   local avail = ImGui.GetContentRegionAvail(ctx)
   if avail > w then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - w) end
 
