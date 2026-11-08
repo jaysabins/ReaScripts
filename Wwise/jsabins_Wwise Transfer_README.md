@@ -65,7 +65,7 @@ The connection to Wwise shows along the top, with a **Settings** button on the r
 
 ### Preview (right)
 
-- Lists every Wwise object that will be made, and marks each one New, Exists or Duplicate.
+- Lists every Wwise object that will be made, and marks each one New, Exists or Duplicate. The tag in front of each name, such as [RND] or [SFX], shows its type. Hover over it to see the full type name.
 - **Columns:**
   - **Audio** says whether a Sound is imported directly or rendered.
   - **Originals file** is the file name Wwise will keep in Originals, after your Originals subfolder. Hover over it to see the full path.

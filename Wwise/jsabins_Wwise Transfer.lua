@@ -2,6 +2,7 @@
 -- @author Jay Sabins
 -- @version 1.6.3
 -- @changelog
+--   Preview: the Type column is gone; hover over a row's [tag] (or its name) to see its type.
 --   Originals subfolder: new Browse button opens a folder picker in the Wwise project's Originals folder. Typing and wildcards still work.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
@@ -571,12 +572,13 @@ local function draw_node(node, depth)
   local tag = TYPE_TAGS[node.type] or "[?]"
   local open = ImGui.TreeNodeEx(ctx, node.path or node.name, tag, flags)
   ImGui.PopStyleColor(ctx)
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, node.type) end
   ImGui.SameLine(ctx)
   local label = node.name
   if not is_leaf then label = label .. string.format("  (%d)", node.sounds) end
   ImGui.Text(ctx, label)
   if ImGui.IsItemHovered(ctx) then
-    local tip = node.path or ""
+    local tip = node.type .. "\n" .. (node.path or "")
     if node.entry then
       tip = tip .. "\n" .. (KIND_LABEL[node.entry.kind] or "")
       if node.entry.file then tip = tip .. "\nAudio: " .. node.entry.file end
@@ -584,8 +586,6 @@ local function draw_node(node, depth)
     end
     ImGui.SetTooltip(ctx, tip)
   end
-  ImGui.TableNextColumn(ctx)
-  ImGui.TextColored(ctx, TYPE_COLORS[node.type] or 0xFFFFFFFF, node.type)
   ImGui.TableNextColumn(ctx)
   if depth > 0 then status_cell(node.status) end
   ImGui.TableNextColumn(ctx)
@@ -614,7 +614,6 @@ end
 -- the choice is kept in `view` so it comes back next time.
 local PREVIEW_COLS = {
   { id = "Name", stretch = true, w = 4, nohide = true },
-  { id = "Type", w = 130 },
   { id = "Status", w = 70 },
   { id = "Audio", w = 120 },
   { id = "Originals file", stretch = true, w = 3 },
