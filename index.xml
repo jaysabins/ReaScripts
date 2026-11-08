@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="ca735524a89a49485ffe9df7c7239b112546a9d9">
+<index version="1" name="Jay Sabins Scripts" commit="70a3a90c42ec1b7d5d063c2b23ffc34ab0073f7e">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -272,6 +272,15 @@ Settings: clearer wording for when property templates are applied.]]></changelog
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/ca735524a89a49485ffe9df7c7239b112546a9d9/Wwise/jsabins_Wwise%20Transfer.lua</source>
         <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/ca735524a89a49485ffe9df7c7239b112546a9d9/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
         <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/ca735524a89a49485ffe9df7c7239b112546a9d9/Wwise/jsabins_WwiseTransfer_core.lua</source>
+      </version>
+      <version name="1.6.3" author="Jay Sabins" time="2026-11-08T19:25:57Z">
+        <changelog><![CDATA[Preview: Status shows New in green and Exists in orange.
+Cleaner one-line header: status dot, Wwise project and version on the right next to Refresh and Settings. Connection problems show as a banner.
+Preview: the Type column is gone; hover over a row's [tag] (or its name) to see its type.
+Originals subfolder: new Browse button opens a folder picker in the Wwise project's Originals folder. Typing and wildcards still work.]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/70a3a90c42ec1b7d5d063c2b23ffc34ab0073f7e/Wwise/jsabins_Wwise%20Transfer.lua</source>
+        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/70a3a90c42ec1b7d5d063c2b23ffc34ab0073f7e/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/70a3a90c42ec1b7d5d063c2b23ffc34ab0073f7e/Wwise/jsabins_WwiseTransfer_core.lua</source>
       </version>
     </reapack>
   </category>
