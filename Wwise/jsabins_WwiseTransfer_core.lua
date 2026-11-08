@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.6.3"
+M.VERSION = "1.6.4"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -381,7 +381,9 @@ function M.connect()
   local v = info.version or {}
   local c = {
     year = tonumber(v.year) or 0,
-    version = info.displayName or ((v.year or "?") .. "." .. (v.major or "?") .. "." .. (v.minor or "?")),
+    -- getInfo's displayName is just "Wwise"; the numbers are in version.
+    version = v.year and string.format("Wwise %s.%s.%s", v.year, v.major or 0, v.minor or 0)
+      or (v.displayName and ("Wwise " .. tostring(v.displayName):gsub("^v", ""))) or info.displayName or "Wwise",
   }
   c.new_types = c.year >= 2025  -- Wwise 2025.1+: "Sound" type, "Containers" root
   c.root = c.new_types and "\\Containers" or "\\Actor-Mixer Hierarchy"
