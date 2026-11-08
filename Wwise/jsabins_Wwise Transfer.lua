@@ -2,6 +2,7 @@
 -- @author Jay Sabins
 -- @version 1.6.3
 -- @changelog
+--   Preview: Status shows New in green and Exists in orange.
 --   Cleaner one-line header: status dot, Wwise project and version on the right next to Refresh and Settings. Connection problems show as a banner.
 --   Preview: the Type column is gone; hover over a row's [tag] (or its name) to see its type.
 --   Originals subfolder: new Browse button opens a folder picker in the Wwise project's Originals folder. Typing and wildcards still work.
@@ -86,7 +87,8 @@ local open_settings = false
 local COLOR_OK = 0x6BCB77FF
 local COLOR_BAD = 0xFF6B6BFF
 local COLOR_DIM = 0x9A9A9AFF
-local COLOR_NEW = 0x7FC8F8FF
+local COLOR_NEW = 0x6BCB77FF     -- green: will be created
+local COLOR_EXISTS = 0xF5A524FF  -- orange: already in Wwise
 
 local WILDCARDS = {
   { "$region", "Region name" }, { "$regionnumber", "Region number" }, { "$marker", "Marker before the item/region" },
@@ -582,7 +584,7 @@ local tree_open_all = nil -- true/false for one frame to expand/collapse everyth
 
 local function status_cell(st)
   if st == "duplicate" then ImGui.TextColored(ctx, COLOR_BAD, "Duplicate")
-  elseif st == "exists" then ImGui.TextColored(ctx, COLOR_DIM, "Exists")
+  elseif st == "exists" then ImGui.TextColored(ctx, COLOR_EXISTS, "Exists")
   elseif st == "new" then ImGui.TextColored(ctx, COLOR_NEW, "New")
   else ImGui.TextDisabled(ctx, "-") end
 end
