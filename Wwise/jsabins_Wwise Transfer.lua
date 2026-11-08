@@ -1,12 +1,8 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.6.1
+-- @version 1.6.2
 -- @changelog
---   Preview: new "Originals file" column (the file name Wwise will store in Originals). Right-click a column header to choose which columns are shown; the choice is remembered.
---   Settings: background opacity slider for the window.
---   Settings: "Keep rendered files in" folder for item renders (relative to the project folder, wildcards allowed). Empty keeps the old behaviour (temporary files).
---   Preview: "Collapse all" now folds the containers that hold Sounds, so the container layout stays visible.
---   Settings: clearer wording for when property templates are applied.
+--   Window opacity at 100% is now fully solid (ImGui's default background is slightly see-through). Popups are solid too.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -913,7 +909,9 @@ loop_body = function()
   if transfer_task then transfer_task = run_task(transfer_task) end
   refresh_preview(false)
   ImGui.SetNextWindowSize(ctx, 1180, 760, ImGui.Cond_FirstUseEver)
-  if view.opacity < 1 then ImGui.SetNextWindowBgAlpha(ctx, view.opacity) end
+  -- Always set it: ImGui's default window background is only ~94% opaque, so 100% must be explicit.
+  ImGui.SetNextWindowBgAlpha(ctx, view.opacity)
+  ImGui.PushStyleColor(ctx, ImGui.Col_PopupBg, 0x141414FF) -- solid popups and Settings/summary windows
   local visible, open = ImGui.Begin(ctx, "Wwise Transfer", true)
   if visible then
     -- Re-read the Wwise selection when coming back to this window (e.g. after clicking in Wwise).
@@ -945,6 +943,7 @@ loop_body = function()
     settings_popup()
     ImGui.End(ctx)
   end
+  ImGui.PopStyleColor(ctx)
   return open
 end
 
