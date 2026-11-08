@@ -1,8 +1,8 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.6.5
+-- @version 1.6.6
 -- @changelog
---   Header: connection status, project and Wwise version on the left with a refresh icon; Settings is a gear icon on the right.
+--   Header: Settings is a text button again, and Reconnect lives only in Settings.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -267,41 +267,8 @@ end
 ----------------------------------------------------------------------
 -- Sections
 ----------------------------------------------------------------------
--- Icon buttons. ImGui's font has no icon glyphs, so the icons are drawn with the draw list.
-local function icon_button(id, draw, tip)
-  local size = ImGui.GetFrameHeight(ctx)
-  local pressed = ImGui.Button(ctx, "##" .. id, size, size)
-  local hovered = ImGui.IsItemHovered(ctx)
-  local x1, y1 = ImGui.GetItemRectMin(ctx)
-  local x2, y2 = ImGui.GetItemRectMax(ctx)
-  draw(ImGui.GetWindowDrawList(ctx), (x1 + x2) / 2, (y1 + y2) / 2, ImGui.GetColor(ctx, ImGui.Col_Text))
-  if hovered and tip then ImGui.SetTooltip(ctx, tip) end
-  return pressed
-end
-
-local function draw_refresh(dl, cx, cy, col)
-  local r, a0 = 5.5, math.rad(-40)
-  ImGui.DrawList_PathArcTo(dl, cx, cy, r, a0, math.rad(250), 24)
-  ImGui.DrawList_PathStroke(dl, col, ImGui.DrawFlags_None, 1.8)
-  -- Arrowhead at the start of the arc.
-  local ex, ey = cx + r * math.cos(a0), cy + r * math.sin(a0)
-  local tx, ty = math.sin(a0), -math.cos(a0)   -- along the arc, away from it
-  local nx, ny = math.cos(a0), math.sin(a0)    -- across the arc
-  ImGui.DrawList_AddTriangleFilled(dl, ex + tx * 4, ey + ty * 4, ex + nx * 3.2, ey + ny * 3.2,
-    ex - nx * 3.2, ey - ny * 3.2, col)
-end
-
-local function draw_gear(dl, cx, cy, col)
-  for k = 0, 7 do
-    local a = k * math.pi / 4
-    ImGui.DrawList_AddLine(dl, cx + math.cos(a) * 4.5, cy + math.sin(a) * 4.5,
-      cx + math.cos(a) * 7.5, cy + math.sin(a) * 7.5, col, 2.6)
-  end
-  ImGui.DrawList_AddCircle(dl, cx, cy, 4.6, col, 0, 2.6)
-end
-
 local function section_connection()
-  -- Left: status dot, Wwise project, Wwise version and a refresh icon. Right: the Settings gear.
+  -- Left: status dot, Wwise project and Wwise version. Right: Settings (which also has Reconnect).
   -- A connection problem shows as a banner underneath.
   local lh = ImGui.GetFrameHeight(ctx)
   local dot = 8
@@ -315,18 +282,17 @@ local function section_connection()
     ImGui.Text(ctx, conn.project or "Wwise")
     if conn.project_path and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, conn.project_path) end
     if (conn.version or "") ~= "" then ImGui.SameLine(ctx); ImGui.TextDisabled(ctx, conn.version) end
-    ImGui.SameLine(ctx)
-    if icon_button("refresh", draw_refresh, "Reconnect and re-read the Wwise project") then connect() end
   else
     ImGui.TextColored(ctx, COLOR_BAD, "Not connected")
-    ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Connect") then connect() end
   end
 
+  local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
+  local bw = ImGui.CalcTextSize(ctx, "Settings") + pad_x * 2
   ImGui.SameLine(ctx)
   local avail = ImGui.GetContentRegionAvail(ctx)
-  if avail > lh then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - lh) end
-  if icon_button("settings", draw_gear, "Settings: connection, rendering, transfer and window") then open_settings = true end
+  if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
+  if ImGui.Button(ctx, "Settings") then open_settings = true end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Connection (Reconnect), rendering, transfer and window") end
 
   if not conn and conn_err then
     ImGui.PushStyleColor(ctx, ImGui.Col_ChildBg, 0x2A2213FF)
@@ -334,6 +300,7 @@ local function section_connection()
     if ImGui.BeginChild(ctx, "connerr", 0, 0, ImGui.ChildFlags_Border | ImGui.ChildFlags_AutoResizeY) then
       ImGui.PushTextWrapPos(ctx, 0)
       ImGui.TextColored(ctx, 0xF3D6A0FF, conn_err)
+      ImGui.TextColored(ctx, 0xF3D6A0FF, "When Wwise is ready, open Settings and click Reconnect.")
       ImGui.PopTextWrapPos(ctx)
       ImGui.EndChild(ctx)
     end

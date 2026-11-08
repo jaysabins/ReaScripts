@@ -20,7 +20,7 @@ You need Windows 10 or 11, which come with `curl.exe`. The script uses it to tal
 
 ## The window
 
-A thin toolbar runs along the top. On the left, a green dot shows you're connected, followed by the Wwise project name, the Wwise version and a refresh icon. The gear icon on the right opens **Settings**. When Wwise can't be reached, the dot turns red, a **Connect** button appears, and a yellow banner under the toolbar says what went wrong.
+A thin toolbar runs along the top. On the left, a green dot shows you're connected, followed by the Wwise project name and version. The **Settings** button is on the right. If you opened Wwise after REAPER, or Wwise restarted, click **Reconnect** in Settings. When Wwise can't be reached, the dot turns red and a yellow banner under the toolbar says what went wrong.
 
 ### Setup (left)
 
