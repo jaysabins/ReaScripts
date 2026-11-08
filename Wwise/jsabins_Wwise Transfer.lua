@@ -2,6 +2,8 @@
 -- @author Jay Sabins
 -- @version 1.6.1
 -- @changelog
+--   Preview: new "Originals file" column (the file name Wwise will store in Originals). Right-click a column header to choose which columns are shown; the choice is remembered.
+--   Settings: background opacity slider for the window.
 --   Settings: clearer wording for when property templates are applied.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
@@ -49,6 +51,17 @@ local ctx = ImGui.CreateContext("Wwise Transfer")
 ----------------------------------------------------------------------
 local S = core.load_settings()
 core.http_port = S.http_port
+-- Look of the window (same in every project): background opacity and hidden preview columns.
+local view = { opacity = 1.0, hidden = {} }
+do
+  local v = r.GetExtState(core.EXT, "view")
+  local ok, t = pcall(core.json.decode, v ~= "" and v or "{}")
+  if ok and type(t) == "table" then
+    if type(t.opacity) == "number" then view.opacity = math.max(0.2, math.min(1, t.opacity)) end
+    if type(t.hidden) == "table" then for k, b in pairs(t.hidden) do if b == true then view.hidden[k] = true end end end
+  end
+end
+local function save_view() r.SetExtState(core.EXT, "view", core.json.encode(view), true) end
 local conn, conn_err = nil, nil
 local plan = { entries = {}, errors = {} }
 local presets = core.load_presets()
@@ -552,6 +565,14 @@ local function draw_node(node, depth)
   ImGui.TableNextColumn(ctx)
   if node.entry then ImGui.TextDisabled(ctx, KIND_LABEL[node.entry.kind] or "") end
   ImGui.TableNextColumn(ctx)
+  if node.entry then
+    local o = core.originals_name(node.entry)
+    if o then
+      ImGui.TextColored(ctx, COLOR_DIM, o)
+      if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Originals\\" .. core.originals_root(S) .. "\\" .. o) end
+    end
+  end
+  ImGui.TableNextColumn(ctx)
   if node.delay then ImGui.Text(ctx, string.format("%.0f ms", node.delay * 1000)) end
   if open and not is_leaf then
     for i, ch in ipairs(node.children) do
@@ -561,6 +582,37 @@ local function draw_node(node, depth)
     end
     ImGui.TreePop(ctx)
   end
+end
+
+-- Preview columns. Right-clicking a header (TableFlags_Hideable) shows a tick box per column;
+-- the choice is kept in `view` so it comes back next time.
+local PREVIEW_COLS = {
+  { id = "Name", stretch = true, w = 4, nohide = true },
+  { id = "Type", w = 130 },
+  { id = "Status", w = 70 },
+  { id = "Audio", w = 120 },
+  { id = "Originals file", stretch = true, w = 3 },
+  { id = "Initial delay", w = 80 },
+}
+local cols_frames = 0
+local function sync_columns()
+  cols_frames = cols_frames + 1
+  if cols_frames == 1 then
+    -- Apply the saved choice (ImGui's own saved table state may differ). Takes effect next frame.
+    for i, c in ipairs(PREVIEW_COLS) do
+      if not c.nohide then ImGui.TableSetColumnEnabled(ctx, i - 1, not view.hidden[c.id]) end
+    end
+    return
+  end
+  if cols_frames < 3 then return end
+  local changed = false
+  for i, c in ipairs(PREVIEW_COLS) do
+    if not c.nohide then
+      local hidden = (ImGui.TableGetColumnFlags(ctx, i - 1) & ImGui.TableColumnFlags_IsEnabled) == 0
+      if hidden ~= (view.hidden[c.id] == true) then view.hidden[c.id] = hidden or nil; changed = true end
+    end
+  end
+  if changed then save_view() end
 end
 
 local function section_preview()
@@ -589,19 +641,23 @@ local function section_preview()
     if ImGui.SmallButton(ctx, "Expand all") then tree_open_all = true end
     ImGui.SameLine(ctx)
     if ImGui.SmallButton(ctx, "Collapse all") then tree_open_all = false end
+    ImGui.SameLine(ctx)
+    ImGui.TextDisabled(ctx, "  Right-click a column header to choose columns.")
   end
 
   local flags = ImGui.TableFlags_BordersV | ImGui.TableFlags_BordersOuterH | ImGui.TableFlags_RowBg |
-                ImGui.TableFlags_ScrollY | ImGui.TableFlags_Resizable
+                ImGui.TableFlags_ScrollY | ImGui.TableFlags_Resizable | ImGui.TableFlags_Hideable
   local h = math.max(160, select(2, ImGui.GetContentRegionAvail(ctx)) - 52)
-  if ImGui.BeginTable(ctx, "previewtree", 5, flags, 0, h) then
+  if ImGui.BeginTable(ctx, "previewtree", #PREVIEW_COLS, flags, 0, h) then
     ImGui.TableSetupScrollFreeze(ctx, 0, 1)
-    ImGui.TableSetupColumn(ctx, "Name", ImGui.TableColumnFlags_WidthStretch | ImGui.TableColumnFlags_NoHide, 4)
-    ImGui.TableSetupColumn(ctx, "Type", ImGui.TableColumnFlags_WidthFixed, 130)
-    ImGui.TableSetupColumn(ctx, "Status", ImGui.TableColumnFlags_WidthFixed, 70)
-    ImGui.TableSetupColumn(ctx, "Audio", ImGui.TableColumnFlags_WidthFixed, 120)
-    ImGui.TableSetupColumn(ctx, "Initial delay", ImGui.TableColumnFlags_WidthFixed, 80)
+    for _, c in ipairs(PREVIEW_COLS) do
+      local cf = c.stretch and ImGui.TableColumnFlags_WidthStretch or ImGui.TableColumnFlags_WidthFixed
+      if c.nohide then cf = cf | ImGui.TableColumnFlags_NoHide end
+      if view.hidden[c.id] then cf = cf | ImGui.TableColumnFlags_DefaultHide end
+      ImGui.TableSetupColumn(ctx, c.id, cf, c.w)
+    end
     ImGui.TableHeadersRow(ctx)
+    sync_columns()
     if tree and #tree.children > 0 then draw_node(tree, 0) end
     ImGui.EndTable(ctx)
   end
@@ -752,6 +808,17 @@ local function settings_popup()
   if c then settings_changed() end
   ImGui.Dummy(ctx, 0, 6)
 
+  ImGui.SeparatorText(ctx, "Window")
+  dim_label("Background opacity")
+  ImGui.SetNextItemWidth(ctx, 260)
+  local pct
+  c, pct = ImGui.SliderInt(ctx, "##opacity", math.floor(view.opacity * 100 + 0.5), 20, 100, "%d%%")
+  if c then view.opacity = pct / 100 end
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  help("How see-through the Wwise Transfer window's background is. Text and buttons stay solid.\n" ..
+    "Only works while the window is floating, not when it's docked.")
+  ImGui.Dummy(ctx, 0, 6)
+
   ImGui.SeparatorText(ctx, "Diagnostics")
   ImGui.PushTextWrapPos(ctx, 480)
   ImGui.TextColored(ctx, COLOR_DIM, string.format("Slow moments recorded: %d. If REAPER stutters or freezes, " ..
@@ -827,6 +894,7 @@ loop_body = function()
   if transfer_task then transfer_task = run_task(transfer_task) end
   refresh_preview(false)
   ImGui.SetNextWindowSize(ctx, 1180, 760, ImGui.Cond_FirstUseEver)
+  if view.opacity < 1 then ImGui.SetNextWindowBgAlpha(ctx, view.opacity) end
   local visible, open = ImGui.Begin(ctx, "Wwise Transfer", true)
   if visible then
     -- Re-read the Wwise selection when coming back to this window (e.g. after clicking in Wwise).

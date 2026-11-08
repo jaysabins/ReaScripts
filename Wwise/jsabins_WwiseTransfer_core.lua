@@ -143,6 +143,24 @@ function json.decode(s)
   return val()
 end
 
+-- The file Wwise will keep in Originals for an entry, relative to Originals\SFX (or
+-- Originals\Voices\<language>): "<originals subfolder>\<file name>". Wwise keeps the
+-- imported file's own name, so a WAV imported straight from disk keeps its name on disk.
+function M.originals_name(e)
+  local f
+  if e.kind == "direct" and e.file then f = e.file:match("([^\\/]+)$")
+  elseif e.kind == "project" and e.target then f = e.target:match("([^\\/]+)$")
+  elseif (e.name or "") ~= "" then f = e.name .. ".wav" end
+  if not f then return nil end
+  if e.origsub and e.origsub ~= "" then return e.origsub .. "\\" .. f end
+  return f
+end
+
+function M.originals_root(s)
+  if s.leaf.voice then return "Voices\\" .. ((s.leaf.language or "") ~= "" and s.leaf.language or "<language>") end
+  return "SFX"
+end
+
 ----------------------------------------------------------------------
 -- Settings (per project, with a global fallback) and presets
 ----------------------------------------------------------------------
