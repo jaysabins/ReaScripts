@@ -1,8 +1,11 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.6.2
+-- @version 1.6.3
 -- @changelog
---   Window opacity at 100% is now fully solid (ImGui's default background is slightly see-through). Popups are solid too.
+--   Preview: Status shows New in green and Exists in orange.
+--   Cleaner one-line header: status dot, Wwise project and version on the right next to Refresh and Settings. Connection problems show as a banner.
+--   Preview: the Type column is gone; hover over a row's [tag] (or its name) to see its type.
+--   Originals subfolder: new Browse button opens a folder picker in the Wwise project's Originals folder. Typing and wildcards still work.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -84,7 +87,8 @@ local open_settings = false
 local COLOR_OK = 0x6BCB77FF
 local COLOR_BAD = 0xFF6B6BFF
 local COLOR_DIM = 0x9A9A9AFF
-local COLOR_NEW = 0x7FC8F8FF
+local COLOR_NEW = 0x6BCB77FF     -- green: will be created
+local COLOR_EXISTS = 0xF5A524FF  -- orange: already in Wwise
 
 local WILDCARDS = {
   { "$region", "Region name" }, { "$regionnumber", "Region number" }, { "$marker", "Marker before the item/region" },
@@ -267,27 +271,61 @@ end
 -- Sections
 ----------------------------------------------------------------------
 local function section_connection()
-  if conn then
-    ImGui.TextColored(ctx, COLOR_OK, "Connected")
-    ImGui.SameLine(ctx)
-    ImGui.Text(ctx, "to " .. (conn.version or "Wwise") .. (conn.project and ("  -  project " .. conn.project) or ""))
-  else
-    ImGui.TextColored(ctx, COLOR_BAD, "Not connected to Wwise")
-  end
-  ImGui.SameLine(ctx)
-  if ImGui.SmallButton(ctx, conn and "Refresh" or "Connect") then connect() end
-  -- Settings button, right-aligned on the same line.
+  -- One-line toolbar: version on the left; status dot, project, Wwise version, Refresh/Connect
+  -- and Settings on the right. A connection problem shows as a banner underneath.
+  local spacing = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
   local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
-  local bw = ImGui.CalcTextSize(ctx, "Settings") + pad_x * 2
+  local function bw(t) return ImGui.CalcTextSize(ctx, t) + pad_x * 2 end
+  local lh = ImGui.GetFrameHeight(ctx)
+  local dot = 8
+
+  ImGui.AlignTextToFramePadding(ctx)
+  ImGui.TextDisabled(ctx, "Wwise Transfer " .. core.VERSION)
+
+  local name = conn and (conn.project or "Wwise") or "Not connected"
+  local ver = conn and (conn.version or "") or ""
+  local btn = conn and "Refresh" or "Connect"
+  local widths = { dot, ImGui.CalcTextSize(ctx, name) }
+  if ver ~= "" then widths[#widths + 1] = ImGui.CalcTextSize(ctx, ver) end
+  widths[#widths + 1] = spacing          -- divider
+  widths[#widths + 1] = bw(btn)
+  widths[#widths + 1] = bw("Settings")
+  local w = spacing * (#widths - 1)
+  for _, x in ipairs(widths) do w = w + x end
   ImGui.SameLine(ctx)
   local avail = ImGui.GetContentRegionAvail(ctx)
-  if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
+  if avail > w then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - w) end
+
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local x, y = ImGui.GetCursorScreenPos(ctx)
+  ImGui.DrawList_AddCircleFilled(dl, x + dot / 2, y + lh / 2, dot / 2, conn and COLOR_OK or COLOR_BAD)
+  ImGui.Dummy(ctx, dot, lh)
+  ImGui.SameLine(ctx)
+  ImGui.AlignTextToFramePadding(ctx)
+  if conn then ImGui.Text(ctx, name) else ImGui.TextColored(ctx, COLOR_BAD, name) end
+  if conn and conn.project_path and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, conn.project_path) end
+  if ver ~= "" then ImGui.SameLine(ctx); ImGui.TextDisabled(ctx, ver) end
+  ImGui.SameLine(ctx)
+  x, y = ImGui.GetCursorScreenPos(ctx)
+  ImGui.DrawList_AddLine(dl, x + spacing / 2, y + 4, x + spacing / 2, y + lh - 4, 0x3A4456FF)
+  ImGui.Dummy(ctx, spacing, lh)
+  ImGui.SameLine(ctx)
+  if ImGui.Button(ctx, btn) then connect() end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, conn and "Reconnect and re-read the Wwise project" or "Connect to Wwise") end
+  ImGui.SameLine(ctx)
   if ImGui.Button(ctx, "Settings") then open_settings = true end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Connection, render and after-transfer preferences") end
+
   if not conn and conn_err then
-    ImGui.PushTextWrapPos(ctx, 0)
-    ImGui.TextColored(ctx, COLOR_DIM, conn_err)
-    ImGui.PopTextWrapPos(ctx)
+    ImGui.PushStyleColor(ctx, ImGui.Col_ChildBg, 0x2A2213FF)
+    ImGui.PushStyleColor(ctx, ImGui.Col_Border, 0x4A3C1FFF)
+    if ImGui.BeginChild(ctx, "connerr", 0, 0, ImGui.ChildFlags_Border | ImGui.ChildFlags_AutoResizeY) then
+      ImGui.PushTextWrapPos(ctx, 0)
+      ImGui.TextColored(ctx, 0xF3D6A0FF, conn_err)
+      ImGui.PopTextWrapPos(ctx)
+      ImGui.EndChild(ctx)
+    end
+    ImGui.PopStyleColor(ctx, 2)
   end
 end
 
@@ -326,6 +364,26 @@ local function section_source()
   ImGui.Dummy(ctx, 0, 4)
 end
 
+-- Pick the Originals subfolder in a folder dialog that opens in the Wwise project's
+-- Originals\SFX (or Voices\<language>) folder.
+local function browse_originals()
+  if not conn then status_line = "Connect to Wwise first, so its Originals folder can be found."; return end
+  if S.leaf.voice and (S.leaf.language or "") == "" then status_line = "Pick a voice language first."; return end
+  local orig = core.wwise_originals_dir(conn)
+  if not orig then status_line = "Couldn't find the Wwise project's Originals folder."; return end
+  local root = orig .. "\\" .. core.originals_root(S)
+  local starts = { root, orig }
+  local cur = S.originals_subfolder or ""
+  if cur ~= "" and not cur:find("$", 1, true) then table.insert(starts, 1, root .. "\\" .. cur:gsub("/", "\\")) end
+  local f, err = core.browse_folder("Choose the Originals subfolder. It must be inside " .. root, starts)
+  if not f then if err then status_line = err end return end
+  local rel = core.relative_to(f, root)
+  if not rel then status_line = "Pick a folder inside " .. root .. ". Wwise keeps imported audio there."; return end
+  S.originals_subfolder = rel
+  status_line = ""
+  settings_changed()
+end
+
 local function section_destination()
   ImGui.SeparatorText(ctx, "Wwise destination")
   local c
@@ -343,8 +401,11 @@ local function section_destination()
   end
   ImGui.Dummy(ctx, 0, 2)
   dim_label("Originals subfolder")
-  S.originals_subfolder = input("##orig", S.originals_subfolder, "optional, e.g. Weapons\\$region", -30)
+  S.originals_subfolder = input("##orig", S.originals_subfolder, "optional, e.g. Weapons\\$region", -96)
   wildcard_menu("orig", function(w) S.originals_subfolder = S.originals_subfolder .. w end)
+  ImGui.SameLine(ctx)
+  if ImGui.Button(ctx, "Browse##orig") then browse_originals() end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Pick a folder inside the Wwise project's Originals folder") end
   dim_label("If a Sound or container already exists")
   c, S.conflict = combo("##conflict", core.CONFLICT_OPS, S.conflict, -1)
   if c then settings_changed() end
@@ -523,7 +584,7 @@ local tree_open_all = nil -- true/false for one frame to expand/collapse everyth
 
 local function status_cell(st)
   if st == "duplicate" then ImGui.TextColored(ctx, COLOR_BAD, "Duplicate")
-  elseif st == "exists" then ImGui.TextColored(ctx, COLOR_DIM, "Exists")
+  elseif st == "exists" then ImGui.TextColored(ctx, COLOR_EXISTS, "Exists")
   elseif st == "new" then ImGui.TextColored(ctx, COLOR_NEW, "New")
   else ImGui.TextDisabled(ctx, "-") end
 end
@@ -548,12 +609,13 @@ local function draw_node(node, depth)
   local tag = TYPE_TAGS[node.type] or "[?]"
   local open = ImGui.TreeNodeEx(ctx, node.path or node.name, tag, flags)
   ImGui.PopStyleColor(ctx)
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, node.type) end
   ImGui.SameLine(ctx)
   local label = node.name
   if not is_leaf then label = label .. string.format("  (%d)", node.sounds) end
   ImGui.Text(ctx, label)
   if ImGui.IsItemHovered(ctx) then
-    local tip = node.path or ""
+    local tip = node.type .. "\n" .. (node.path or "")
     if node.entry then
       tip = tip .. "\n" .. (KIND_LABEL[node.entry.kind] or "")
       if node.entry.file then tip = tip .. "\nAudio: " .. node.entry.file end
@@ -561,8 +623,6 @@ local function draw_node(node, depth)
     end
     ImGui.SetTooltip(ctx, tip)
   end
-  ImGui.TableNextColumn(ctx)
-  ImGui.TextColored(ctx, TYPE_COLORS[node.type] or 0xFFFFFFFF, node.type)
   ImGui.TableNextColumn(ctx)
   if depth > 0 then status_cell(node.status) end
   ImGui.TableNextColumn(ctx)
@@ -591,7 +651,6 @@ end
 -- the choice is kept in `view` so it comes back next time.
 local PREVIEW_COLS = {
   { id = "Name", stretch = true, w = 4, nohide = true },
-  { id = "Type", w = 130 },
   { id = "Status", w = 70 },
   { id = "Audio", w = 120 },
   { id = "Originals file", stretch = true, w = 3 },

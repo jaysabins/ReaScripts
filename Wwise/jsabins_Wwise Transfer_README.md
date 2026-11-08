@@ -20,7 +20,7 @@ You need Windows 10 or 11, which come with `curl.exe`. The script uses it to tal
 
 ## The window
 
-The connection to Wwise shows along the top, with a **Settings** button on the right. Below it, the setup is on the left and a preview of what will be created in Wwise is on the right. The **Transfer to Wwise** button sits under the preview.
+A thin toolbar runs along the top. On the right, a green dot shows you're connected, followed by the Wwise project name and version, then **Refresh** and **Settings**. When Wwise can't be reached, the dot turns red, the button becomes **Connect**, and a yellow banner under the toolbar says what went wrong. Below it, the setup is on the left and a preview of what will be created in Wwise is on the right. The **Transfer to Wwise** button sits under the preview.
 
 ### Setup (left)
 
@@ -35,7 +35,7 @@ The connection to Wwise shows along the top, with a **Settings** button on the r
 **Wwise destination.**
 
 - By default the sounds go into whatever is selected in Wwise. You can untick **Always use the object selected in Wwise** and type a fixed path instead, or click **From Wwise** to fill it in.
-- **Originals subfolder** sets where Wwise stores the WAVs. It accepts wildcards, for example `Weapons\$region`.
+- **Originals subfolder** sets where Wwise stores the WAVs. It accepts wildcards, for example `Weapons\$region`. **Browse** opens a folder picker inside the Wwise project's Originals folder (Originals\SFX, or Voices\<language> for Sound Voice), so you can pick or create the folder instead of typing it.
 - **If a Sound or container already exists** has three choices:
   - **Use existing** keeps the object and replaces its audio.
   - **Replace** deletes the object and creates it again.
@@ -65,7 +65,7 @@ The connection to Wwise shows along the top, with a **Settings** button on the r
 
 ### Preview (right)
 
-- Lists every Wwise object that will be made, and marks each one New, Exists or Duplicate.
+- Lists every Wwise object that will be made, and marks each one New, Exists or Duplicate. The tag in front of each name, such as [RND] or [SFX], shows its type. Hover over it to see the full type name.
 - **Columns:**
   - **Audio** says whether a Sound is imported directly or rendered.
   - **Originals file** is the file name Wwise will keep in Originals, after your Originals subfolder. Hover over it to see the full path.
