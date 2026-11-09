@@ -1319,6 +1319,8 @@ local function apply_channels(s, plan, summary)
         else kept[#kept + 1] = e.name .. (diff and string.format(": left and right differ (by %.0f dB)", diff) or ": left and right differ") end
       elseif want == "auto" and info.chans ~= 1 then
         kept[#kept + 1] = e.name .. ": " .. info.chans .. " channels"
+      elseif want == "auto" and info.chans == 1 and e.kind ~= "direct" then
+        kept[#kept + 1] = e.name .. ": REAPER rendered it in mono"
       elseif info.chans == 1 and want == "stereo" then
         target = 2
       end
