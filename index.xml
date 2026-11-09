@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="9dbbd0a33b7e971ad216daad803ca66ef7355412">
+<index version="1" name="Jay Sabins Scripts" commit="ef3cd2d64d87af2b35eb4a9cd421e46ede7065da">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -169,13 +169,13 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
     </reapack>
   </category>
   <category name="Wwise">
-    <reapack name="jsabins_Wwise Transfer.lua" type="script" desc="Wwise Transfer (send REAPER audio to Wwise)">
+    <reapack name="jsabins_Wwise Tool.lua" type="script" desc="Wwise Tool (send REAPER audio to Wwise)">
       <metadata>
         <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Wwise Transfer\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Wwise Tool\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Send audio from REAPER straight into Wwise. Built with Lua and ReaImGui.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Source: the selected items, or whatever REAPER's render settings produce (regions, stems, region matrix...).\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Import destination: type a Wwise path or grab the Wwise selection.\par}
@@ -184,207 +184,20 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Conflict handling, presets, live preview (new vs existing objects), transfer summary. One Wwise undo step per transfer.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Auto mono/stereo: a Sound whose left and right match is made mono (also for folder items). Click the preview's Channels column to force Mono or Stereo for a Sound or a whole container.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Fast: untouched WAV items import without rendering; edited items render in one pass; everything is imported in one Wwise call.\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 "Wwise Transfer - Quick send" sends the selected items with the window's last settings, without opening the window. Give it a shortcut.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 "Wwise Tool - Quick send" sends the selected items with the window's last settings, without opening the window. Give it a shortcut.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Needs ReaImGui (ReaPack > ReaTeam Extensions) and Wwise with WAAPI on: Wwise > Project > User Preferences > Enable Wwise Authoring API (HTTP port 8090).\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Full guide: https://github.com/jaysabins/reascripts/blob/main/Wwise/jsabins_Wwise%20Transfer_README.md\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Full guide: https://github.com/jaysabins/reascripts/blob/main/Wwise/jsabins_Wwise%20Tool_README.md\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Not affiliated with or endorsed by Audiokinetic. Wwise is a trademark of Audiokinetic Inc.\par}
 }
 ]]></description>
       </metadata>
-      <version name="1.3.0" author="Jay Sabins" time="2026-11-06T23:00:51Z">
-        <changelog><![CDATA[Preview is now a Wwise-style tree: containers and Sounds nested as they'll appear in Wwise, with type, New/Exists status and Sound counts.
-Expand all / Collapse all buttons and a count of new objects.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/c856c6b670dd44e90ed324b442270fdbb0bbb0da/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/c856c6b670dd44e90ed324b442270fdbb0bbb0da/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/c856c6b670dd44e90ed324b442270fdbb0bbb0da/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.4.0" author="Jay Sabins" time="2026-11-06T23:14:11Z">
-        <changelog><![CDATA[Much faster in big Wwise projects: the existing-object check only asks about the objects being transferred.
-REAPER stays responsive while the window talks to Wwise (calls run in the background).
-The transfer summary shows how long each step took.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/d66ee1b66cca766caed24bea7a65ebee2878f119/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/d66ee1b66cca766caed24bea7a65ebee2878f119/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/d66ee1b66cca766caed24bea7a65ebee2878f119/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.4.1" author="Jay Sabins" time="2026-11-06T23:28:05Z">
-        <changelog><![CDATA[Fixed a command prompt window flashing open and closed over and over while the window is open.
-The Wwise selection is now read when you switch back to the window (or with the Refresh button), not on a timer.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/43c69c77525cc433878211f2bbf015c65d346492/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/43c69c77525cc433878211f2bbf015c65d346492/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/43c69c77525cc433878211f2bbf015c65d346492/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.4.2" author="Jay Sabins" time="2026-11-06T23:47:25Z">
-        <changelog><![CDATA[REAPER no longer hangs after a transfer while Wwise is still busy with the import.
-The preview remembers what already exists in Wwise and only asks Wwise again when something changes.
-The preview never waits on Wwise for more than a moment; if Wwise is busy it tries again a few seconds later.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/3f217ed734cf57e7677a987b9913a1827b2ff9cb/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/3f217ed734cf57e7677a987b9913a1827b2ff9cb/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/3f217ed734cf57e7677a987b9913a1827b2ff9cb/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.5.0" author="Jay Sabins" time="2026-11-07T18:34:01Z">
-        <changelog><![CDATA[New Settings button (top right) with the connection, render and after-transfer preferences, so the main window is less crowded.
-Rendering preferences, "Apply property templates" and "Select in Wwise afterwards" moved into Settings.
-New layout: setup on the left, a bigger Wwise preview on the right, Transfer button under the preview.
-Each structure level's property template, move and remove options are in its "..." button.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/f75abd4294423181aa029d74761218134544bd32/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/f75abd4294423181aa029d74761218134544bd32/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/f75abd4294423181aa029d74761218134544bd32/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.5.1" author="Jay Sabins" time="2026-11-07T18:41:16Z">
-        <changelog><![CDATA[Fixed: with "Always use the object selected in Wwise" on, the destination stayed empty (and Transfer greyed out) until you left and came back to the window.
-When the Transfer button is greyed out, the bar next to it says why (and so does its tooltip).]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/a5e128df49183b0e04fa407b28f493f794bc29af/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/a5e128df49183b0e04fa407b28f493f794bc29af/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/a5e128df49183b0e04fa407b28f493f794bc29af/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.5.2" author="Jay Sabins" time="2026-11-07T18:51:26Z">
-        <changelog><![CDATA[Fixed REAPER freezing for about 2 minutes after a transfer: big replies from Wwise (like the import's) made the script wait until a timeout.
-Fixed an "@-001"-style folder appearing in the Originals subfolder path.
-Settings > Diagnostics: a log of slow moments (what the script was doing and for how long) to track down freezes.
-With "Always use the object selected in Wwise" on, the Sounds the transfer selects in Wwise no longer become the next import destination.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/70e946a43f76639449ac561230f65fc610f89372/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/70e946a43f76639449ac561230f65fc610f89372/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/70e946a43f76639449ac561230f65fc610f89372/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.5.3" author="Jay Sabins" time="2026-11-07T18:53:38Z">
-        <changelog><![CDATA[Switching project tabs with the window open now loads that project's settings (before, the window kept showing and saving the previous project's).]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/591b5e7b0861161fbdcaecc5ef800801e2fd2e11/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/591b5e7b0861161fbdcaecc5ef800801e2fd2e11/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/591b5e7b0861161fbdcaecc5ef800801e2fd2e11/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.5.4" author="Jay Sabins" time="2026-11-07T18:58:16Z">
-        <changelog><![CDATA[Fixed "Not connected to Wwise" (curl error 26) in 1.5.3.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/61af2118289a53011aac167ad3d24d3716eb4ed3/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/61af2118289a53011aac167ad3d24d3716eb4ed3/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/61af2118289a53011aac167ad3d24d3716eb4ed3/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.6.0" author="Jay Sabins" time="2026-11-08T16:18:50Z">
-        <changelog><![CDATA[New: "Set Initial Delay from layer timing". Select all your layers; each layer's start offset within its shot becomes the Initial Delay of its layer container (or of each Sound). Shown in the preview, applied on transfer, or right away to objects already in Wwise.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/7b7ef0e172ac6102aec0b9f99df71080b3a75492/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/7b7ef0e172ac6102aec0b9f99df71080b3a75492/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/7b7ef0e172ac6102aec0b9f99df71080b3a75492/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.6.1" author="Jay Sabins" time="2026-11-08T19:03:33Z">
-        <changelog><![CDATA[Preview: new "Originals file" column (the file name Wwise will store in Originals). Right-click a column header to choose which columns are shown; the choice is remembered.
-Settings: background opacity slider for the window.
-Settings: "Keep rendered files in" folder for item renders (relative to the project folder, wildcards allowed). Empty keeps the old behaviour (temporary files).
-Preview: "Collapse all" now folds the containers that hold Sounds, so the container layout stays visible.
-Settings: clearer wording for when property templates are applied.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/7e32fc8c649ad16c8abe92d8d5fdc0a2d03bc97a/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/7e32fc8c649ad16c8abe92d8d5fdc0a2d03bc97a/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/7e32fc8c649ad16c8abe92d8d5fdc0a2d03bc97a/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.6.2" author="Jay Sabins" time="2026-11-08T19:13:09Z">
-        <changelog><![CDATA[Window opacity at 100% is now fully solid (ImGui's default background is slightly see-through). Popups are solid too.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/ca735524a89a49485ffe9df7c7239b112546a9d9/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/ca735524a89a49485ffe9df7c7239b112546a9d9/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/ca735524a89a49485ffe9df7c7239b112546a9d9/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.6.3" author="Jay Sabins" time="2026-11-08T19:25:57Z">
-        <changelog><![CDATA[Preview: Status shows New in green and Exists in orange.
-Cleaner one-line header: status dot, Wwise project and version on the right next to Refresh and Settings. Connection problems show as a banner.
-Preview: the Type column is gone; hover over a row's [tag] (or its name) to see its type.
-Originals subfolder: new Browse button opens a folder picker in the Wwise project's Originals folder. Typing and wildcards still work.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/70a3a90c42ec1b7d5d063c2b23ffc34ab0073f7e/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/70a3a90c42ec1b7d5d063c2b23ffc34ab0073f7e/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/70a3a90c42ec1b7d5d063c2b23ffc34ab0073f7e/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.6.4" author="Jay Sabins" time="2026-11-08T19:34:44Z">
-        <changelog><![CDATA[Header: shows the Wwise version number again (it only said "Wwise"), and the script version is only in Settings now.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/58f126dc5b7d25ad4f1728309fc401511c3d0a6d/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/58f126dc5b7d25ad4f1728309fc401511c3d0a6d/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/58f126dc5b7d25ad4f1728309fc401511c3d0a6d/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.6.5" author="Jay Sabins" time="2026-11-08T19:40:55Z">
-        <changelog><![CDATA[Header: connection status, project and Wwise version on the left with a refresh icon; Settings is a gear icon on the right.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/ad6540725251c3d3b495b128abe69638f1325520/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/ad6540725251c3d3b495b128abe69638f1325520/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/ad6540725251c3d3b495b128abe69638f1325520/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.6.6" author="Jay Sabins" time="2026-11-08T19:45:27Z">
-        <changelog><![CDATA[Header: Settings is a text button again, and Reconnect lives only in Settings.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/51cadf7de289cc8b19d26c3ce7d6821bb0b82430/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/51cadf7de289cc8b19d26c3ce7d6821bb0b82430/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/51cadf7de289cc8b19d26c3ce7d6821bb0b82430/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.6.7" author="Jay Sabins" time="2026-11-09T02:07:01Z">
-        <changelog><![CDATA[The "not connected" hint now points to Settings > Reconnect.
-Full user guide: see the README link below.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/3021f8055b80cf0e5eca8167e2b7c00d57fc26a0/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/3021f8055b80cf0e5eca8167e2b7c00d57fc26a0/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/3021f8055b80cf0e5eca8167e2b7c00d57fc26a0/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.7.0" author="Jay Sabins" time="2026-11-09T02:37:10Z">
-        <changelog><![CDATA[Auto mono/stereo: folder items and edited items render in stereo, and a Sound whose
-left and right are the same is made mono. Works for folder items too (before, they
-always used the render dialog's channel count).
-New Channels column in the preview: click it to set Mono or Stereo for one Sound,
-or for a container (counts for every Sound inside it).]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/18a1d93fd0bd1fba053bb9314bcd36a36723335e/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/18a1d93fd0bd1fba053bb9314bcd36a36723335e/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/18a1d93fd0bd1fba053bb9314bcd36a36723335e/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.7.1" author="Jay Sabins" time="2026-11-09T02:56:15Z">
-        <changelog><![CDATA[Auto mono/stereo is more reliable on folder items: dither and noise shaping are off
-for the transfer's own renders, and differences below -90 dB count as the same.
-The transfer summary says which Sounds Auto kept stereo, and why.
-Re-transferring onto an existing Sound no longer adds a second audio source with
-the same name in Wwise; the existing source gets the new audio, and older
-duplicates are removed.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/d7567b00db3d113ef9176ee51f0892598694f5c8/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/d7567b00db3d113ef9176ee51f0892598694f5c8/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/d7567b00db3d113ef9176ee51f0892598694f5c8/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.7.2" author="Jay Sabins" time="2026-11-09T03:00:41Z">
-        <changelog><![CDATA[Fix: with Auto channels on, rendered items came out mono even when they were
-stereo. REAPER's "mono media to mono files" render option is no longer used;
-Auto checks each rendered file's left and right instead.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/d0ba43381584056a2fed2fc313fec191b4627d7e/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/d0ba43381584056a2fed2fc313fec191b4627d7e/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/d0ba43381584056a2fed2fc313fec191b4627d7e/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.7.3" author="Jay Sabins" time="2026-11-09T03:10:09Z">
-        <changelog><![CDATA[New: a "?" button next to Settings opens the full guide on GitHub.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/4819ca846c285e1aceef58d2cf43e30511255802/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/4819ca846c285e1aceef58d2cf43e30511255802/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/4819ca846c285e1aceef58d2cf43e30511255802/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.7.4" author="Jay Sabins" time="2026-11-09T03:10:35Z">
-        <changelog><![CDATA[New: rows in the Wwise structure table are tinted with their type's color
-(the same colors as the preview's [RND], [SND]... tags).]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/9fb291a027bb3639bb8fedd34ca88f936094f26d/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/9fb291a027bb3639bb8fedd34ca88f936094f26d/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/9fb291a027bb3639bb8fedd34ca88f936094f26d/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.7.5" author="Jay Sabins" time="2026-11-09T03:25:17Z">
-        <changelog><![CDATA[Changed: the Wwise structure color-coding is now on each row's type dropdown
-(in its type's tag color instead of blue), not a tint over the whole row.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/88cb6b37aba9475e8f224174a70dd795bd5d2583/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/88cb6b37aba9475e8f224174a70dd795bd5d2583/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/88cb6b37aba9475e8f224174a70dd795bd5d2583/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.7.7" author="Jay Sabins" time="2026-11-09T03:28:11Z">
-        <changelog><![CDATA[Changed: the window's title bar is dark like the window background instead of blue.
-Changed: the Settings button is now a gear icon.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/5aa2ba2fbdd253fc489e1b9f82d56c633115213c/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/5aa2ba2fbdd253fc489e1b9f82d56c633115213c/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/5aa2ba2fbdd253fc489e1b9f82d56c633115213c/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.8.0" author="Jay Sabins" time="2026-11-09T03:31:26Z">
-        <changelog><![CDATA[New: Settings > Type colors lets you pick your own color for each Wwise type.
-Changed: every field in a Wwise structure row (type, name, $ and ...) now
-takes the row's type color. Blend Containers are purple by default and
-Switch Containers teal.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/587ccca24427ba9477d755ebf8bcb2c31e2af6b5/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/587ccca24427ba9477d755ebf8bcb2c31e2af6b5/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/587ccca24427ba9477d755ebf8bcb2c31e2af6b5/Wwise/jsabins_WwiseTransfer_core.lua</source>
-      </version>
-      <version name="1.8.1" author="Jay Sabins" time="2026-11-09T04:29:44Z">
-        <changelog><![CDATA[Changed: softer row colors in the Wwise structure table so text reads better.
-Changed: Sounds are blue by default and Actor-Mixers green.]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/9dbbd0a33b7e971ad216daad803ca66ef7355412/Wwise/jsabins_Wwise%20Transfer.lua</source>
-        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/9dbbd0a33b7e971ad216daad803ca66ef7355412/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
-        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/9dbbd0a33b7e971ad216daad803ca66ef7355412/Wwise/jsabins_WwiseTransfer_core.lua</source>
+      <version name="1.9.0" author="Jay Sabins" time="2026-11-09T14:29:38Z">
+        <changelog><![CDATA[Renamed from "Wwise Transfer" to "Wwise Tool". Your saved settings, presets
+and colors carry over automatically. If you had "Wwise Transfer" installed,
+uninstall it in ReaPack and re-add any shortcuts or toolbar buttons.]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/ef3cd2d64d87af2b35eb4a9cd421e46ede7065da/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/ef3cd2d64d87af2b35eb4a9cd421e46ede7065da/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/ReaScripts/raw/ef3cd2d64d87af2b35eb4a9cd421e46ede7065da/Wwise/jsabins_WwiseTool_core.lua</source>
       </version>
     </reapack>
   </category>
