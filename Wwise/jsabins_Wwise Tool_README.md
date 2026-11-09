@@ -1,8 +1,8 @@
-# Wwise Transfer
+# Wwise Tool
 
 Send audio from REAPER straight into Wwise, without exporting files by hand or dragging them into the Audio File Importer. Select some items, check the preview, click **Transfer to Wwise**, and the Sounds show up in your Wwise project with the container structure, property templates and Initial Delays you set up.
 
-Wwise Transfer is a free REAPER script by Jay Sabins, written in Lua with a ReaImGui window. It works in the spirit of Audiokinetic's ReaWwise, but it's a separate, independent tool. It isn't made or endorsed by Audiokinetic.
+Wwise Tool is a free REAPER script by Jay Sabins, written in Lua with a ReaImGui window. It works in the spirit of Audiokinetic's ReaWwise, but it's a separate, independent tool. It isn't made or endorsed by Audiokinetic.
 
 ## Features
 
@@ -35,13 +35,21 @@ Wwise Transfer is a free REAPER script by Jay Sabins, written in Lua with a ReaI
    ```
    https://github.com/jaysabins/reascripts/raw/main/index.xml
    ```
-3. Go to **Extensions > ReaPack > Browse packages**, search for **Wwise Transfer**, right-click it, choose **Install**, then click **Apply**.
+3. Go to **Extensions > ReaPack > Browse packages**, search for **Wwise Tool**, right-click it, choose **Install**, then click **Apply**.
 4. In the same window, search for **ReaImGui** and install it too. Restart REAPER.
 
 You now have two actions in REAPER's **Actions** list:
 
-- **Wwise Transfer** opens the window.
-- **Wwise Transfer - Quick send** transfers right away with the window's last settings.
+- **Wwise Tool** opens the window.
+- **Wwise Tool - Quick send** transfers right away with the window's last settings.
+
+### Coming from "Wwise Transfer"?
+
+Wwise Tool used to be called Wwise Transfer. It's the same script with a new name, and your settings, presets and colors carry over on their own. Because the files were renamed, ReaPack sees it as a new package:
+
+1. In **Browse packages**, install **Wwise Tool** as above.
+2. Uninstall the old **Wwise Transfer** (it shows as obsolete; right-click it and choose **Uninstall**, then **Apply**).
+3. Re-add any keyboard shortcuts or toolbar buttons you had for the old actions, pointing them at the new **Wwise Tool** actions.
 
 ## One-time Wwise setup
 
@@ -52,11 +60,11 @@ In Wwise, open **Project > User Preferences** and find the **Wwise Authoring API
 3. Leave the WAMP port at **8080** and the HTTP port at **8090**. The two must be different.
 4. Click OK and restart Wwise.
 
-If you change the HTTP port in Wwise, set the same number in Wwise Transfer's **Settings**.
+If you change the HTTP port in Wwise, set the same number in Wwise Tool's **Settings**.
 
 ## Quick start: your first transfer
 
-1. Open your Wwise project, then run **Wwise Transfer** in REAPER. The dot at the top left turns green and shows the Wwise project name.
+1. Open your Wwise project, then run **Wwise Tool** in REAPER. The dot at the top left turns green and shows the Wwise project name.
 2. In Wwise, select the object the new Sounds should go into, for example a Work Unit or an Actor-Mixer.
 3. In REAPER, select the items you want to send.
 4. Check the preview on the right. Each new object is green and marked New.
@@ -168,7 +176,7 @@ The preview updates as you change the selection in REAPER or the settings.
 
 ### Mono and stereo
 
-By default, Wwise Transfer works out on its own whether each Sound should be mono or stereo:
+By default, Wwise Tool works out on its own whether each Sound should be mono or stereo:
 
 - Edited items and folder items render in stereo. After rendering, each file is checked, and if its left and right channels are the same, it's imported as a mono file. Differences quieter than -90 dB (like dither noise) count as the same. A true stereo sound stays stereo, and the transfer summary lists those Sounds with how much left and right differ.
 - Untouched WAV items that import straight from disk keep the channels the file has.
@@ -193,7 +201,7 @@ Afterwards a summary shows the destination, the number of files imported, object
 
 ## Quick send
 
-**Wwise Transfer - Quick send** does a transfer with the window's last-used settings, without opening the window. It shows a message only when something goes wrong. Assign it a keyboard shortcut in REAPER's Actions list, then iterating on a sound is: tweak it in REAPER, press the key, play it in Wwise.
+**Wwise Tool - Quick send** does a transfer with the window's last-used settings, without opening the window. It shows a message only when something goes wrong. Assign it a keyboard shortcut in REAPER's Actions list, then iterating on a sound is: tweak it in REAPER, press the key, play it in Wwise.
 
 ## Settings
 
@@ -245,6 +253,6 @@ Found a bug or have an idea? Open an [issue](https://github.com/jaysabins/reascr
 
 ## License and trademarks
 
-Wwise Transfer is free and open source under the [MIT License](../LICENSE).
+Wwise Tool is free and open source under the [MIT License](../LICENSE).
 
 Wwise, ReaWwise and Audiokinetic are trademarks of Audiokinetic Inc. REAPER is a trademark of Cockos Incorporated. This project isn't affiliated with or endorsed by either company.

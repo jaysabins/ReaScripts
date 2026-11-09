@@ -1,11 +1,22 @@
--- Wwise Transfer: shared core (loaded by the Wwise Transfer scripts; not an action)
+-- Wwise Tool: shared core (loaded by the Wwise Tool scripts; not an action)
 -- Author: Jay Sabins
 
 local r = reaper
 local M = {}
 
-M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.7.2"
+M.EXT = "jsabins_WwiseTool"
+-- Key used before the rename from "Wwise Transfer" (up to 1.8.1). Global settings
+-- are copied over once; per-project settings are read from it when a project has
+-- none under the new key yet.
+M.OLD_EXT = "JS_WwiseTransfer"
+M.VERSION = "1.9.0"
+
+for _, key in ipairs({ "last_settings", "presets", "view" }) do
+  if r.GetExtState(M.EXT, key) == "" then
+    local old = r.GetExtState(M.OLD_EXT, key)
+    if old ~= "" then r.SetExtState(M.EXT, key, old, true) end
+  end
+end
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -236,8 +247,9 @@ local function merge_defaults(s)
 end
 
 function M.load_settings()
-  local ok, s = r.GetProjExtState(0, M.EXT, "settings")
-  if ok == 1 and s ~= "" then
+  local _, s = r.GetProjExtState(0, M.EXT, "settings")
+  if s == "" then _, s = r.GetProjExtState(0, M.OLD_EXT, "settings") end
+  if s ~= "" then
     local good, t = pcall(json.decode, s)
     if good then return merge_defaults(t) end
   end
@@ -1634,7 +1646,7 @@ function M.transfer(s, conn, on_status)
     res, ierr = M.waapi("ak.wwise.core.audio.import", args, { ["return"] = { "id", "path", "type" } })
   end
   if not res then
-    M.waapi("ak.wwise.core.undo.endGroup", { displayName = "Wwise Transfer (failed)" })
+    M.waapi("ak.wwise.core.undo.endGroup", { displayName = "Wwise Tool (failed)" })
     summary.errors[#summary.errors + 1] = "Wwise import failed: " .. tostring(ierr)
     return summary
   end
@@ -1696,7 +1708,7 @@ function M.transfer(s, conn, on_status)
     if derr then summary.errors[#summary.errors + 1] = "Initial delay: " .. tostring(derr) end
     lap("Initial delays")
   end
-  M.waapi("ak.wwise.core.undo.endGroup", { displayName = "Wwise Transfer from REAPER" })
+  M.waapi("ak.wwise.core.undo.endGroup", { displayName = "Wwise Tool from REAPER" })
 
   if s.select_in_wwise and #ids > 0 then
     status("Selecting in Wwise...")

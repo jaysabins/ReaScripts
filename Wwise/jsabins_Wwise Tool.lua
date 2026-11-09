@@ -1,14 +1,15 @@
--- @description Wwise Transfer (send REAPER audio to Wwise)
+-- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.8.1
+-- @version 1.9.0
 -- @changelog
---   Changed: softer row colors in the Wwise structure table so text reads better.
---   Changed: Sounds are blue by default and Actor-Mixers green.
+--   Renamed from "Wwise Transfer" to "Wwise Tool". Your saved settings, presets
+--   and colors carry over automatically. If you had "Wwise Transfer" installed,
+--   uninstall it in ReaPack and re-add any shortcuts or toolbar buttons.
 -- @provides
---   [main] jsabins_Wwise Transfer - Quick send.lua
---   [nomain] jsabins_WwiseTransfer_core.lua
+--   [main] jsabins_Wwise Tool - Quick send.lua
+--   [nomain] jsabins_WwiseTool_core.lua
 -- @about
---   # Wwise Transfer
+--   # Wwise Tool
 --
 --   Send audio from REAPER straight into Wwise. Built with Lua and ReaImGui.
 --
@@ -28,29 +29,29 @@
 --   - Fast: untouched WAV items import without rendering; edited items render
 --     in one pass; everything is imported in one Wwise call.
 --
---   "Wwise Transfer - Quick send" sends the selected items with the window's
+--   "Wwise Tool - Quick send" sends the selected items with the window's
 --   last settings, without opening the window. Give it a shortcut.
 --
 --   Needs ReaImGui (ReaPack > ReaTeam Extensions) and Wwise with WAAPI on:
 --   Wwise > Project > User Preferences > Enable Wwise Authoring API (HTTP port 8090).
 --
---   Full guide: https://github.com/jaysabins/reascripts/blob/main/Wwise/jsabins_Wwise%20Transfer_README.md
+--   Full guide: https://github.com/jaysabins/reascripts/blob/main/Wwise/jsabins_Wwise%20Tool_README.md
 --
 --   Not affiliated with or endorsed by Audiokinetic. Wwise is a trademark of Audiokinetic Inc.
 
 local r = reaper
 local script_dir = debug.getinfo(1, "S").source:match("^@?(.*[\\/])") or ""
-local core = dofile(script_dir .. "jsabins_WwiseTransfer_core.lua")
+local core = dofile(script_dir .. "jsabins_WwiseTool_core.lua")
 
 if not r.ImGui_GetBuiltinPath then
   r.ShowMessageBox("This script needs ReaImGui.\nInstall it from Extensions > ReaPack > Browse packages (search \"ReaImGui\"), then restart REAPER.",
-    "Wwise Transfer", 0)
+    "Wwise Tool", 0)
   return
 end
 package.path = r.ImGui_GetBuiltinPath() .. "/?.lua"
 local ImGui = require "imgui" "0.9"
 
-local ctx = ImGui.CreateContext("Wwise Transfer")
+local ctx = ImGui.CreateContext("Wwise Tool")
 
 ----------------------------------------------------------------------
 -- State
@@ -279,7 +280,7 @@ end
 ----------------------------------------------------------------------
 -- Sections
 ----------------------------------------------------------------------
-local GUIDE_URL = "https://github.com/jaysabins/reascripts/blob/main/Wwise/jsabins_Wwise%20Transfer_README.md"
+local GUIDE_URL = "https://github.com/jaysabins/reascripts/blob/main/Wwise/jsabins_Wwise%20Tool_README.md"
 
 -- Open a web page in the default browser. Uses SWS's CF_ShellExecute when it's there,
 -- otherwise the OS's own opener (explorer.exe is a window app, so no console flashes).
@@ -346,7 +347,7 @@ local function section_connection()
   local avail = ImGui.GetContentRegionAvail(ctx)
   if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
   if ImGui.Button(ctx, "?") then open_url(GUIDE_URL) end
-  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Open the Wwise Transfer guide on GitHub") end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Open the Wwise Tool guide on GitHub") end
   ImGui.SameLine(ctx)
   if gear_button("##settings", fh) then open_settings = true end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Settings: connection (Reconnect), rendering, transfer and window") end
@@ -374,7 +375,7 @@ local function apply_delays_now()
   end
   core.waapi("ak.wwise.core.undo.beginGroup")
   local n, err = core.apply_delays(todo)
-  core.waapi("ak.wwise.core.undo.endGroup", { displayName = "Wwise Transfer: set initial delays" })
+  core.waapi("ak.wwise.core.undo.endGroup", { displayName = "Wwise Tool: set initial delays" })
   if err then status_line = "Couldn't set initial delays: " .. tostring(err)
   else
     status_line = string.format("Set Initial Delay on %d object%s.", n, n == 1 and "" or "s") ..
@@ -1019,7 +1020,7 @@ local function settings_popup()
   c, pct = ImGui.SliderInt(ctx, "##opacity", math.floor(view.opacity * 100 + 0.5), 20, 100, "%d%%")
   if c then view.opacity = pct / 100 end
   if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
-  help("How see-through the Wwise Transfer window's background is. Text and buttons stay solid.\n" ..
+  help("How see-through the Wwise Tool window's background is. Text and buttons stay solid.\n" ..
     "Only works while the window is floating, not when it's docked.")
   ImGui.Dummy(ctx, 0, 6)
 
@@ -1052,14 +1053,14 @@ local function settings_popup()
     "copy this log and send it over.", #slow_log))
   ImGui.PopTextWrapPos(ctx)
   if ImGui.Button(ctx, "Copy slow-moment log") then
-    ImGui.SetClipboardText(ctx, "Wwise Transfer " .. core.VERSION .. "\n" .. table.concat(slow_log, "\n"))
+    ImGui.SetClipboardText(ctx, "Wwise Tool " .. core.VERSION .. "\n" .. table.concat(slow_log, "\n"))
   end
   ImGui.SameLine(ctx)
   if ImGui.Button(ctx, "Clear log") then slow_log = {} end
   ImGui.Dummy(ctx, 0, 6)
 
   ImGui.Separator(ctx)
-  ImGui.TextDisabled(ctx, "Wwise Transfer " .. core.VERSION)
+  ImGui.TextDisabled(ctx, "Wwise Tool " .. core.VERSION)
   ImGui.SameLine(ctx)
   local w = 80
   local avail = ImGui.GetContentRegionAvail(ctx)
@@ -1129,7 +1130,7 @@ loop_body = function()
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
-  local visible, open = ImGui.Begin(ctx, "Wwise Transfer", true)
+  local visible, open = ImGui.Begin(ctx, "Wwise Tool", true)
   if visible then
     -- Re-read the Wwise selection when coming back to this window (e.g. after clicking in Wwise).
     -- AnyWindow: our own popups (like the summary) don't count as leaving. Right after a
