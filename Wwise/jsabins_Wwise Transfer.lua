@@ -1,8 +1,9 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.7.6
+-- @version 1.7.7
 -- @changelog
 --   Changed: the window's title bar is dark like the window background instead of blue.
+--   Changed: the Settings button is now a gear icon.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -290,6 +291,29 @@ local function open_url(url)
   end
 end
 
+-- Square button with a gear drawn on it (no icon font needed).
+local function gear_button(id, size)
+  local pressed = ImGui.Button(ctx, id, size, size)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local col = ImGui.GetColor(ctx, ImGui.Col_Text)
+  local cx, cy = x1 + size / 2, y1 + size / 2
+  local ring, thick = size * 0.20, size * 0.12
+  local r_in, r_out, half_w = ring, size * 0.34, size * 0.075
+  ImGui.DrawList_AddCircle(dl, cx, cy, ring, col, 0, thick)
+  for i = 0, 7 do
+    local a = i * math.pi / 4
+    local dx, dy = math.cos(a), math.sin(a)
+    local px, py = -dy * half_w, dx * half_w
+    ImGui.DrawList_AddQuadFilled(dl,
+      cx + dx * r_in + px, cy + dy * r_in + py,
+      cx + dx * r_out + px, cy + dy * r_out + py,
+      cx + dx * r_out - px, cy + dy * r_out - py,
+      cx + dx * r_in - px, cy + dy * r_in - py, col)
+  end
+  return pressed
+end
+
 local function section_connection()
   -- Left: status dot, Wwise project and Wwise version. Right: "?" (opens the guide) and Settings (which also has Reconnect).
   -- A connection problem shows as a banner underneath.
@@ -312,15 +336,16 @@ local function section_connection()
   local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
   local spacing = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
   local qw = ImGui.CalcTextSize(ctx, "?") + pad_x * 2
-  local bw = qw + spacing + ImGui.CalcTextSize(ctx, "Settings") + pad_x * 2
+  local fh = ImGui.GetFrameHeight(ctx)
+  local bw = qw + spacing + fh
   ImGui.SameLine(ctx)
   local avail = ImGui.GetContentRegionAvail(ctx)
   if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
   if ImGui.Button(ctx, "?") then open_url(GUIDE_URL) end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Open the Wwise Transfer guide on GitHub") end
   ImGui.SameLine(ctx)
-  if ImGui.Button(ctx, "Settings") then open_settings = true end
-  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Connection (Reconnect), rendering, transfer and window") end
+  if gear_button("##settings", fh) then open_settings = true end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Settings: connection (Reconnect), rendering, transfer and window") end
 
   if not conn and conn_err then
     ImGui.PushStyleColor(ctx, ImGui.Col_ChildBg, 0x2A2213FF)
