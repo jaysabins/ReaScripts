@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.7.1"
+M.VERSION = "1.7.2"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -699,7 +699,7 @@ local function plan_selected_items(s, snap)
       entries[#entries + 1] = e
     end
   elseif #normal > 0 then
-    set_n("RENDER_SETTINGS", (s.items_via_master and 64 or 32) | (s.mono_to_mono and 16 or 0))
+    set_n("RENDER_SETTINGS", s.items_via_master and 64 or 32)
     set_n("RENDER_BOUNDSFLAG", 4)
     select_items(normal)
     -- Temporary unique take names reveal REAPER's target order.
@@ -1486,7 +1486,9 @@ local function do_render(s, plan)
     end
     if #items > 0 then
       select_items(items)
-      set_n("RENDER_SETTINGS", (s.items_via_master and 64 or 32) | (s.mono_to_mono and 16 or 0))
+      -- No "mono media to mono" flag (16): REAPER applies it to stereo items too.
+      -- Auto channels checks each rendered file instead.
+      set_n("RENDER_SETTINGS", s.items_via_master and 64 or 32)
       set_n("RENDER_BOUNDSFLAG", 4)
       note_targets(prefix .. "$item")
       M.render_command()
