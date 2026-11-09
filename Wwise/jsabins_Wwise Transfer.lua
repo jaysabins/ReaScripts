@@ -1,10 +1,8 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.7.2
+-- @version 1.7.3
 -- @changelog
---   Fix: with Auto channels on, rendered items came out mono even when they were
---   stereo. REAPER's "mono media to mono files" render option is no longer used;
---   Auto checks each rendered file's left and right instead.
+--   New: a "?" button next to Settings opens the full guide on GitHub.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -276,8 +274,24 @@ end
 ----------------------------------------------------------------------
 -- Sections
 ----------------------------------------------------------------------
+local GUIDE_URL = "https://github.com/jaysabins/reascripts/blob/main/Wwise/jsabins_Wwise%20Transfer_README.md"
+
+-- Open a web page in the default browser. Uses SWS's CF_ShellExecute when it's there,
+-- otherwise the OS's own opener (explorer.exe is a window app, so no console flashes).
+local function open_url(url)
+  if reaper.CF_ShellExecute then reaper.CF_ShellExecute(url); return end
+  local os_name = reaper.GetOS()
+  if os_name:match("^Win") then
+    reaper.ExecProcess('explorer.exe "' .. url .. '"', -2)
+  elseif os_name:match("^OSX") or os_name:match("^macOS") then
+    reaper.ExecProcess('/usr/bin/open "' .. url .. '"', -2)
+  else
+    reaper.ExecProcess('xdg-open "' .. url .. '"', -2)
+  end
+end
+
 local function section_connection()
-  -- Left: status dot, Wwise project and Wwise version. Right: Settings (which also has Reconnect).
+  -- Left: status dot, Wwise project and Wwise version. Right: "?" (opens the guide) and Settings (which also has Reconnect).
   -- A connection problem shows as a banner underneath.
   local lh = ImGui.GetFrameHeight(ctx)
   local dot = 8
@@ -296,10 +310,15 @@ local function section_connection()
   end
 
   local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
-  local bw = ImGui.CalcTextSize(ctx, "Settings") + pad_x * 2
+  local spacing = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
+  local qw = ImGui.CalcTextSize(ctx, "?") + pad_x * 2
+  local bw = qw + spacing + ImGui.CalcTextSize(ctx, "Settings") + pad_x * 2
   ImGui.SameLine(ctx)
   local avail = ImGui.GetContentRegionAvail(ctx)
   if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
+  if ImGui.Button(ctx, "?") then open_url(GUIDE_URL) end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Open the Wwise Transfer guide on GitHub") end
+  ImGui.SameLine(ctx)
   if ImGui.Button(ctx, "Settings") then open_settings = true end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Connection (Reconnect), rendering, transfer and window") end
 
