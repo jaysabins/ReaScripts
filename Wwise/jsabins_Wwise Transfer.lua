@@ -1,13 +1,10 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.7.1
+-- @version 1.7.2
 -- @changelog
---   Auto mono/stereo is more reliable on folder items: dither and noise shaping are off
---   for the transfer's own renders, and differences below -90 dB count as the same.
---   The transfer summary says which Sounds Auto kept stereo, and why.
---   Re-transferring onto an existing Sound no longer adds a second audio source with
---   the same name in Wwise; the existing source gets the new audio, and older
---   duplicates are removed.
+--   Fix: with Auto channels on, rendered items came out mono even when they were
+--   stereo. REAPER's "mono media to mono files" render option is no longer used;
+--   Auto checks each rendered file's left and right instead.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
