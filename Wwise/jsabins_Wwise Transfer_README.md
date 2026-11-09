@@ -169,7 +169,7 @@ The preview updates as you change the selection in REAPER or the settings.
 
 By default, Wwise Transfer works out on its own whether each Sound should be mono or stereo:
 
-- Edited items and folder items render in stereo. After rendering, each file is checked, and if its left and right channels are the same, it's imported as a mono file. A true stereo sound stays stereo.
+- Edited items and folder items render in stereo. After rendering, each file is checked, and if its left and right channels are the same, it's imported as a mono file. Differences quieter than -90 dB (like dither noise) count as the same. A true stereo sound stays stereo, and the transfer summary lists those Sounds with how much left and right differ.
 - Untouched WAV items that import straight from disk keep the channels the file has.
 
 This is **Auto**, and you can turn it off in Settings (**Auto channels**). With it off, files keep whatever channel count they render with.
@@ -235,7 +235,8 @@ Result: `Pistol` holds three Random Containers (`Muzzle`, `Mech`, `Tail`), each 
 - **"Wwise is busy and didn't answer in time".** Wwise is still loading or working on something. Wait a moment; the preview updates on its own.
 - **Transfer is greyed out.** Read the text next to the button. Usually nothing is selected in REAPER or in Wwise, or a structure level has no name.
 - **"A wildcard in the hierarchy didn't resolve to a single name".** A wildcard came out empty for some items, for example `$region` on an item that's outside every region.
-- **A Sound came in stereo but should be mono (or the other way).** Left and right must match almost exactly for Auto to pick mono, so a stereo effect or a panned item keeps it stereo. Click the Sound (or its container) in the preview's **Channels** column and pick Mono.
+- **Two audio sources with the same name on one Sound.** Older versions could add a second source when you transferred onto an existing Sound. From 1.7.1 the existing source gets the new audio, and the next transfer of that Sound also removes the older duplicate.
+- **A Sound came in stereo but should be mono (or the other way).** Left and right must match within -90 dB for Auto to pick mono, so a stereo effect, a stereo source file or a panned item keeps it stereo. The transfer summary says how much they differ. Click the Sound (or its container) in the preview's **Channels** column and pick Mono.
 - **The window says it needs ReaImGui.** Install ReaImGui from ReaPack and restart REAPER.
 
 Found a bug or have an idea? Open an [issue](https://github.com/jaysabins/reascripts/issues).
