@@ -1,9 +1,9 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.7.4
+-- @version 1.7.5
 -- @changelog
---   New: rows in the Wwise structure table are tinted with their type's color
---   (the same colors as the preview's [RND], [SND]... tags).
+--   Changed: the Wwise structure color-coding is now on each row's type dropdown
+--   (in its type's tag color instead of blue), not a tint over the whole row.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -451,12 +451,19 @@ local TYPE_TAGS = {
   ["Switch Container"] = "[SW]", ["Blend Container"] = "[BLD]", ["Sound SFX"] = "[SFX]", ["Sound Voice"] = "[VO]",
   ["Sound"] = "[SND]",
 }
--- Subtle row tint for the Wwise structure table: the type's tag color at low alpha.
-local ROW_TINT_ALPHA = 0x30
-local function type_row_tint(t)
+-- Color a Wwise structure row's type dropdown with its type's tag color (instead of the
+-- default blue), the same colors as the preview's [RND], [SND]... tags.
+local function with_alpha(c, a) return (c & 0xFFFFFF00) | a end
+local function push_type_colors(t)
   local c = TYPE_COLORS[t]
-  if not c then return nil end
-  return (c & 0xFFFFFF00) | ROW_TINT_ALPHA
+  if not c then return 0 end
+  ImGui.PushStyleColor(ctx, ImGui.Col_FrameBg, with_alpha(c, 0x8A))
+  ImGui.PushStyleColor(ctx, ImGui.Col_FrameBgHovered, with_alpha(c, 0xB0))
+  ImGui.PushStyleColor(ctx, ImGui.Col_FrameBgActive, with_alpha(c, 0xD0))
+  ImGui.PushStyleColor(ctx, ImGui.Col_Button, with_alpha(c, 0xB0))
+  ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered, with_alpha(c, 0xD0))
+  ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, with_alpha(c, 0xFF))
+  return 6
 end
 
 -- Per-level options popup: property template, move, remove.
@@ -507,11 +514,11 @@ local function section_hierarchy()
     for i, row in ipairs(S.rows) do
       ImGui.PushID(ctx, tostring(i))
       ImGui.TableNextRow(ctx)
-      local tint = type_row_tint(row.type)
-      if tint then ImGui.TableSetBgColor(ctx, ImGui.TableBgTarget_RowBg1, tint) end
       ImGui.TableNextColumn(ctx)
       local c
+      local npush = push_type_colors(row.type)
       c, row.type = combo("##type", core.CONTAINER_TYPES, row.type, -1)
+      ImGui.PopStyleColor(ctx, npush)
       if c then settings_changed() end
       ImGui.TableNextColumn(ctx)
       ImGui.SetNextItemWidth(ctx, -28)
@@ -530,10 +537,11 @@ local function section_hierarchy()
     -- Leaf (the Sound itself)
     ImGui.PushID(ctx, "leaf")
     ImGui.TableNextRow(ctx)
-    ImGui.TableSetBgColor(ctx, ImGui.TableBgTarget_RowBg1, type_row_tint(S.leaf.voice and "Sound Voice" or "Sound SFX"))
     ImGui.TableNextColumn(ctx)
     local c
+    local npush = push_type_colors(S.leaf.voice and "Sound Voice" or "Sound SFX")
     c, S.leaf.voice = combo("##leaftype", { { false, "Sound SFX" }, { true, "Sound Voice" } }, S.leaf.voice, -1)
+    ImGui.PopStyleColor(ctx, npush)
     if c then
       settings_changed()
       if S.leaf.voice and S.leaf.language == "" and conn and conn.languages[1] then S.leaf.language = conn.languages[1] end
