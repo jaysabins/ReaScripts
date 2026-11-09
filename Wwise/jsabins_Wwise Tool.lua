@@ -1,10 +1,10 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.9.0
+-- @version 1.10.0
 -- @changelog
---   Renamed from "Wwise Transfer" to "Wwise Tool". Your saved settings, presets
---   and colors carry over automatically. If you had "Wwise Transfer" installed,
---   uninstall it in ReaPack and re-add any shortcuts or toolbar buttons.
+--   The preview's Initial delay column now shows seconds by default (42 ms shows as
+--   0.042 s, like Wwise). Switch between seconds and milliseconds in Settings > Window,
+--   or right-click a value in that column. The choice is remembered.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -58,8 +58,9 @@ local ctx = ImGui.CreateContext("Wwise Tool")
 ----------------------------------------------------------------------
 local S = core.load_settings()
 core.http_port = S.http_port
--- Look of the window (same in every project): background opacity and hidden preview columns.
-local view = { opacity = 1.0, hidden = {}, colors = {} }
+-- Look of the window (same in every project): background opacity, hidden preview columns,
+-- type colors and the unit the preview's Initial delay column shows ("s" or "ms").
+local view = { opacity = 1.0, hidden = {}, colors = {}, delay_unit = "s" }
 do
   local v = r.GetExtState(core.EXT, "view")
   local ok, t = pcall(core.json.decode, v ~= "" and v or "{}")
@@ -69,10 +70,19 @@ do
     if type(t.colors) == "table" then
       for k, c in pairs(t.colors) do if type(c) == "number" then view.colors[k] = math.floor(c) end end
     end
+    if t.delay_unit == "ms" then view.delay_unit = "ms" end
   end
 end
 local function save_view() r.SetExtState(core.EXT, "view", core.json.encode(view), true) end
 local view_dirty = false -- type colors changed; saved once the color picker is let go
+
+-- Initial delay as text, in the unit chosen in Settings (or by right-clicking the column).
+local DELAY_UNITS = { { "s", "Seconds (0.042 s)" }, { "ms", "Milliseconds (42 ms)" } }
+local function delay_text(sec)
+  if view.delay_unit == "ms" then return string.format("%.0f ms", sec * 1000) end
+  return string.format("%.3f s", sec)
+end
+local open_delay_menu = false
 local conn, conn_err = nil, nil
 local plan = { entries = {}, errors = {} }
 local presets = core.load_presets()
@@ -755,7 +765,11 @@ local function draw_node(node, depth)
     end
   end
   ImGui.TableNextColumn(ctx)
-  if node.delay then ImGui.Text(ctx, string.format("%.0f ms", node.delay * 1000)) end
+  if node.delay then
+    ImGui.Text(ctx, delay_text(node.delay))
+    if ImGui.IsItemClicked(ctx, ImGui.MouseButton_Right) then open_delay_menu = true end
+    if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Right-click to show seconds or milliseconds") end
+  end
   if open and not is_leaf then
     for i, ch in ipairs(node.children) do
       ImGui.PushID(ctx, tostring(i))
@@ -842,6 +856,14 @@ local function section_preview()
     sync_columns()
     if tree and #tree.children > 0 then draw_node(tree, 0) end
     ImGui.EndTable(ctx)
+  end
+  if open_delay_menu then ImGui.OpenPopup(ctx, "delayunit"); open_delay_menu = false end
+  if ImGui.BeginPopup(ctx, "delayunit") then
+    ImGui.TextDisabled(ctx, "Show Initial delay in")
+    for _, u in ipairs(DELAY_UNITS) do
+      if ImGui.MenuItem(ctx, u[2], nil, view.delay_unit == u[1]) then view.delay_unit = u[1]; save_view() end
+    end
+    ImGui.EndPopup(ctx)
   end
   tree_open_all = nil
 end
@@ -1022,6 +1044,13 @@ local function settings_popup()
   if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
   help("How see-through the Wwise Tool window's background is. Text and buttons stay solid.\n" ..
     "Only works while the window is floating, not when it's docked.")
+  dim_label("Show the preview's Initial delay in")
+  do
+    local ch, u = combo("##delayunit", DELAY_UNITS, view.delay_unit, 260)
+    if ch then view.delay_unit = u; save_view() end
+  end
+  help("Seconds match what Wwise's Initial Delay field shows. You can also right-click\n" ..
+    "a value in the preview's Initial delay column to switch.")
   ImGui.Dummy(ctx, 0, 6)
 
   ImGui.SeparatorText(ctx, "Type colors")
