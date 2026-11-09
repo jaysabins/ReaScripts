@@ -1,9 +1,12 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.6.7
+-- @version 1.7.0
 -- @changelog
---   The "not connected" hint now points to Settings > Reconnect.
---   Full user guide: see the README link below.
+--   Auto mono/stereo: folder items and edited items render in stereo, and a Sound whose
+--   left and right are the same is made mono. Works for folder items too (before, they
+--   always used the render dialog's channel count).
+--   New Channels column in the preview: click it to set Mono or Stereo for one Sound,
+--   or for a container (counts for every Sound inside it).
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -22,6 +25,9 @@
 --     Originals subfolder (wildcards allowed).
 --   - Conflict handling, presets, live preview (new vs existing objects),
 --     transfer summary. One Wwise undo step per transfer.
+--   - Auto mono/stereo: a Sound whose left and right match is made mono
+--     (also for folder items). Click the preview's Channels column to force
+--     Mono or Stereo for a Sound or a whole container.
 --   - Fast: untouched WAV items import without rendering; edited items render
 --     in one pass; everything is imported in one Wwise call.
 --
@@ -563,6 +569,49 @@ local TYPE_TAGS = {
   ["Switch Container"] = "[SW]", ["Blend Container"] = "[BLD]", ["Sound SFX"] = "[SFX]", ["Sound Voice"] = "[VO]",
   ["Sound"] = "[SND]",
 }
+local CH_LABEL = { mono = "Mono", stereo = "Stereo" }
+local CH_OPTIONS = { { nil, "Auto" }, { "mono", "Mono" }, { "stereo", "Stereo" } }
+
+-- Channels column: shows Auto / Mono / Stereo; click to set an override on this Sound or
+-- container (a container's override counts for every Sound inside it).
+local function channels_cell(node)
+  local own = core.own_channel_override(S, plan, node.path)
+  local eff, from = core.channel_override(S, plan, node.path)
+  local text, col, tip
+  if own then
+    text, col = CH_LABEL[own], 0xFFFFFFFF
+    tip = node.entry and ("Set to " .. text .. " for this Sound.") or ("Set to " .. text .. " for every Sound in " .. node.name .. ".")
+  elseif eff then
+    text, col = CH_LABEL[eff], 0xCFCFCFFF
+    tip = text .. ", set on " .. from .. "."
+  elseif node.entry and node.entry.kind == "direct" then
+    local n = node.entry.src_ch
+    text = n == 1 and "Mono" or n == 2 and "Stereo" or (n and (n .. " ch")) or "As file"
+    col, tip = COLOR_DIM, "Imported as the file is on disk."
+  elseif node.entry then
+    text, col = S.mono_to_mono and "Auto" or "As rendered", COLOR_DIM
+    tip = S.mono_to_mono and "Auto: renders in stereo, then made mono if left and right are the same."
+      or "Keeps the channels it renders with (Auto channels is off in Settings)."
+  else
+    text, col, tip = "Auto", COLOR_DIM, "No override: each Sound inside decides for itself."
+  end
+  ImGui.PushStyleColor(ctx, ImGui.Col_Text, col)
+  if ImGui.Selectable(ctx, text .. "##ch", false) then ImGui.OpenPopup(ctx, "chpop") end
+  ImGui.PopStyleColor(ctx)
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, tip .. "\nClick to change.") end
+  if ImGui.BeginPopup(ctx, "chpop") then
+    dim_label(node.entry and ("Channels for " .. node.name) or ("Channels for every Sound in " .. node.name))
+    for _, o in ipairs(CH_OPTIONS) do
+      if ImGui.Selectable(ctx, o[2], own == o[1]) then
+        core.set_channel_override(S, plan, node.path, o[1])
+        settings_changed()
+      end
+    end
+    if not own and eff then dim_label("Now " .. CH_LABEL[eff] .. ", from " .. from .. ".") end
+    ImGui.EndPopup(ctx)
+  end
+end
+
 local KIND_LABEL = { direct = "Direct (no render)", render = "Render item", folder = "Render folder", project = "Render" }
 local tree_open_all = nil -- true/false for one frame to expand/collapse everything
 
@@ -612,6 +661,8 @@ local function draw_node(node, depth)
   ImGui.TableNextColumn(ctx)
   if node.entry then ImGui.TextDisabled(ctx, KIND_LABEL[node.entry.kind] or "") end
   ImGui.TableNextColumn(ctx)
+  if depth > 0 and node.path then channels_cell(node) end
+  ImGui.TableNextColumn(ctx)
   if node.entry then
     local o = core.originals_name(node.entry)
     if o then
@@ -637,6 +688,7 @@ local PREVIEW_COLS = {
   { id = "Name", stretch = true, w = 4, nohide = true },
   { id = "Status", w = 70 },
   { id = "Audio", w = 120 },
+  { id = "Channels", w = 80 },
   { id = "Originals file", stretch = true, w = 3 },
   { id = "Initial delay", w = 80 },
 }
@@ -840,8 +892,19 @@ local function settings_popup()
   c, S.folders_via_master = ImGui.Checkbox(ctx, "Render folder items through master", S.folders_via_master)
   if c then settings_changed() end
   help("An empty item on a folder track renders the folder's mix (folder + children)\nover that item's time range, named after the item.")
-  c, S.mono_to_mono = ImGui.Checkbox(ctx, "Mono items render as mono files", S.mono_to_mono)
+  c, S.mono_to_mono = ImGui.Checkbox(ctx, "Auto channels: make a Sound mono when left and right are the same", S.mono_to_mono)
   if c then settings_changed() end
+  help("Edited items and folder items render in stereo. Afterwards each file is checked:\n" ..
+    "when left and right are the same, the Sound is imported as mono; otherwise it stays stereo.\n" ..
+    "Untouched WAV files import as they are on disk.\n" ..
+    "Click a Sound or container in the preview's Channels column to force Mono or Stereo.")
+  do
+    local n = core.count_channel_overrides(S)
+    if n > 0 then
+      if ImGui.SmallButton(ctx, string.format("Clear channel overrides (%d)", n)) then S.channels = {}; settings_changed() end
+      help("Removes every Mono/Stereo choice made in the preview's Channels column (this project).")
+    end
+  end
   ImGui.Dummy(ctx, 0, 2)
   dim_label("Keep rendered files in")
   S.render_folder = input("##renderfolder", S.render_folder, "(empty: temporary, deleted after the transfer)", 380)

@@ -9,6 +9,7 @@ Wwise Transfer is a free REAPER script by Jay Sabins, written in Lua with a ReaI
 - **Fast transfers.** Untouched WAV items import straight from disk with no render. Edited items render together in one pass. Everything goes to Wwise in a single import call.
 - **Send items or renders.** Send the selected items, or everything your REAPER render settings produce (regions, stems, region matrix).
 - **Folder items.** An empty item on a folder track renders the folder's mix over that time range.
+- **Automatic mono or stereo.** Rendered Sounds whose left and right channels are the same are imported as mono, folder items included. You can force Mono or Stereo for any Sound or container from the preview.
 - **Build the Wwise structure for you.** Add levels of Actor-Mixers, Random, Sequence, Switch and Blend Containers, Virtual Folders or Work Units above each Sound, named with REAPER wildcards like `$region` and `$track`.
 - **Property templates.** Point any level at a template object in Wwise and its settings (volume, bus, attenuation, randomizers...) are pasted onto the new objects.
 - **Initial Delay from layer timing.** For layered sounds like gunshots, the gap between each layer and the first one is written into Wwise's Initial Delay.
@@ -156,12 +157,32 @@ The right side shows what the transfer will create, laid out like Wwise's Projec
 - Hover over a name to see its full Wwise path and Originals subfolder.
 - **Columns:**
   - **Audio** says whether a Sound is imported directly or rendered.
+  - **Channels** shows whether a Sound will be mono or stereo, and lets you change it. See [Mono and stereo](#mono-and-stereo).
   - **Originals file** is the file name Wwise will keep in Originals. Hover for the full path.
   - **Initial delay** shows the layer timing delays.
 - **Right-click any column header** to choose which columns you see.
 - **Expand all** opens everything. **Collapse all** folds the containers that hold Sounds, so you see the container layout on its own.
 
 The preview updates as you change the selection in REAPER or the settings.
+
+### Mono and stereo
+
+By default, Wwise Transfer works out on its own whether each Sound should be mono or stereo:
+
+- Edited items and folder items render in stereo. After rendering, each file is checked, and if its left and right channels are the same, it's imported as a mono file. A true stereo sound stays stereo.
+- Untouched WAV items that import straight from disk keep the channels the file has.
+
+This is **Auto**, and you can turn it off in Settings (**Auto channels**). With it off, files keep whatever channel count they render with.
+
+To decide yourself, click a row in the preview's **Channels** column and pick **Mono**, **Stereo** or **Auto**:
+
+- On a **Sound**, the choice is for that Sound only.
+- On a **container**, it's for every Sound inside it, so you can set a whole `Ambience` container to Stereo and a `Footsteps` container to Mono. A choice set on a Sound wins over its container's.
+- Mono on a stereo file mixes left and right together. Stereo on a mono file copies it to both sides. An untouched WAV is copied first, so the file on disk is never changed.
+
+Choices are remembered by the Sound's or container's name and place in the structure, and saved with the project. **Settings > Clear channel overrides** removes them all. This also works with **Source: Render settings**, where your own rendered files are copied before they're changed.
+
+The check only reads WAV files. With other render formats (MP3, OGG...), Auto leaves the files as they are.
 
 ### Transfer
 
@@ -180,7 +201,7 @@ Afterwards a summary shows the destination, the number of files imported, object
   - **Import untouched WAV files directly (no render).** Turn it off to always render.
   - **Render items through track FX and master.** Off renders just the items.
   - **Render folder items through master.**
-  - **Mono items render as mono files.**
+  - **Auto channels: make a Sound mono when left and right are the same.** On by default. See [Mono and stereo](#mono-and-stereo). When you've set any Mono/Stereo choices in the preview, **Clear channel overrides** appears here.
   - **Keep rendered files in:** by default, item renders go to a temporary folder that's deleted after the transfer. Type a folder to keep them, such as `Renders` or `Renders\$project`. Relative paths start in the REAPER project folder, and wildcards are allowed. A file there with the same name as a new render is replaced.
 - **Transfer:** paste templates onto all objects or new objects only, and whether imported Sounds are selected in Wwise afterwards.
 - **Window:** background opacity, for when the window is floating (not docked).
@@ -214,6 +235,7 @@ Result: `Pistol` holds three Random Containers (`Muzzle`, `Mech`, `Tail`), each 
 - **"Wwise is busy and didn't answer in time".** Wwise is still loading or working on something. Wait a moment; the preview updates on its own.
 - **Transfer is greyed out.** Read the text next to the button. Usually nothing is selected in REAPER or in Wwise, or a structure level has no name.
 - **"A wildcard in the hierarchy didn't resolve to a single name".** A wildcard came out empty for some items, for example `$region` on an item that's outside every region.
+- **A Sound came in stereo but should be mono (or the other way).** Left and right must match almost exactly for Auto to pick mono, so a stereo effect or a panned item keeps it stereo. Click the Sound (or its container) in the preview's **Channels** column and pick Mono.
 - **The window says it needs ReaImGui.** Install ReaImGui from ReaPack and restart REAPER.
 
 Found a bug or have an idea? Open an [issue](https://github.com/jaysabins/reascripts/issues).
