@@ -1,7 +1,7 @@
 -- @description Rename and number items with region name
--- @author Jay Sabins
--- @version 1.0.0
--- @changelog Initial public release
+-- @author Jay Sabins, acendan
+-- @version 1.0.1
+-- @changelog Credit acendan as co-author.
 -- @about Renames selected items to their region's name plus a two-digit counter (Region_01, Region_02...).
 
 function main()
