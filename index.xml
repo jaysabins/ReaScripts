@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="18a1d93fd0bd1fba053bb9314bcd36a36723335e">
+<index version="1" name="Jay Sabins Scripts" commit="d7567b00db3d113ef9176ee51f0892598694f5c8">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -323,6 +323,17 @@ or for a container (counts for every Sound inside it).]]></changelog>
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/18a1d93fd0bd1fba053bb9314bcd36a36723335e/Wwise/jsabins_Wwise%20Transfer.lua</source>
         <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/18a1d93fd0bd1fba053bb9314bcd36a36723335e/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
         <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/18a1d93fd0bd1fba053bb9314bcd36a36723335e/Wwise/jsabins_WwiseTransfer_core.lua</source>
+      </version>
+      <version name="1.7.1" author="Jay Sabins" time="2026-11-09T02:56:15Z">
+        <changelog><![CDATA[Auto mono/stereo is more reliable on folder items: dither and noise shaping are off
+for the transfer's own renders, and differences below -90 dB count as the same.
+The transfer summary says which Sounds Auto kept stereo, and why.
+Re-transferring onto an existing Sound no longer adds a second audio source with
+the same name in Wwise; the existing source gets the new audio, and older
+duplicates are removed.]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/d7567b00db3d113ef9176ee51f0892598694f5c8/Wwise/jsabins_Wwise%20Transfer.lua</source>
+        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/d7567b00db3d113ef9176ee51f0892598694f5c8/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/d7567b00db3d113ef9176ee51f0892598694f5c8/Wwise/jsabins_WwiseTransfer_core.lua</source>
       </version>
     </reapack>
   </category>
