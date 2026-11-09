@@ -7,7 +7,7 @@
 -------------------------------------------------------------------------------
 -- Loudness Analyzer (Selected Items) v1.0
 -------------------------------------------------------------------------------
--- By: Jay Sabins
+-- By: Jay Sabins (based on DP_Utility_LoudnessAnalyzer by Daniel Petras)
 
 --INSTRUCTIONS--
 -- Select one or more audio items in REAPER and run the script.

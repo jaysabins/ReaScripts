@@ -1,8 +1,9 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.6.6
+-- @version 1.6.7
 -- @changelog
---   Header: Settings is a text button again, and Reconnect lives only in Settings.
+--   The "not connected" hint now points to Settings > Reconnect.
+--   Full user guide: see the README link below.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -29,6 +30,10 @@
 --
 --   Needs ReaImGui (ReaPack > ReaTeam Extensions) and Wwise with WAAPI on:
 --   Wwise > Project > User Preferences > Enable Wwise Authoring API (HTTP port 8090).
+--
+--   Full guide: https://github.com/jaysabins/reascripts/blob/main/Wwise/jsabins_Wwise%20Transfer_README.md
+--
+--   Not affiliated with or endorsed by Audiokinetic. Wwise is a trademark of Audiokinetic Inc.
 
 local r = reaper
 local script_dir = debug.getinfo(1, "S").source:match("^@?(.*[\\/])") or ""
@@ -736,7 +741,7 @@ local function section_transfer()
   local problems = core.validate(S)
   -- Why the button is greyed out (first reason wins).
   local why
-  if not conn then why = "Not connected to Wwise. Click Connect at the top."
+  if not conn then why = "Not connected to Wwise. Open Settings and click Reconnect."
   elseif current_destination() == "" then
     why = S.use_wwise_selection and "Select a parent object in Wwise (or untick \"Always use the object selected in Wwise\")."
       or "Set an import destination."
