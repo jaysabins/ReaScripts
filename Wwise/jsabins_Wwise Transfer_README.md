@@ -101,7 +101,7 @@ This sets the containers that are created above each Sound, from the top down:
 - Click **+ Add level** and choose its type: Actor-Mixer, Random Container, Sequence Container, Switch Container, Blend Container, Virtual Folder, Work Unit or Physical Folder.
 - Name each level. Names can use REAPER wildcards, and the **$** button inserts one. Every item gets its own name from the wildcard, so `$region` puts each item in a container named after its region.
 - The last row is the **Sound** itself. Choose **Sound SFX** or **Sound Voice** (pick a language for Voice). In Wwise 2025.1 and later both are simply called Sound. Leave its name empty to use the item's name.
-- Each row's type dropdown is colored by its type, the same color its tag uses in the preview (orange for Random Containers, green for Sounds, and so on), so you can see the structure at a glance.
+- Each row (type dropdown, name, **$** and **...** buttons) is colored by its type, the same color its tag uses in the preview: orange for Random Containers, purple for Blend Containers, green for Sounds, and so on. You can pick your own colors in **Settings > Type colors**.
 - Each level's **...** button holds its property template plus **Move up**, **Move down** and **Remove level**. The button shows **T** when a template is set.
 - **Presets...** saves the current structure (levels, templates, Sound settings, Originals subfolder and conflict choice) under a name, and loads or deletes saved ones.
 
@@ -206,9 +206,10 @@ Afterwards a summary shows the destination, the number of files imported, object
   - **Keep rendered files in:** by default, item renders go to a temporary folder that's deleted after the transfer. Type a folder to keep them, such as `Renders` or `Renders\$project`. Relative paths start in the REAPER project folder, and wildcards are allowed. A file there with the same name as a new render is replaced.
 - **Transfer:** paste templates onto all objects or new objects only, and whether imported Sounds are selected in Wwise afterwards.
 - **Window:** background opacity, for when the window is floating (not docked).
+- **Type colors:** a color picker for each Wwise type (Actor-Mixer, Random, Sequence, Switch and Blend Containers, Virtual Folder, Work Unit, Physical Folder, Sound, Destination). These colors are used for the structure rows and the preview's tags. **Reset colors to defaults** brings back the built-in scheme.
 - **Diagnostics:** a log of moments where REAPER was slow. If something stutters, click **Copy slow-moment log** and include it in a bug report.
 
-Settings are saved with each REAPER project, and the last-used settings carry over to new projects. Presets, visible columns and window opacity apply to every project.
+Settings are saved with each REAPER project, and the last-used settings carry over to new projects. Presets, visible columns, window opacity and type colors apply to every project.
 
 ## Example setups
 

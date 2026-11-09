@@ -1,9 +1,11 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.7.7
+-- @version 1.8.0
 -- @changelog
---   Changed: the window's title bar is dark like the window background instead of blue.
---   Changed: the Settings button is now a gear icon.
+--   New: Settings > Type colors lets you pick your own color for each Wwise type.
+--   Changed: every field in a Wwise structure row (type, name, $ and ...) now
+--   takes the row's type color. Blend Containers are purple by default and
+--   Switch Containers teal.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -58,16 +60,20 @@ local ctx = ImGui.CreateContext("Wwise Transfer")
 local S = core.load_settings()
 core.http_port = S.http_port
 -- Look of the window (same in every project): background opacity and hidden preview columns.
-local view = { opacity = 1.0, hidden = {} }
+local view = { opacity = 1.0, hidden = {}, colors = {} }
 do
   local v = r.GetExtState(core.EXT, "view")
   local ok, t = pcall(core.json.decode, v ~= "" and v or "{}")
   if ok and type(t) == "table" then
     if type(t.opacity) == "number" then view.opacity = math.max(0.2, math.min(1, t.opacity)) end
     if type(t.hidden) == "table" then for k, b in pairs(t.hidden) do if b == true then view.hidden[k] = true end end end
+    if type(t.colors) == "table" then
+      for k, c in pairs(t.colors) do if type(c) == "number" then view.colors[k] = math.floor(c) end end
+    end
   end
 end
 local function save_view() r.SetExtState(core.EXT, "view", core.json.encode(view), true) end
+local view_dirty = false -- type colors changed; saved once the color picker is let go
 local conn, conn_err = nil, nil
 local plan = { entries = {}, errors = {} }
 local presets = core.load_presets()
@@ -463,23 +469,32 @@ local function section_destination()
   ImGui.Dummy(ctx, 0, 4)
 end
 
-local TYPE_COLORS = {
-  ["Destination"] = 0xC8C8C8FF, ["Work Unit"] = 0xE0C060FF, ["Virtual Folder"] = 0xB0B0B0FF,
-  ["Physical Folder"] = 0xB0B0B0FF, ["Actor-Mixer"] = 0x6FA8FFFF, ["Random Container"] = 0xF2A65AFF,
-  ["Sequence Container"] = 0xE07FD0FF, ["Switch Container"] = 0x9B8CFFFF, ["Blend Container"] = 0x5FD3C8FF,
-  ["Sound SFX"] = 0x7BD88FFF, ["Sound Voice"] = 0x7BD88FFF, ["Sound"] = 0x7BD88FFF,
+-- Default type colors. Users can pick their own in Settings > Type colors (stored in view.colors,
+-- same in every project). Sound SFX, Sound Voice and Sound share the "Sound" color.
+local DEFAULT_TYPE_COLORS = {
+  ["Actor-Mixer"] = 0x6FA8FFFF, ["Random Container"] = 0xF2A65AFF, ["Sequence Container"] = 0xE07FD0FF,
+  ["Switch Container"] = 0x5FD3C8FF, ["Blend Container"] = 0xA070FFFF, ["Virtual Folder"] = 0xB0B0B0FF,
+  ["Work Unit"] = 0xE0C060FF, ["Physical Folder"] = 0xB0B0B0FF, ["Sound"] = 0x7BD88FFF,
+  ["Destination"] = 0xC8C8C8FF,
 }
+local COLOR_TYPE_ORDER = { "Actor-Mixer", "Random Container", "Sequence Container", "Switch Container",
+  "Blend Container", "Virtual Folder", "Work Unit", "Physical Folder", "Sound", "Destination" }
+local COLOR_KEY = { ["Sound SFX"] = "Sound", ["Sound Voice"] = "Sound" }
+local function type_color(t)
+  local k = COLOR_KEY[t] or t
+  return view.colors[k] or DEFAULT_TYPE_COLORS[k]
+end
 local TYPE_TAGS = {
   ["Destination"] = "[DEST]", ["Work Unit"] = "[WU]", ["Virtual Folder"] = "[VF]", ["Physical Folder"] = "[PF]",
   ["Actor-Mixer"] = "[AM]", ["Random Container"] = "[RND]", ["Sequence Container"] = "[SEQ]",
   ["Switch Container"] = "[SW]", ["Blend Container"] = "[BLD]", ["Sound SFX"] = "[SFX]", ["Sound Voice"] = "[VO]",
   ["Sound"] = "[SND]",
 }
--- Color a Wwise structure row's type dropdown with its type's tag color (instead of the
--- default blue), the same colors as the preview's [RND], [SND]... tags.
+-- Color a Wwise structure row's fields (type dropdown, name, $ and ... buttons) with its type's
+-- tag color instead of the default blue, the same colors as the preview's [RND], [SND]... tags.
 local function with_alpha(c, a) return (c & 0xFFFFFF00) | a end
 local function push_type_colors(t)
-  local c = TYPE_COLORS[t]
+  local c = type_color(t)
   if not c then return 0 end
   ImGui.PushStyleColor(ctx, ImGui.Col_FrameBg, with_alpha(c, 0x8A))
   ImGui.PushStyleColor(ctx, ImGui.Col_FrameBgHovered, with_alpha(c, 0xB0))
@@ -488,6 +503,12 @@ local function push_type_colors(t)
   ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered, with_alpha(c, 0xD0))
   ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, with_alpha(c, 0xFF))
   return 6
+end
+local row_tint = { type = nil, n = 0 }
+local function push_row_colors(t) row_tint.type = t; row_tint.n = push_type_colors(t) end
+local function pop_row_colors()
+  if row_tint.n > 0 then ImGui.PopStyleColor(ctx, row_tint.n) end
+  row_tint.type, row_tint.n = nil, 0
 end
 
 -- Per-level options popup: property template, move, remove.
@@ -498,6 +519,8 @@ local function level_options(id, get_t, set_t, row_index)
     ImGui.SetTooltip(ctx, has and ("Property template: " .. get_t()) or "Property template, move, remove")
   end
   local action
+  local tinted = row_tint.type
+  pop_row_colors() -- the popup keeps the normal colors
   if ImGui.BeginPopup(ctx, "lvlopt" .. id) then
     dim_label("Property template (optional)")
     ImGui.SetNextItemWidth(ctx, 320)
@@ -518,6 +541,7 @@ local function level_options(id, get_t, set_t, row_index)
     end
     ImGui.EndPopup(ctx)
   end
+  if tinted then push_row_colors(tinted) end
   return action
 end
 
@@ -540,10 +564,9 @@ local function section_hierarchy()
       ImGui.TableNextRow(ctx)
       ImGui.TableNextColumn(ctx)
       local c
-      local npush = push_type_colors(row.type)
+      push_row_colors(row.type)
       c, row.type = combo("##type", core.CONTAINER_TYPES, row.type, -1)
-      ImGui.PopStyleColor(ctx, npush)
-      if c then settings_changed() end
+      if c then settings_changed(); pop_row_colors(); push_row_colors(row.type) end
       ImGui.TableNextColumn(ctx)
       ImGui.SetNextItemWidth(ctx, -28)
       local ch, v = ImGui.InputTextWithHint(ctx, "##name", "e.g. $region", row.name or "")
@@ -555,6 +578,7 @@ local function section_hierarchy()
       if act == "up" and i > 1 then move = { i, i - 1 }
       elseif act == "down" and i < #S.rows then move = { i, i + 1 }
       elseif act == "remove" then remove = i end
+      pop_row_colors()
       ImGui.PopID(ctx)
     end
 
@@ -563,9 +587,8 @@ local function section_hierarchy()
     ImGui.TableNextRow(ctx)
     ImGui.TableNextColumn(ctx)
     local c
-    local npush = push_type_colors(S.leaf.voice and "Sound Voice" or "Sound SFX")
+    push_row_colors("Sound")
     c, S.leaf.voice = combo("##leaftype", { { false, "Sound SFX" }, { true, "Sound Voice" } }, S.leaf.voice, -1)
-    ImGui.PopStyleColor(ctx, npush)
     if c then
       settings_changed()
       if S.leaf.voice and S.leaf.language == "" and conn and conn.languages[1] then S.leaf.language = conn.languages[1] end
@@ -577,6 +600,7 @@ local function section_hierarchy()
     wildcard_menu("leaf", function(w) S.leaf.name = S.leaf.name .. w end)
     ImGui.TableNextColumn(ctx)
     level_options("leaf", function() return S.leaf.template end, function(t) S.leaf.template = t end, nil)
+    pop_row_colors()
     ImGui.PopID(ctx)
     ImGui.EndTable(ctx)
 
@@ -699,7 +723,7 @@ local function draw_node(node, depth)
       ImGui.SetNextItemOpen(ctx, tree_open_all or not holds_sounds, ImGui.Cond_Always)
     end
   end
-  ImGui.PushStyleColor(ctx, ImGui.Col_Text, TYPE_COLORS[node.type] or 0xFFFFFFFF)
+  ImGui.PushStyleColor(ctx, ImGui.Col_Text, type_color(node.type) or 0xFFFFFFFF)
   local tag = TYPE_TAGS[node.type] or "[?]"
   local open = ImGui.TreeNodeEx(ctx, node.path or node.name, tag, flags)
   ImGui.PopStyleColor(ctx)
@@ -999,6 +1023,29 @@ local function settings_popup()
   if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
   help("How see-through the Wwise Transfer window's background is. Text and buttons stay solid.\n" ..
     "Only works while the window is floating, not when it's docked.")
+  ImGui.Dummy(ctx, 0, 6)
+
+  ImGui.SeparatorText(ctx, "Type colors")
+  dim_label("Colors for the Wwise structure rows and the preview's type tags.")
+  local color_flags = ImGui.ColorEditFlags_NoInputs | ImGui.ColorEditFlags_NoAlpha
+  if ImGui.BeginTable(ctx, "typecolors", 2) then
+    for i, k in ipairs(COLOR_TYPE_ORDER) do
+      if i % 2 == 1 then ImGui.TableNextRow(ctx) end
+      ImGui.TableNextColumn(ctx)
+      local cur = type_color(k)
+      local ch, rgb = ImGui.ColorEdit3(ctx, k .. "##tc" .. k, cur >> 8, color_flags)
+      if ch then
+        local rgba = ((rgb & 0xFFFFFF) << 8) | 0xFF
+        view.colors[k] = (rgba ~= DEFAULT_TYPE_COLORS[k]) and rgba or nil
+        view_dirty = true
+      end
+    end
+    ImGui.EndTable(ctx)
+  end
+  if next(view.colors) and ImGui.SmallButton(ctx, "Reset colors to defaults") then
+    view.colors = {}; view_dirty = true
+  end
+  if view_dirty and not ImGui.IsAnyItemActive(ctx) then save_view(); view_dirty = false end
   ImGui.Dummy(ctx, 0, 6)
 
   ImGui.SeparatorText(ctx, "Diagnostics")
