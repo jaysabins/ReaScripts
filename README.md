@@ -24,7 +24,7 @@ https://github.com/jaysabins/reascripts/raw/main/index.xml
 ## Scripts
 
 **Batch Tools**
-- **Folder Batch Processor**: batch-renders multi-language VO from a structured project folder (`_Raw` to `_Processed`), with per-language overrides and CSV logging. Requires SWS and ReaImGui.
+- **Folder Batch Processor**: batch-renders multi-language VO from a structured project folder (`_Raw` to `_Processed`), with per-language overrides and CSV logging. Requires SWS and ReaImGui. Written with Daniel Petras.
 
 **FX**
 - **Screenshot track FX chain to Docs folder**: saves a PNG of every plugin on the selected track, numbered in chain order, into `Docs\<Track name>` in the project folder. Requires js_ReaScriptAPI.
@@ -34,8 +34,8 @@ https://github.com/jaysabins/reascripts/raw/main/index.xml
 - **Measure timing between selected layers**: lists every selected layer sorted by position with its offset from the first layer and from the previous one, in ms and seconds, ready to type into Wwise's Initial Delay. Copies the result to the clipboard when SWS is installed. Based on a script by bfieser.
 
 **Loudness**
-- **Loudness Analyzer (language folders)**: measures LUFS and RMS across the project's `_Raw` language folders and writes a CSV. Requires SWS.
-- **Loudness Analyzer (selected items)**: measures LUFS, true peak and RMS of selected items without touching the project. Requires SWS.
+- **Loudness Analyzer (language folders)**: measures LUFS and RMS across the project's `_Raw` language folders and writes a CSV. Requires SWS. Based on a script by Daniel Petras.
+- **Loudness Analyzer (selected items)**: measures LUFS, true peak and RMS of selected items without touching the project. Requires SWS. Based on a script by Daniel Petras.
 
 **Rename**
 - **Name items by track and number them per region**: renames items to their track name plus a counter (`Footsteps_01`, `Footsteps_02`...), restarting at 01 in each region and counting each track separately. Works on folder/empty items too.
@@ -45,7 +45,7 @@ https://github.com/jaysabins/reascripts/raw/main/index.xml
 - **List installed plugins**: writes a text list of every plugin REAPER knows about, grouped by format.
 
 **Wwise**
-- **Wwise Transfer**: sends audio from REAPER straight into Wwise over WAAPI, in the spirit of ReaWwise but built with Lua and ReaImGui. Source is the selected items or your render settings. It builds the Wwise hierarchy above each Sound from wildcards like `$region` and `$track`, with property templates, conflict handling, presets, and one Wwise undo per transfer. Can set Initial Delay from the timing between selected layers. The preview shows each object's status, Originals file name and Initial Delay, and you right-click a column header to choose columns. You can keep item renders in a folder of your choice (wildcards allowed), and Settings also has the window's opacity. Installs a second action, **Wwise Transfer - Quick send**, that transfers with the last settings without opening the window. Requires ReaImGui and Wwise with WAAPI enabled (see its README for the Wwise settings).
+- **Wwise Transfer**: sends audio from REAPER straight into Wwise over WAAPI, in the spirit of ReaWwise but built with Lua and ReaImGui. Source is the selected items or your render settings. It builds the Wwise hierarchy above each Sound from wildcards like `$region` and `$track`, with property templates, conflict handling, presets, and one Wwise undo per transfer. Can set Initial Delay from the timing between selected layers. The preview shows each object's status, Originals file name and Initial Delay, and you right-click a column header to choose columns. You can keep item renders in a folder of your choice (wildcards allowed), and Settings also has the window's opacity. Installs a second action, **Wwise Transfer - Quick send**, that transfers with the last settings without opening the window. Requires ReaImGui and Wwise with WAAPI enabled. Full guide: [Wwise Transfer README](Wwise/jsabins_Wwise%20Transfer_README.md).
 
 Scripts with more to explain have their own README in their folder.
 
@@ -55,4 +55,8 @@ Found a bug or have an idea? Open an [issue](https://github.com/jaysabins/reascr
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Free to use, change and share.
+
+## Trademarks
+
+Wwise, ReaWwise and Audiokinetic are trademarks of Audiokinetic Inc. REAPER is a trademark of Cockos Incorporated. These scripts are independent and aren't affiliated with or endorsed by either company. Wwise Transfer contains no code from ReaWwise or the Wwise SDK.
