@@ -1,9 +1,8 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.7.5
+-- @version 1.7.6
 -- @changelog
---   Changed: the Wwise structure color-coding is now on each row's type dropdown
---   (in its type's tag color instead of blue), not a tint over the whole row.
+--   Changed: the window's title bar is dark like the window background instead of blue.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -1055,6 +1054,11 @@ loop_body = function()
   -- Always set it: ImGui's default window background is only ~94% opaque, so 100% must be explicit.
   ImGui.SetNextWindowBgAlpha(ctx, view.opacity)
   ImGui.PushStyleColor(ctx, ImGui.Col_PopupBg, 0x141414FF) -- solid popups and Settings/summary windows
+  -- Title bar in the window's own dark background instead of ImGui's default blue.
+  local title_bg = 0x0F0F0F00 | math.floor(view.opacity * 255 + 0.5)
+  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, title_bg)
+  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
+  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
   local visible, open = ImGui.Begin(ctx, "Wwise Transfer", true)
   if visible then
     -- Re-read the Wwise selection when coming back to this window (e.g. after clicking in Wwise).
@@ -1086,7 +1090,7 @@ loop_body = function()
     settings_popup()
     ImGui.End(ctx)
   end
-  ImGui.PopStyleColor(ctx)
+  ImGui.PopStyleColor(ctx, 4)
   return open
 end
 
