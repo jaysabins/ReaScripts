@@ -1,10 +1,15 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.10.0
+-- @version 1.11.0
 -- @changelog
---   The preview's Initial delay column now shows seconds by default (42 ms shows as
---   0.042 s, like Wwise). Switch between seconds and milliseconds in Settings > Window,
---   or right-click a value in that column. The choice is remembered.
+--   Presets are now split in two, so loading one only changes what you meant to change:
+--   - Structure presets (button under Wwise structure): just the levels, names, templates
+--     and the Sound row.
+--   - Settings presets (button at the top of the left side): everything else, such as
+--     source, destination, Originals subfolder, conflict choice, Initial Delay, and the
+--     render and transfer options in Settings.
+--   Your existing presets carry over: each one becomes a structure preset and a settings
+--   preset with the same name.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -21,7 +26,7 @@
 --     Work Units) named with REAPER wildcards like $region, $track, $item.
 --   - Property templates per level, Sound SFX or Sound Voice (with language),
 --     Originals subfolder (wildcards allowed).
---   - Conflict handling, presets, live preview (new vs existing objects),
+--   - Conflict handling, structure and settings presets, live preview (new vs existing objects),
 --     transfer summary. One Wwise undo step per transfer.
 --   - Auto mono/stereo: a Sound whose left and right match is made mono
 --     (also for folder items). Click the preview's Channels column to force
@@ -85,8 +90,9 @@ end
 local open_delay_menu = false
 local conn, conn_err = nil, nil
 local plan = { entries = {}, errors = {} }
-local presets = core.load_presets()
-local preset_name = ""
+-- Two kinds of presets: the Wwise structure only, and the rest of the settings.
+local presets = { structure = core.load_presets("structure"), settings = core.load_presets("settings") }
+local preset_name = { structure = "", settings = "" }
 local selected_row = 0           -- 0 = leaf
 local summary = nil
 local status_line = ""
@@ -395,6 +401,41 @@ end
 
 local function dim_label(text) ImGui.TextColored(ctx, COLOR_DIM, text) end
 
+-- "Presets..." button and popup for one kind of preset ("structure" or "settings").
+local function presets_button(kind, label, tip)
+  local list = presets[kind]
+  local pop = "presets_" .. kind
+  if ImGui.Button(ctx, label) then ImGui.OpenPopup(ctx, pop) end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, tip) end
+  if ImGui.BeginPopup(ctx, pop) then
+    ImGui.Text(ctx, "Load")
+    local names = {}
+    for n in pairs(list) do names[#names + 1] = n end
+    table.sort(names)
+    if #names == 0 then ImGui.TextDisabled(ctx, "  (no presets yet)") end
+    for _, n in ipairs(names) do
+      if ImGui.Selectable(ctx, "  " .. n, false, ImGui.SelectableFlags_DontClosePopups) then
+        core.apply_preset(kind, S, list[n]); preset_name[kind] = n; settings_changed()
+        if kind == "settings" then sel_poll_at = 0; forget_existing() end
+        ImGui.CloseCurrentPopup(ctx)
+      end
+    end
+    ImGui.Separator(ctx)
+    ImGui.SetNextItemWidth(ctx, 180)
+    local _, v = ImGui.InputTextWithHint(ctx, "##pname", "preset name", preset_name[kind])
+    preset_name[kind] = v
+    ImGui.SameLine(ctx)
+    if ImGui.Button(ctx, "Save") and v ~= "" then
+      list[v] = core.preset_from(kind, S); core.save_presets(kind, list)
+    end
+    ImGui.SameLine(ctx)
+    if ImGui.Button(ctx, "Delete") and list[v] then
+      list[v] = nil; core.save_presets(kind, list)
+    end
+    ImGui.EndPopup(ctx)
+  end
+end
+
 local function section_source()
   ImGui.SeparatorText(ctx, "Source")
   local changed
@@ -629,37 +670,19 @@ local function section_hierarchy()
     if c then settings_changed() end
   end
 
-  -- Presets
+  -- Same line when it fits, otherwise on the next one.
+  local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
+  local need = ImGui.CalcTextSize(ctx, "Structure presets...") + pad_x * 2 + 20
   ImGui.SameLine(ctx)
-  ImGui.Dummy(ctx, 12, 0)
-  ImGui.SameLine(ctx)
-  if ImGui.Button(ctx, "Presets...") then ImGui.OpenPopup(ctx, "presets") end
-  if ImGui.BeginPopup(ctx, "presets") then
-    ImGui.Text(ctx, "Load")
-    local names = {}
-    for n in pairs(presets) do names[#names + 1] = n end
-    table.sort(names)
-    if #names == 0 then ImGui.TextDisabled(ctx, "  (no presets yet)") end
-    for _, n in ipairs(names) do
-      if ImGui.Selectable(ctx, "  " .. n, false, ImGui.SelectableFlags_DontClosePopups) then
-        core.apply_preset(S, presets[n]); preset_name = n; settings_changed()
-        ImGui.CloseCurrentPopup(ctx)
-      end
-    end
-    ImGui.Separator(ctx)
-    ImGui.SetNextItemWidth(ctx, 180)
-    local _, v = ImGui.InputTextWithHint(ctx, "##pname", "preset name", preset_name)
-    preset_name = v
+  if ImGui.GetContentRegionAvail(ctx) >= need then
+    ImGui.Dummy(ctx, 12, 0)
     ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Save") and preset_name ~= "" then
-      presets[preset_name] = core.preset_from(S); core.save_presets(presets)
-    end
-    ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Delete") and presets[preset_name] then
-      presets[preset_name] = nil; core.save_presets(presets)
-    end
-    ImGui.EndPopup(ctx)
+  else
+    ImGui.NewLine(ctx)
   end
+  presets_button("structure", "Structure presets...",
+    "Save or load just the Wwise structure (levels, names, templates and the Sound row).\n" ..
+    "Loading one leaves your other settings as they are.")
 end
 
 
@@ -1175,6 +1198,10 @@ loop_body = function()
     local avail_w = ImGui.GetContentRegionAvail(ctx)
     local left_w = math.floor(math.max(340, math.min(440, avail_w * 0.42)))
     if ImGui.BeginChild(ctx, "setup", left_w, 0, ImGui.ChildFlags_Border) then
+      presets_button("settings", "Settings presets...",
+        "Save or load everything except the Wwise structure: source, destination, Originals\n" ..
+        "subfolder, conflict choice, Initial Delay, and the render and transfer options in Settings.\n" ..
+        "Loading one leaves the Wwise structure as it is.")
       section_source()
       section_destination()
       section_hierarchy()
