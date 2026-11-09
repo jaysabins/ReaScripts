@@ -101,7 +101,7 @@ This sets the containers that are created above each Sound, from the top down:
 - Click **+ Add level** and choose its type: Actor-Mixer, Random Container, Sequence Container, Switch Container, Blend Container, Virtual Folder, Work Unit or Physical Folder.
 - Name each level. Names can use REAPER wildcards, and the **$** button inserts one. Every item gets its own name from the wildcard, so `$region` puts each item in a container named after its region.
 - The last row is the **Sound** itself. Choose **Sound SFX** or **Sound Voice** (pick a language for Voice). In Wwise 2025.1 and later both are simply called Sound. Leave its name empty to use the item's name.
-- Each row is tinted with its type's color, the same one its tag uses in the preview (orange for Random Containers, green for Sounds, and so on), so you can see the structure at a glance.
+- Each row's type dropdown is colored by its type, the same color its tag uses in the preview (orange for Random Containers, green for Sounds, and so on), so you can see the structure at a glance.
 - Each level's **...** button holds its property template plus **Move up**, **Move down** and **Remove level**. The button shows **T** when a template is set.
 - **Presets...** saves the current structure (levels, templates, Sound settings, Originals subfolder and conflict choice) under a name, and loads or deletes saved ones.
 
