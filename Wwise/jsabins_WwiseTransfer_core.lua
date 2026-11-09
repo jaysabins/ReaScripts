@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.7.0"
+M.VERSION = "1.7.1"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -557,7 +557,7 @@ end
 -- pattern and read RENDER_TARGETS back (no render happens).
 ----------------------------------------------------------------------
 local NUM_KEYS = { "RENDER_SETTINGS", "RENDER_BOUNDSFLAG", "RENDER_STARTPOS", "RENDER_ENDPOS",
-                   "RENDER_ADDTOPROJ", "RENDER_TAILFLAG", "RENDER_CHANNELS" }
+                   "RENDER_ADDTOPROJ", "RENDER_TAILFLAG", "RENDER_CHANNELS", "RENDER_DITHER" }
 local STR_KEYS = { "RENDER_FILE", "RENDER_PATTERN", "RENDER_FORMAT" }
 local WAV24 = "ZXZhdxgAAQ==" -- WAV, 24-bit PCM
 
@@ -1210,25 +1210,32 @@ local function frame_pattern(bytes)
   return one .. one
 end
 
--- Do left and right of a stereo file match? Identical samples count, and so do tiny
--- differences (at most 2 steps of the file's bit depth, e.g. from dither, which is
--- below -130 dB at 24-bit). Returns true/false.
+-- Do left and right of a stereo file match? Identical samples count, and so do
+-- differences too small to hear: at most -90 dBFS (or 2 steps at 16-bit and below),
+-- e.g. from dither, noise shaping or rounding. Returns true/false and, when they
+-- don't match, the level of the first bigger difference in dBFS.
+M.LR_MATCH_DB = -90
 function M.wav_lr_match(path, info)
   if info.chans ~= 2 then return false end
   local pat = frame_pattern(info.bytes)
   local sf = SAMPLE_FMT[info.tag][info.bytes]
   local two = sf .. sf:gsub("^<", "")
-  local tol = info.tag == 3 and 2 ^ -20 or 2
-  return each_block(path, info, function(b)
+  local full = info.tag == 3 and 1 or (info.bytes == 1 and 128 or 2 ^ (info.bytes * 8 - 1))
+  local tol = math.max(full * 10 ^ (M.LR_MATCH_DB / 20), info.tag == 3 and 0 or 2)
+  local diff
+  local ok = each_block(path, info, function(b)
     local L = b:gsub(pat, "%1")
     local R = b:gsub(pat, "%2")
     if L == R then return true end
     for i = 1, #b, info.align do
       local a, c = string.unpack(two, b, i)
-      if math.abs(a - c) > tol then return false end
+      local d = math.abs(a - c)
+      if d > tol then diff = 20 * math.log(d / full, 10); return false end
     end
     return true
-  end) == true
+  end)
+  if ok == nil then return false end
+  return ok, diff
 end
 
 -- Write `src` as a mono or stereo file at `dest` (may be the same path). Mono keeps the
@@ -1296,16 +1303,22 @@ end
 local function apply_channels(s, plan, summary)
   local copydir
   local made_mono, changed = 0, 0
+  local kept = {}
   for _, e in ipairs(plan.entries) do
     local want = e.file and not e.unresolved and wanted_channels(s, plan, e)
     if want then
       local info, ierr = M.wav_info(e.file)
       local target, lr_match
       if not info then
-        if want ~= "auto" then summary.errors[#summary.errors + 1] = "Couldn't make \"" .. e.name .. "\" " .. want .. ": " .. tostring(ierr) .. "." end
+        if want ~= "auto" then summary.errors[#summary.errors + 1] = "Couldn't make \"" .. e.name .. "\" " .. want .. ": " .. tostring(ierr) .. "."
+        else kept[#kept + 1] = e.name .. ": couldn't check it (" .. tostring(ierr) .. ")" end
       elseif info.chans == 2 and (want == "mono" or want == "auto") then
-        lr_match = M.wav_lr_match(e.file, info)
-        if want == "mono" or lr_match then target = 1 end
+        local diff
+        lr_match, diff = M.wav_lr_match(e.file, info)
+        if want == "mono" or lr_match then target = 1
+        else kept[#kept + 1] = e.name .. (diff and string.format(": left and right differ (by %.0f dB)", diff) or ": left and right differ") end
+      elseif want == "auto" and info.chans ~= 1 then
+        kept[#kept + 1] = e.name .. ": " .. info.chans .. " channels"
       elseif info.chans == 1 and want == "stereo" then
         target = 2
       end
@@ -1332,8 +1345,67 @@ local function apply_channels(s, plan, summary)
     end
   end
   summary.made_mono, summary.channel_changes = made_mono, changed
+  summary.kept_stereo = kept
 end
 M.apply_channels = apply_channels
+
+----------------------------------------------------------------------
+-- Audio sources of existing Sounds
+----------------------------------------------------------------------
+-- Re-importing onto an existing Sound can make Wwise add a second audio source with
+-- the same name instead of replacing the first. So: name the existing source in the
+-- import path (Wwise then replaces its audio), and afterwards delete any older source
+-- that a new one with the same name has taken over from.
+
+-- { [lowercase Sound path] = { { id =, name = }, ... } } for the given Sound paths.
+function M.sound_sources(paths, timeout)
+  local out = {}
+  if #paths == 0 then return out end
+  local res = M.waapi("ak.wwise.core.object.get",
+    { from = { path = paths }, transform = { { select = { "children" } }, { where = { "type:isIn", json.array({ "AudioFileSource" }) } } } },
+    { ["return"] = { "id", "name", "path" } }, timeout)
+  if not res then return nil end
+  for _, o in ipairs(res["return"] or {}) do
+    local parent = o.path and o.path:match("^(.*)\\[^\\]+$")
+    if parent and o.id then
+      local k = parent:lower()
+      out[k] = out[k] or {}
+      table.insert(out[k], { id = o.id, name = o.name or "" })
+    end
+  end
+  return out
+end
+
+-- Source name to put in the import path for an existing Sound.
+local function existing_source_name(list, file)
+  if not list or #list == 0 then return nil end
+  local want = basename_noext(file):lower()
+  for _, src in ipairs(list) do if src.name:lower() == want then return src.name end end
+  if #list == 1 then return list[1].name end
+  return nil
+end
+
+-- Delete older sources that a newer one with the same name replaced. Returns count.
+local function remove_replaced_sources(before, after)
+  local del = json.array()
+  for k, now in pairs(after or {}) do
+    local old = before[k]
+    if old then
+      local was = {}
+      for _, src in ipairs(old) do was[src.id] = src end
+      local new_names = {}
+      for _, src in ipairs(now) do if not was[src.id] then new_names[src.name:lower()] = true end end
+      for _, src in ipairs(now) do
+        if was[src.id] and new_names[src.name:lower()] then del[#del + 1] = src.id end
+      end
+    end
+  end
+  local n = 0
+  for _, id in ipairs(del) do
+    if M.waapi("ak.wwise.core.object.delete", { object = id }) then n = n + 1 end
+  end
+  return n
+end
 
 ----------------------------------------------------------------------
 -- Transfer
@@ -1385,6 +1457,9 @@ local function do_render(s, plan)
     -- channels (more if REAPER's render settings ask for more), then fix each file afterwards.
     if s.mono_to_mono or M.count_channel_overrides(s) > 0 then
       set_n("RENDER_CHANNELS", math.max(2, get_n("RENDER_CHANNELS")))
+      -- Dither and noise shaping add different noise to left and right, so a mono
+      -- sound would no longer look mono. Our 24-bit renders don't need them.
+      set_n("RENDER_DITHER", 0)
     end
 
     -- Where REAPER will write each token's file (the folder setting can contain wildcards).
@@ -1497,7 +1572,25 @@ function M.transfer(s, conn, on_status)
     summary.notes[#summary.notes + 1] = string.format("Auto channels: %d Sound%s made mono (left and right were the same).",
       summary.made_mono, summary.made_mono == 1 and "" or "s")
   end
+  if #(summary.kept_stereo or {}) > 0 then
+    summary.notes = summary.notes or {}
+    local k = summary.kept_stereo
+    local shown = {}
+    for i = 1, math.min(#k, 8) do shown[i] = k[i] end
+    summary.notes[#summary.notes + 1] = "Auto channels kept these as they were: " .. table.concat(shown, "; ") ..
+      (#k > 8 and string.format("; and %d more", #k - 8) or "") .. "."
+  end
   if (summary.channel_changes or 0) > 0 then lap("Mono/stereo") end
+
+  -- Audio sources the existing Sounds have now (see "Audio sources of existing Sounds").
+  local source_paths, sources_before = json.array(), nil
+  -- SFX only: a Voice Sound has one source per language, often with the same name.
+  if s.conflict == "useExisting" and not s.leaf.voice then
+    for _, e in ipairs(plan.entries) do
+      if e.exists and e.plain and e.file and not e.unresolved then source_paths[#source_paths + 1] = e.plain end
+    end
+    if #source_paths > 0 then sources_before = M.sound_sources(source_paths) end
+  end
 
   local imports = json.array()
   for _, e in ipairs(plan.entries) do
@@ -1507,6 +1600,8 @@ function M.transfer(s, conn, on_status)
       summary.errors[#summary.errors + 1] = "Skipped \"" .. e.name .. "\": it didn't render."
     else
       local im = { audioFile = e.file, objectPath = e.path }
+      local src = sources_before and e.exists and existing_source_name(sources_before[e.plain:lower()], e.file)
+      if src then im.objectPath = e.path .. "\\<AudioFileSource>" .. src end
       if e.origsub and e.origsub ~= "" then im.originalsSubFolder = e.origsub end
       imports[#imports + 1] = im
     end
@@ -1533,6 +1628,13 @@ function M.transfer(s, conn, on_status)
     return summary
   end
   summary.imported = #imports
+  if sources_before then
+    local n = remove_replaced_sources(sources_before, M.sound_sources(source_paths) or {})
+    if n > 0 then
+      summary.notes = summary.notes or {}
+      summary.notes[#summary.notes + 1] = string.format("Removed %d older duplicate audio source%s.", n, n == 1 and "" or "s")
+    end
+  end
   lap("Wwise import")
 
   local ids = json.array()
