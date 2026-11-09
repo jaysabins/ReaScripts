@@ -168,7 +168,7 @@ The right side shows what the transfer will create, laid out like Wwise's Projec
   - **Audio** says whether a Sound is imported directly or rendered.
   - **Channels** shows whether a Sound will be mono or stereo, and lets you change it. See [Mono and stereo](#mono-and-stereo).
   - **Originals file** is the file name Wwise will keep in Originals. Hover for the full path.
-  - **Initial delay** shows the layer timing delays.
+  - **Initial delay** shows the layer timing delays, in seconds by default (0.042 s, as Wwise shows it). Right-click a value to switch to milliseconds (42 ms), or change it in **Settings > Window**.
 - **Right-click any column header** to choose which columns you see.
 - **Expand all** opens everything. **Collapse all** folds the containers that hold Sounds, so you see the container layout on its own.
 
@@ -213,11 +213,11 @@ Afterwards a summary shows the destination, the number of files imported, object
   - **Auto channels: make a Sound mono when left and right are the same.** On by default. See [Mono and stereo](#mono-and-stereo). When you've set any Mono/Stereo choices in the preview, **Clear channel overrides** appears here.
   - **Keep rendered files in:** by default, item renders go to a temporary folder that's deleted after the transfer. Type a folder to keep them, such as `Renders` or `Renders\$project`. Relative paths start in the REAPER project folder, and wildcards are allowed. A file there with the same name as a new render is replaced.
 - **Transfer:** paste templates onto all objects or new objects only, and whether imported Sounds are selected in Wwise afterwards.
-- **Window:** background opacity, for when the window is floating (not docked).
+- **Window:** background opacity, for when the window is floating (not docked), and whether the preview's Initial delay column shows seconds or milliseconds.
 - **Type colors:** a color picker for each Wwise type (Actor-Mixer, Random, Sequence, Switch and Blend Containers, Virtual Folder, Work Unit, Physical Folder, Sound, Destination). These colors are used for the structure rows and the preview's tags. **Reset colors to defaults** brings back the built-in scheme.
 - **Diagnostics:** a log of moments where REAPER was slow. If something stutters, click **Copy slow-moment log** and include it in a bug report.
 
-Settings are saved with each REAPER project, and the last-used settings carry over to new projects. Presets, visible columns, window opacity and type colors apply to every project.
+Settings are saved with each REAPER project, and the last-used settings carry over to new projects. Presets, visible columns, window opacity, the delay unit and type colors apply to every project.
 
 ## Example setups
 
