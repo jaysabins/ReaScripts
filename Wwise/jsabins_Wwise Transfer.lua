@@ -1,8 +1,9 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.7.3
+-- @version 1.7.4
 -- @changelog
---   New: a "?" button next to Settings opens the full guide on GitHub.
+--   New: rows in the Wwise structure table are tinted with their type's color
+--   (the same colors as the preview's [RND], [SND]... tags).
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -438,6 +439,26 @@ local function section_destination()
   ImGui.Dummy(ctx, 0, 4)
 end
 
+local TYPE_COLORS = {
+  ["Destination"] = 0xC8C8C8FF, ["Work Unit"] = 0xE0C060FF, ["Virtual Folder"] = 0xB0B0B0FF,
+  ["Physical Folder"] = 0xB0B0B0FF, ["Actor-Mixer"] = 0x6FA8FFFF, ["Random Container"] = 0xF2A65AFF,
+  ["Sequence Container"] = 0xE07FD0FF, ["Switch Container"] = 0x9B8CFFFF, ["Blend Container"] = 0x5FD3C8FF,
+  ["Sound SFX"] = 0x7BD88FFF, ["Sound Voice"] = 0x7BD88FFF, ["Sound"] = 0x7BD88FFF,
+}
+local TYPE_TAGS = {
+  ["Destination"] = "[DEST]", ["Work Unit"] = "[WU]", ["Virtual Folder"] = "[VF]", ["Physical Folder"] = "[PF]",
+  ["Actor-Mixer"] = "[AM]", ["Random Container"] = "[RND]", ["Sequence Container"] = "[SEQ]",
+  ["Switch Container"] = "[SW]", ["Blend Container"] = "[BLD]", ["Sound SFX"] = "[SFX]", ["Sound Voice"] = "[VO]",
+  ["Sound"] = "[SND]",
+}
+-- Subtle row tint for the Wwise structure table: the type's tag color at low alpha.
+local ROW_TINT_ALPHA = 0x30
+local function type_row_tint(t)
+  local c = TYPE_COLORS[t]
+  if not c then return nil end
+  return (c & 0xFFFFFF00) | ROW_TINT_ALPHA
+end
+
 -- Per-level options popup: property template, move, remove.
 local function level_options(id, get_t, set_t, row_index)
   local has = (get_t() or "") ~= ""
@@ -486,6 +507,8 @@ local function section_hierarchy()
     for i, row in ipairs(S.rows) do
       ImGui.PushID(ctx, tostring(i))
       ImGui.TableNextRow(ctx)
+      local tint = type_row_tint(row.type)
+      if tint then ImGui.TableSetBgColor(ctx, ImGui.TableBgTarget_RowBg1, tint) end
       ImGui.TableNextColumn(ctx)
       local c
       c, row.type = combo("##type", core.CONTAINER_TYPES, row.type, -1)
@@ -507,6 +530,7 @@ local function section_hierarchy()
     -- Leaf (the Sound itself)
     ImGui.PushID(ctx, "leaf")
     ImGui.TableNextRow(ctx)
+    ImGui.TableSetBgColor(ctx, ImGui.TableBgTarget_RowBg1, type_row_tint(S.leaf.voice and "Sound Voice" or "Sound SFX"))
     ImGui.TableNextColumn(ctx)
     local c
     c, S.leaf.voice = combo("##leaftype", { { false, "Sound SFX" }, { true, "Sound Voice" } }, S.leaf.voice, -1)
@@ -574,18 +598,6 @@ local function section_hierarchy()
 end
 
 
-local TYPE_COLORS = {
-  ["Destination"] = 0xC8C8C8FF, ["Work Unit"] = 0xE0C060FF, ["Virtual Folder"] = 0xB0B0B0FF,
-  ["Physical Folder"] = 0xB0B0B0FF, ["Actor-Mixer"] = 0x6FA8FFFF, ["Random Container"] = 0xF2A65AFF,
-  ["Sequence Container"] = 0xE07FD0FF, ["Switch Container"] = 0x9B8CFFFF, ["Blend Container"] = 0x5FD3C8FF,
-  ["Sound SFX"] = 0x7BD88FFF, ["Sound Voice"] = 0x7BD88FFF, ["Sound"] = 0x7BD88FFF,
-}
-local TYPE_TAGS = {
-  ["Destination"] = "[DEST]", ["Work Unit"] = "[WU]", ["Virtual Folder"] = "[VF]", ["Physical Folder"] = "[PF]",
-  ["Actor-Mixer"] = "[AM]", ["Random Container"] = "[RND]", ["Sequence Container"] = "[SEQ]",
-  ["Switch Container"] = "[SW]", ["Blend Container"] = "[BLD]", ["Sound SFX"] = "[SFX]", ["Sound Voice"] = "[VO]",
-  ["Sound"] = "[SND]",
-}
 local CH_LABEL = { mono = "Mono", stereo = "Stereo" }
 local CH_OPTIONS = { { nil, "Auto" }, { "mono", "Mono" }, { "stereo", "Stereo" } }
 
