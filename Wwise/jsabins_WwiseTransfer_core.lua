@@ -5,7 +5,7 @@ local r = reaper
 local M = {}
 
 M.EXT = "JS_WwiseTransfer"
-M.VERSION = "1.6.7"
+M.VERSION = "1.7.0"
 local SEP = package.config:sub(1, 1)
 local IS_WIN = SEP == "\\"
 
@@ -205,7 +205,8 @@ function M.default_settings()
     skip_render_untouched = true,
     items_via_master = false,
     folders_via_master = false,
-    mono_to_mono = true,
+    mono_to_mono = true,             -- Auto channels: a sound whose left and right match becomes mono
+    channels = {},                   -- channel overrides: { [lowercase path below the destination] = "mono"|"stereo" }
     use_wwise_selection = true,      -- destination = Wwise selection at transfer time
     destination = "",
     originals_subfolder = "",
@@ -228,6 +229,7 @@ local function merge_defaults(s)
   if type(s.leaf) ~= "table" then s.leaf = d.leaf end
   for k, v in pairs(d.leaf) do if s.leaf[k] == nil then s.leaf[k] = v end end
   if type(s.rows) ~= "table" then s.rows = {} end
+  if type(s.channels) ~= "table" then s.channels = {} end
   if s.port and s.http_port == 8090 then s.http_port = s.port end -- settings from 1.0.x
   s.port = nil
   return s
@@ -514,6 +516,12 @@ local function take_name(item)
   return notes:match("[^\r\n]+")
 end
 
+local function source_channels(item)
+  local take = r.GetActiveTake(item)
+  if not take or r.TakeIsMIDI(take) then return nil end
+  return r.GetMediaSourceNumChannels(r.GetMediaItemTake_Source(take))
+end
+
 local function is_folder_item(item)
   local tr = r.GetMediaItem_Track(item)
   return r.GetMediaTrackInfo_Value(tr, "I_FOLDERDEPTH") == 1 and r.GetActiveTake(item) == nil
@@ -549,7 +557,7 @@ end
 -- pattern and read RENDER_TARGETS back (no render happens).
 ----------------------------------------------------------------------
 local NUM_KEYS = { "RENDER_SETTINGS", "RENDER_BOUNDSFLAG", "RENDER_STARTPOS", "RENDER_ENDPOS",
-                   "RENDER_ADDTOPROJ", "RENDER_TAILFLAG" }
+                   "RENDER_ADDTOPROJ", "RENDER_TAILFLAG", "RENDER_CHANNELS" }
 local STR_KEYS = { "RENDER_FILE", "RENDER_PATTERN", "RENDER_FORMAT" }
 local WAV24 = "ZXZhdxgAAQ==" -- WAV, 24-bit PCM
 
@@ -687,6 +695,7 @@ local function plan_selected_items(s, snap)
       local file = s.skip_render_untouched and M.untouched_source(it)
       e.kind = file and "direct" or "render"
       e.file = file or nil
+      e.src_ch = source_channels(it)
       entries[#entries + 1] = e
     end
   elseif #normal > 0 then
@@ -704,6 +713,7 @@ local function plan_selected_items(s, snap)
       local file = s.skip_render_untouched and M.untouched_source(it)
       e.kind = file and "direct" or "render"
       e.file = file or nil
+      e.src_ch = source_channels(it)
     end
     local order = targets_for("$item")
     for take, nm in pairs(snap.names) do r.GetSetMediaItemTakeInfo_String(take, "P_NAME", nm, true) end
@@ -1084,6 +1094,248 @@ function M.validate(s)
 end
 
 ----------------------------------------------------------------------
+-- Mono / stereo
+----------------------------------------------------------------------
+-- A channel override is set on a Sound or on a container (then it counts for every
+-- Sound below it) and stored by its path below the destination, so it still applies
+-- when the destination changes. Lowercase keys, "\" between levels.
+function M.rel_path(plan, path)
+  local d = (plan and plan.destination) or ""
+  path = path or ""
+  if d ~= "" and path:sub(1, #d + 1):lower() == (d .. "\\"):lower() then return path:sub(#d + 2) end
+  return (path:gsub("^\\+", ""))
+end
+
+-- "mono", "stereo" or nil (Auto) for a Wwise path, plus the name of the object the
+-- override was set on (the Sound itself or a container above it).
+function M.channel_override(s, plan, path)
+  local ov = s.channels or {}
+  local rel = M.rel_path(plan, path)
+  while rel and rel ~= "" do
+    local m = ov[rel:lower()]
+    if m == "mono" or m == "stereo" then return m, rel:match("[^\\]+$") end
+    rel = rel:match("^(.*)\\[^\\]+$")
+  end
+  return nil
+end
+
+-- The override set on exactly this path (not inherited), or nil.
+function M.own_channel_override(s, plan, path)
+  local m = (s.channels or {})[M.rel_path(plan, path):lower()]
+  if m == "mono" or m == "stereo" then return m end
+end
+
+function M.set_channel_override(s, plan, path, mode)
+  if type(s.channels) ~= "table" then s.channels = {} end
+  s.channels[M.rel_path(plan, path):lower()] = (mode == "mono" or mode == "stereo") and mode or nil
+end
+
+function M.count_channel_overrides(s)
+  local n = 0
+  for _ in pairs(s.channels or {}) do n = n + 1 end
+  return n
+end
+
+-- What a Sound will get: "mono", "stereo", "auto" (check after rendering) or nil (keep as is).
+local function wanted_channels(s, plan, e)
+  local m = e.plain and M.channel_override(s, plan, e.plain)
+  if m then return m end
+  if s.mono_to_mono and e.kind ~= "direct" then return "auto" end
+  return nil
+end
+M.wanted_channels = wanted_channels
+
+-- WAV files are read and written in plain Lua (nothing extra to install).
+-- Handles RIFF WAV with integer PCM (8/16/24/32-bit) or float (32/64-bit) samples.
+local CHUNK_FRAMES = 16384
+local SAMPLE_FMT = { [1] = { [1] = "B", [2] = "<i2", [3] = "<i3", [4] = "<i4" }, [3] = { [4] = "<f", [8] = "<d" } }
+
+function M.wav_info(path)
+  local f = io.open(path, "rb")
+  if not f then return nil, "can't open the file" end
+  local hdr = f:read(12)
+  if not hdr or #hdr < 12 or hdr:sub(1, 4) ~= "RIFF" or hdr:sub(9, 12) ~= "WAVE" then f:close(); return nil, "not a WAV file" end
+  local fsize = f:seek("end")
+  f:seek("set", 12)
+  local info = { chunks = {} }
+  while true do
+    local ch = f:read(8)
+    if not ch or #ch < 8 then break end
+    local id, size = ch:sub(1, 4), string.unpack("<I4", ch, 5)
+    local start = f:seek()
+    if id == "data" then
+      if start + size > fsize then size = fsize - start end -- unfinished or oversized header
+      info.data_pos, info.data_size = start, size
+      info.chunks[#info.chunks + 1] = { id = id }
+    else
+      local body = f:read(size) or ""
+      if id == "fmt " then info.fmt = body end
+      info.chunks[#info.chunks + 1] = { id = id, body = body }
+    end
+    if start + size + (size % 2) >= fsize then break end
+    f:seek("set", start + size + (size % 2))
+  end
+  f:close()
+  if not info.fmt or #info.fmt < 16 or not info.data_pos then return nil, "unreadable WAV file" end
+  local tag, chans, rate, _, align, bits = string.unpack("<I2I2I4I4I2I2", info.fmt)
+  if tag == 0xFFFE and #info.fmt >= 26 then tag = string.unpack("<I2", info.fmt, 25) end
+  if chans < 1 or align < chans or align % chans ~= 0 then return nil, "unreadable WAV file" end
+  local bytes = align // chans
+  if not (SAMPLE_FMT[tag] and SAMPLE_FMT[tag][bytes]) then return nil, "unsupported WAV sample format" end
+  info.tag, info.chans, info.rate, info.align, info.bytes, info.bits = tag, chans, rate, align, bytes, bits
+  info.frames = info.data_size // align
+  return info
+end
+
+-- Calls fn(block) with whole sample frames of the data chunk. Stops early when fn returns false.
+local function each_block(path, info, fn)
+  local f = io.open(path, "rb")
+  if not f then return nil end
+  f:seek("set", info.data_pos)
+  local left = info.frames * info.align
+  local step = CHUNK_FRAMES * info.align
+  while left > 0 do
+    local n = math.min(step, left)
+    local b = f:read(n)
+    if not b or #b < n then f:close(); return nil end
+    left = left - n
+    if fn(b) == false then f:close(); return false end
+  end
+  f:close()
+  return true
+end
+
+local function frame_pattern(bytes)
+  local one = "(" .. string.rep(".", bytes) .. ")"
+  return one .. one
+end
+
+-- Do left and right of a stereo file match? Identical samples count, and so do tiny
+-- differences (at most 2 steps of the file's bit depth, e.g. from dither, which is
+-- below -130 dB at 24-bit). Returns true/false.
+function M.wav_lr_match(path, info)
+  if info.chans ~= 2 then return false end
+  local pat = frame_pattern(info.bytes)
+  local sf = SAMPLE_FMT[info.tag][info.bytes]
+  local two = sf .. sf:gsub("^<", "")
+  local tol = info.tag == 3 and 2 ^ -20 or 2
+  return each_block(path, info, function(b)
+    local L = b:gsub(pat, "%1")
+    local R = b:gsub(pat, "%2")
+    if L == R then return true end
+    for i = 1, #b, info.align do
+      local a, c = string.unpack(two, b, i)
+      if math.abs(a - c) > tol then return false end
+    end
+    return true
+  end) == true
+end
+
+-- Write `src` as a mono or stereo file at `dest` (may be the same path). Mono keeps the
+-- left channel when left and right match (lossless) and averages them otherwise.
+-- Other chunks (markers, metadata) are copied as they are.
+function M.wav_write_channels(src, info, dest, chans, lr_match)
+  local align = info.bytes * chans
+  local tmp = dest .. ".jswt.tmp"
+  local out = io.open(tmp, "wb")
+  if not out then return nil, "can't write " .. tmp end
+  local data_len = info.frames * align
+  local parts = {}
+  out:write("RIFF", string.pack("<I4", 0), "WAVE")
+  local total = 4
+  local ok_all = true
+  for _, c in ipairs(info.chunks) do
+    if c.id == "fmt " then
+      local tag = info.tag
+      local fmt = string.pack("<I2I2I4I4I2I2", tag, chans, info.rate, info.rate * align, align, info.bytes * 8)
+      if tag == 3 then fmt = fmt .. string.pack("<I2", 0) end
+      out:write("fmt ", string.pack("<I4", #fmt), fmt)
+      total = total + 8 + #fmt
+    elseif c.id == "data" then
+      out:write("data", string.pack("<I4", data_len))
+      local pat = frame_pattern(info.bytes)
+      local one = "(" .. string.rep(".", info.bytes) .. ")"
+      local sf = SAMPLE_FMT[info.tag][info.bytes]
+      local two = sf .. sf:gsub("^<", "")
+      local float = info.tag == 3
+      ok_all = each_block(src, info, function(b)
+        if chans == 2 then
+          out:write((b:gsub(one, "%1%1")))
+        elseif lr_match then
+          out:write((b:gsub(pat, "%1")))
+        else
+          local t, n = {}, 0
+          for i = 1, #b, info.align do
+            local a, c2 = string.unpack(two, b, i)
+            n = n + 1
+            t[n] = string.pack(sf, float and (a + c2) / 2 or (a + c2) // 2)
+          end
+          out:write(table.concat(t))
+        end
+      end) and ok_all
+      if data_len % 2 == 1 then out:write("\0") end
+      total = total + 8 + data_len + data_len % 2
+    else
+      out:write(c.id, string.pack("<I4", #c.body), c.body)
+      if #c.body % 2 == 1 then out:write("\0") end
+      total = total + 8 + #c.body + #c.body % 2
+    end
+  end
+  out:seek("set", 4)
+  out:write(string.pack("<I4", total))
+  out:close()
+  if not ok_all then os.remove(tmp); return nil, "couldn't read " .. src end
+  os.remove(dest)
+  if not os.rename(tmp, dest) then os.remove(tmp); return nil, "couldn't replace " .. dest end
+  return true
+end
+
+-- After rendering: make each Sound's file mono or stereo as wanted. Files REAPER
+-- rendered for us are changed in place; WAVs imported from disk and files from your
+-- own render settings are copied first, so the originals stay as they are.
+local function apply_channels(s, plan, summary)
+  local copydir
+  local made_mono, changed = 0, 0
+  for _, e in ipairs(plan.entries) do
+    local want = e.file and not e.unresolved and wanted_channels(s, plan, e)
+    if want then
+      local info, ierr = M.wav_info(e.file)
+      local target, lr_match
+      if not info then
+        if want ~= "auto" then summary.errors[#summary.errors + 1] = "Couldn't make \"" .. e.name .. "\" " .. want .. ": " .. tostring(ierr) .. "." end
+      elseif info.chans == 2 and (want == "mono" or want == "auto") then
+        lr_match = M.wav_lr_match(e.file, info)
+        if want == "mono" or lr_match then target = 1 end
+      elseif info.chans == 1 and want == "stereo" then
+        target = 2
+      end
+      if target then
+        local dest = e.file
+        if e.kind == "direct" or e.kind == "project" then
+          if not copydir then
+            copydir = TMP .. SEP .. "ch_" .. os.time() .. "_" .. math.random(1000, 9999)
+            r.RecursiveCreateDirectory(copydir, 0)
+            plan.copydir = copydir
+          end
+          dest = copydir .. SEP .. (e.file:match("([^\\/]+)$") or (e.name .. ".wav"))
+        end
+        local ok, werr = M.wav_write_channels(e.file, info, dest, target, lr_match)
+        if ok then
+          if dest ~= e.file then e.file = dest; e.temp = true end
+          e.channels_done = target == 1 and "mono" or "stereo"
+          changed = changed + 1
+          if want == "auto" then made_mono = made_mono + 1 end
+        else
+          summary.errors[#summary.errors + 1] = "Couldn't make \"" .. e.name .. "\" " .. (target == 1 and "mono" or "stereo") .. ": " .. tostring(werr) .. "."
+        end
+      end
+    end
+  end
+  summary.made_mono, summary.channel_changes = made_mono, changed
+end
+M.apply_channels = apply_channels
+
+----------------------------------------------------------------------
 -- Transfer
 ----------------------------------------------------------------------
 local function parse_render_stats(stats)
@@ -1129,6 +1381,11 @@ local function do_render(s, plan)
     set_s("RENDER_FORMAT", WAV24)
     set_n("RENDER_ADDTOPROJ", 0)
     set_n("RENDER_TAILFLAG", 0)
+    -- Auto channels and Mono/Stereo overrides work on stereo renders: render at least two
+    -- channels (more if REAPER's render settings ask for more), then fix each file afterwards.
+    if s.mono_to_mono or M.count_channel_overrides(s) > 0 then
+      set_n("RENDER_CHANNELS", math.max(2, get_n("RENDER_CHANNELS")))
+    end
 
     -- Where REAPER will write each token's file (the folder setting can contain wildcards).
     local where, made = {}, {}
@@ -1233,6 +1490,15 @@ function M.transfer(s, conn, on_status)
   if not ok then summary.errors[#summary.errors + 1] = "Render failed: " .. tostring(rerr); return summary end
   lap("Render")
 
+  status("Checking mono and stereo...")
+  apply_channels(s, plan, summary)
+  if (summary.made_mono or 0) > 0 then
+    summary.notes = summary.notes or {}
+    summary.notes[#summary.notes + 1] = string.format("Auto channels: %d Sound%s made mono (left and right were the same).",
+      summary.made_mono, summary.made_mono == 1 and "" or "s")
+  end
+  if (summary.channel_changes or 0) > 0 then lap("Mono/stereo") end
+
   local imports = json.array()
   for _, e in ipairs(plan.entries) do
     if e.unresolved then
@@ -1312,7 +1578,8 @@ function M.transfer(s, conn, on_status)
     local delays, warns = M.layer_delays(plan, s)
     local n, derr = M.apply_delays(delays)
     summary.delays = n
-    summary.notes = warns
+    summary.notes = summary.notes or {}
+    for _, w in ipairs(warns or {}) do summary.notes[#summary.notes + 1] = w end
     if derr then summary.errors[#summary.errors + 1] = "Initial delay: " .. tostring(derr) end
     lap("Initial delays")
   end
@@ -1327,6 +1594,7 @@ function M.transfer(s, conn, on_status)
   -- Clean up temp renders (Wwise copied them into Originals).
   for _, e in ipairs(plan.entries) do if e.temp and e.file then os.remove(e.file) end end
   if plan.outdir then os.remove(plan.outdir) end
+  if plan.copydir then os.remove(plan.copydir) end
   return summary
 end
 
