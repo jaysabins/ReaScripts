@@ -7,7 +7,7 @@ Wwise Transfer is a free REAPER script by Jay Sabins, written in Lua with a ReaI
 ## Features
 
 - **Fast transfers.** Untouched WAV items import straight from disk with no render. Edited items render together in one pass. Everything goes to Wwise in a single import call.
-- **Two sources.** Send the selected items, or whatever your REAPER render settings produce (regions, stems, the region render matrix and so on).
+- **Send items or renders.** Send the selected items, or everything your REAPER render settings produce (regions, stems, region matrix).
 - **Folder items.** An empty item on a folder track renders the folder's mix over that time range.
 - **Build the Wwise structure for you.** Add levels of Actor-Mixers, Random, Sequence, Switch and Blend Containers, Virtual Folders or Work Units above each Sound, named with REAPER wildcards like `$region` and `$track`.
 - **Property templates.** Point any level at a template object in Wwise and its settings (volume, bus, attenuation, randomizers...) are pasted onto the new objects.
