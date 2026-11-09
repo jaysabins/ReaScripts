@@ -9,7 +9,7 @@ M.EXT = "jsabins_WwiseTool"
 -- are copied over once; per-project settings are read from it when a project has
 -- none under the new key yet.
 M.OLD_EXT = "JS_WwiseTransfer"
-M.VERSION = "1.10.0"
+M.VERSION = "1.11.0"
 
 for _, key in ipairs({ "last_settings", "presets", "view" }) do
   if r.GetExtState(M.EXT, key) == "" then
@@ -271,31 +271,80 @@ function M.save_settings(s, proj)
   r.SetExtState(M.EXT, "last_settings", txt, true)
 end
 
-function M.load_presets()
-  local p = r.GetExtState(M.EXT, "presets")
+-- Presets come in two kinds, saved separately and the same in every project:
+--   "structure": the Wwise structure only (levels with their names and templates, and the Sound row).
+--   "settings":  everything else that shapes a transfer (source, destination, Originals subfolder,
+--                conflict choice, Initial Delay, render and transfer options).
+-- The connection port and the preview's Mono/Stereo overrides are never part of a preset.
+M.SETTINGS_PRESET_KEYS = { "source", "use_wwise_selection", "destination", "originals_subfolder",
+  "conflict", "set_initial_delay", "delay_target", "skip_render_untouched", "items_via_master",
+  "folders_via_master", "mono_to_mono", "render_folder", "apply_template", "select_in_wwise" }
+local PRESET_KEYS = { structure = "structure_presets", settings = "settings_presets" }
+
+local function read_table(key)
+  local p = r.GetExtState(M.EXT, key)
   if p == "" then return {} end
   local ok, t = pcall(json.decode, p)
   return ok and type(t) == "table" and t or {}
 end
 
-function M.save_presets(p) r.SetExtState(M.EXT, "presets", json.encode(p), true) end
-
--- The parts of the settings a preset stores (the hierarchy mapping and conflict rules).
-function M.preset_from(s)
+local function structure_part(p)
   local rows = {}
-  for i, row in ipairs(s.rows) do rows[i] = { type = row.type, name = row.name, template = row.template } end
-  return { rows = rows, leaf = { voice = s.leaf.voice, name = s.leaf.name, template = s.leaf.template,
-           language = s.leaf.language }, originals_subfolder = s.originals_subfolder,
-           conflict = s.conflict, apply_template = s.apply_template }
+  for i, row in ipairs(p.rows or {}) do
+    rows[i] = { type = row.type, name = row.name or "", template = row.template or "" }
+  end
+  local leaf = {}
+  for k, v in pairs(type(p.leaf) == "table" and p.leaf or {}) do leaf[k] = v end
+  return { rows = rows, leaf = leaf }
 end
 
-function M.apply_preset(s, p)
-  s.rows = {}
-  for i, row in ipairs(p.rows or {}) do s.rows[i] = { type = row.type, name = row.name or "", template = row.template or "" } end
-  if p.leaf then for k, v in pairs(p.leaf) do s.leaf[k] = v end end
-  if p.originals_subfolder then s.originals_subfolder = p.originals_subfolder end
-  if p.conflict then s.conflict = p.conflict end
-  if p.apply_template then s.apply_template = p.apply_template end
+-- Up to 1.10.0 one preset held the structure plus the Originals subfolder, conflict choice
+-- and template option. The first time, each old preset becomes a structure preset and a
+-- settings preset with the same name. The old list is left as it was.
+local function split_old_presets()
+  if r.GetExtState(M.EXT, "presets_split") == "1" then return end
+  local old = read_table("presets")
+  local structure, settings = read_table(PRESET_KEYS.structure), read_table(PRESET_KEYS.settings)
+  for name, p in pairs(old) do
+    if type(p) == "table" then
+      if structure[name] == nil then structure[name] = structure_part(p) end
+      local rest = {}
+      for _, k in ipairs(M.SETTINGS_PRESET_KEYS) do rest[k] = p[k] end
+      if settings[name] == nil and next(rest) then settings[name] = rest end
+    end
+  end
+  if next(structure) then r.SetExtState(M.EXT, PRESET_KEYS.structure, json.encode(structure), true) end
+  if next(settings) then r.SetExtState(M.EXT, PRESET_KEYS.settings, json.encode(settings), true) end
+  r.SetExtState(M.EXT, "presets_split", "1", true)
+end
+
+-- kind: "structure" or "settings"
+function M.load_presets(kind)
+  split_old_presets()
+  return read_table(PRESET_KEYS[kind])
+end
+
+function M.save_presets(kind, p) r.SetExtState(M.EXT, PRESET_KEYS[kind], json.encode(p), true) end
+
+function M.preset_from(kind, s)
+  if kind == "structure" then return structure_part(s) end
+  local p = {}
+  for _, k in ipairs(M.SETTINGS_PRESET_KEYS) do p[k] = s[k] end
+  return p
+end
+
+-- Loading a preset changes only its own kind of settings. A settings preset only sets
+-- what it has (one split from an old preset has just a few of them).
+function M.apply_preset(kind, s, p)
+  if kind == "structure" then
+    local st = structure_part(p)
+    s.rows = st.rows
+    for k, v in pairs(st.leaf) do s.leaf[k] = v end
+    return
+  end
+  for _, k in ipairs(M.SETTINGS_PRESET_KEYS) do
+    if p[k] ~= nil then s[k] = p[k] end
+  end
 end
 
 ----------------------------------------------------------------------

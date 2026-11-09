@@ -17,7 +17,7 @@ Wwise Tool is a free REAPER script by Jay Sabins, written in Lua with a ReaImGui
 - **Conflict handling.** Choose to reuse, replace or rename objects that already exist.
 - **SFX and Voice.** Import as Sound SFX or as Sound Voice in a chosen language.
 - **Originals subfolders** with wildcards, and a folder picker that opens in your Wwise project's Originals folder.
-- **Presets** for structure setups you use often.
+- **Two kinds of presets.** Structure presets hold just the Wwise structure; settings presets hold everything else. Load one without touching the other.
 - **One undo step.** Each transfer is a single undo in Wwise.
 - **Quick send.** A second action transfers with your last settings, without opening the window. Put it on a shortcut for one-key transfers.
 - **No extra downloads.** It talks to Wwise through `curl.exe`, which comes with Windows. The only extension it needs is ReaImGui.
@@ -80,6 +80,19 @@ The thin bar along the top shows a green dot when you're connected, then the Wwi
 
 If Wwise can't be reached, the dot turns red and a yellow banner explains why. If you opened Wwise after REAPER, or Wwise restarted, open **Settings** and click **Reconnect**.
 
+### Presets
+
+There are two kinds of presets, so you can load one part of a setup without changing the rest:
+
+- **Structure presets...** (under **Wwise structure**) save just the structure: the levels, their names and property templates, and the Sound row (SFX or Voice, name, template and language).
+- **Settings presets...** (the button at the top of the left side) save everything else: the source, the Wwise destination, the Originals subfolder, the conflict choice, the Initial Delay options, and the rendering and transfer options in **Settings**.
+
+In either popup, click a name under **Load** to load it. To save, type a name and click **Save** (an existing name is overwritten). To delete, type or load its name and click **Delete**.
+
+The connection port and the Mono/Stereo choices from the preview are never part of a preset.
+
+Presets from before version 1.11 held the structure plus the Originals subfolder, conflict choice and template option. The first time you open 1.11 or later, each one is split into a structure preset and a settings preset with the same name, so nothing is lost.
+
 ### Source
 
 Choose what gets sent:
@@ -111,7 +124,7 @@ This sets the containers that are created above each Sound, from the top down:
 - The last row is the **Sound** itself. Choose **Sound SFX** or **Sound Voice** (pick a language for Voice). In Wwise 2025.1 and later both are simply called Sound. Leave its name empty to use the item's name.
 - Each row (type dropdown, name, **$** and **...** buttons) is colored by its type, the same color its tag uses in the preview: orange for Random Containers, purple for Blend Containers, blue for Sounds, and so on. You can pick your own colors in **Settings > Type colors**.
 - Each level's **...** button holds its property template plus **Move up**, **Move down** and **Remove level**. The button shows **T** when a template is set.
-- **Presets...** saves the current structure (levels, templates, Sound settings, Originals subfolder and conflict choice) under a name, and loads or deletes saved ones.
+- **Structure presets...** saves just the structure (the levels with their names and templates, and the Sound row with its type, name, template and language) under a name, and loads or deletes saved ones. Loading one changes only the structure. See [Presets](#presets).
 
 If a level can't hold the level below it (for example a Random Container can't hold an Actor-Mixer), the problem is shown and Transfer stays greyed out until you fix it.
 
