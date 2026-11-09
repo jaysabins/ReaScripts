@@ -1,11 +1,9 @@
 -- @description Wwise Transfer (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.8.0
+-- @version 1.8.1
 -- @changelog
---   New: Settings > Type colors lets you pick your own color for each Wwise type.
---   Changed: every field in a Wwise structure row (type, name, $ and ...) now
---   takes the row's type color. Blend Containers are purple by default and
---   Switch Containers teal.
+--   Changed: softer row colors in the Wwise structure table so text reads better.
+--   Changed: Sounds are blue by default and Actor-Mixers green.
 -- @provides
 --   [main] jsabins_Wwise Transfer - Quick send.lua
 --   [nomain] jsabins_WwiseTransfer_core.lua
@@ -472,9 +470,9 @@ end
 -- Default type colors. Users can pick their own in Settings > Type colors (stored in view.colors,
 -- same in every project). Sound SFX, Sound Voice and Sound share the "Sound" color.
 local DEFAULT_TYPE_COLORS = {
-  ["Actor-Mixer"] = 0x6FA8FFFF, ["Random Container"] = 0xF2A65AFF, ["Sequence Container"] = 0xE07FD0FF,
+  ["Actor-Mixer"] = 0x7BD88FFF, ["Random Container"] = 0xF2A65AFF, ["Sequence Container"] = 0xE07FD0FF,
   ["Switch Container"] = 0x5FD3C8FF, ["Blend Container"] = 0xA070FFFF, ["Virtual Folder"] = 0xB0B0B0FF,
-  ["Work Unit"] = 0xE0C060FF, ["Physical Folder"] = 0xB0B0B0FF, ["Sound"] = 0x7BD88FFF,
+  ["Work Unit"] = 0xE0C060FF, ["Physical Folder"] = 0xB0B0B0FF, ["Sound"] = 0x6FA8FFFF,
   ["Destination"] = 0xC8C8C8FF,
 }
 local COLOR_TYPE_ORDER = { "Actor-Mixer", "Random Container", "Sequence Container", "Switch Container",
@@ -496,12 +494,12 @@ local function with_alpha(c, a) return (c & 0xFFFFFF00) | a end
 local function push_type_colors(t)
   local c = type_color(t)
   if not c then return 0 end
-  ImGui.PushStyleColor(ctx, ImGui.Col_FrameBg, with_alpha(c, 0x8A))
-  ImGui.PushStyleColor(ctx, ImGui.Col_FrameBgHovered, with_alpha(c, 0xB0))
-  ImGui.PushStyleColor(ctx, ImGui.Col_FrameBgActive, with_alpha(c, 0xD0))
-  ImGui.PushStyleColor(ctx, ImGui.Col_Button, with_alpha(c, 0xB0))
-  ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered, with_alpha(c, 0xD0))
-  ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, with_alpha(c, 0xFF))
+  ImGui.PushStyleColor(ctx, ImGui.Col_FrameBg, with_alpha(c, 0x50))
+  ImGui.PushStyleColor(ctx, ImGui.Col_FrameBgHovered, with_alpha(c, 0x70))
+  ImGui.PushStyleColor(ctx, ImGui.Col_FrameBgActive, with_alpha(c, 0x90))
+  ImGui.PushStyleColor(ctx, ImGui.Col_Button, with_alpha(c, 0x60))
+  ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered, with_alpha(c, 0x80))
+  ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, with_alpha(c, 0xA0))
   return 6
 end
 local row_tint = { type = nil, n = 0 }
