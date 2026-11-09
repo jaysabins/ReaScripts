@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="3021f8055b80cf0e5eca8167e2b7c00d57fc26a0">
+<index version="1" name="Jay Sabins Scripts" commit="f0c9ee7cfb3f9bea3360903daf21e72845b7b7db">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -144,6 +144,10 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
       <version name="1.0.0" author="Jay Sabins" time="2026-11-06T23:00:51Z">
         <changelog><![CDATA[Initial public release]]></changelog>
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/c856c6b670dd44e90ed324b442270fdbb0bbb0da/Rename/jsabins_Rename%20and%20number%20items%20with%20region%20name.lua</source>
+      </version>
+      <version name="1.0.1" author="Jay Sabins, acendan" time="2026-11-09T02:28:41Z">
+        <changelog><![CDATA[Credit acendan as co-author.]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/f0c9ee7cfb3f9bea3360903daf21e72845b7b7db/Rename/jsabins_Rename%20and%20number%20items%20with%20region%20name.lua</source>
       </version>
     </reapack>
   </category>
