@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="f0c9ee7cfb3f9bea3360903daf21e72845b7b7db">
+<index version="1" name="Jay Sabins Scripts" commit="18a1d93fd0bd1fba053bb9314bcd36a36723335e">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -182,6 +182,7 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Hierarchy mapping: build Wwise containers above each Sound (Actor-Mixers, Random/Sequence/Switch/Blend Containers, Virtual Folders, Work Units) named with REAPER wildcards like $region, $track, $item.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Property templates per level, Sound SFX or Sound Voice (with language), Originals subfolder (wildcards allowed).\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Conflict handling, presets, live preview (new vs existing objects), transfer summary. One Wwise undo step per transfer.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Auto mono/stereo: a Sound whose left and right match is made mono (also for folder items). Click the preview's Channels column to force Mono or Stereo for a Sound or a whole container.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Fast: untouched WAV items import without rendering; edited items render in one pass; everything is imported in one Wwise call.\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 "Wwise Transfer - Quick send" sends the selected items with the window's last settings, without opening the window. Give it a shortcut.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Needs ReaImGui (ReaPack > ReaTeam Extensions) and Wwise with WAAPI on: Wwise > Project > User Preferences > Enable Wwise Authoring API (HTTP port 8090).\par}
@@ -312,6 +313,16 @@ Full user guide: see the README link below.]]></changelog>
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/3021f8055b80cf0e5eca8167e2b7c00d57fc26a0/Wwise/jsabins_Wwise%20Transfer.lua</source>
         <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/3021f8055b80cf0e5eca8167e2b7c00d57fc26a0/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
         <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/3021f8055b80cf0e5eca8167e2b7c00d57fc26a0/Wwise/jsabins_WwiseTransfer_core.lua</source>
+      </version>
+      <version name="1.7.0" author="Jay Sabins" time="2026-11-09T02:37:10Z">
+        <changelog><![CDATA[Auto mono/stereo: folder items and edited items render in stereo, and a Sound whose
+left and right are the same is made mono. Works for folder items too (before, they
+always used the render dialog's channel count).
+New Channels column in the preview: click it to set Mono or Stereo for one Sound,
+or for a container (counts for every Sound inside it).]]></changelog>
+        <source main="main">https://github.com/jaysabins/ReaScripts/raw/18a1d93fd0bd1fba053bb9314bcd36a36723335e/Wwise/jsabins_Wwise%20Transfer.lua</source>
+        <source main="main" file="jsabins_Wwise Transfer - Quick send.lua">https://github.com/jaysabins/ReaScripts/raw/18a1d93fd0bd1fba053bb9314bcd36a36723335e/Wwise/jsabins_Wwise%20Transfer%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTransfer_core.lua">https://github.com/jaysabins/ReaScripts/raw/18a1d93fd0bd1fba053bb9314bcd36a36723335e/Wwise/jsabins_WwiseTransfer_core.lua</source>
       </version>
     </reapack>
   </category>
