@@ -1303,7 +1303,7 @@ end
 local function apply_channels(s, plan, summary)
   local copydir
   local made_mono, changed = 0, 0
-  local kept = {}
+  local kept, monos = {}, {}
   for _, e in ipairs(plan.entries) do
     local want = e.file and not e.unresolved and wanted_channels(s, plan, e)
     if want then
@@ -1337,7 +1337,10 @@ local function apply_channels(s, plan, summary)
           if dest ~= e.file then e.file = dest; e.temp = true end
           e.channels_done = target == 1 and "mono" or "stereo"
           changed = changed + 1
-          if want == "auto" then made_mono = made_mono + 1 end
+          if want == "auto" then
+            made_mono = made_mono + 1
+            monos[#monos + 1] = e.name
+          end
         else
           summary.errors[#summary.errors + 1] = "Couldn't make \"" .. e.name .. "\" " .. (target == 1 and "mono" or "stereo") .. ": " .. tostring(werr) .. "."
         end
@@ -1345,7 +1348,7 @@ local function apply_channels(s, plan, summary)
     end
   end
   summary.made_mono, summary.channel_changes = made_mono, changed
-  summary.kept_stereo = kept
+  summary.kept_stereo, summary.mono_names = kept, monos
 end
 M.apply_channels = apply_channels
 
@@ -1569,8 +1572,12 @@ function M.transfer(s, conn, on_status)
   apply_channels(s, plan, summary)
   if (summary.made_mono or 0) > 0 then
     summary.notes = summary.notes or {}
-    summary.notes[#summary.notes + 1] = string.format("Auto channels: %d Sound%s made mono (left and right were the same).",
-      summary.made_mono, summary.made_mono == 1 and "" or "s")
+    local m = summary.mono_names or {}
+    local shown = {}
+    for i = 1, math.min(#m, 8) do shown[i] = m[i] end
+    summary.notes[#summary.notes + 1] = string.format("Auto channels made %d Sound%s mono because left and right were the same: %s%s.",
+      summary.made_mono, summary.made_mono == 1 and "" or "s", table.concat(shown, ", "),
+      #m > 8 and string.format(" and %d more", #m - 8) or "")
   end
   if #(summary.kept_stereo or {}) > 0 then
     summary.notes = summary.notes or {}
