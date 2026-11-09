@@ -68,7 +68,7 @@ That's it. The rest of this guide covers the options.
 
 ### Toolbar
 
-The thin bar along the top shows a green dot when you're connected, then the Wwise project name and version. **Settings** is on the right.
+The thin bar along the top shows a green dot when you're connected, then the Wwise project name and version. On the right, **?** opens this guide in your web browser, and next to it is **Settings**.
 
 If Wwise can't be reached, the dot turns red and a yellow banner explains why. If you opened Wwise after REAPER, or Wwise restarted, open **Settings** and click **Reconnect**.
 
