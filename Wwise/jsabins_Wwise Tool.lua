@@ -1,18 +1,12 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.12.0
+-- @version 1.12.1
 -- @changelog
---   Channels column: pick several rows and set them all at once. Click and drag down the
---   column, Shift+click for a range, or Ctrl+click to add or remove a row; when you let go
---   the menu opens and Mono, Stereo or Auto applies to every picked row. Right-click also
---   opens it. Esc clears the pick.
---   Double-clicking the title bar no longer collapses the window. It now fills the screen
---   the window is on, and double-clicking again puts it back. A window left collapsed by
---   an older version opens normally again.
---   The window now only moves by its title bar, so dragging in the preview doesn't move it.
---   Also includes 1.11.1: when the Sound row's name is empty and several items share a container name
---   (for example $region), containers no longer get "-001", "-002"... added to their names.
---   They're now merged into one container, as intended.
+--   You can drag the window from anywhere again, not just the title bar. Picking rows
+--   in the Channels column still never moves the window.
+--   Double-clicking the title bar now fits the window exactly to the screen it's on
+--   (above the taskbar), also with Windows display scaling. This is exact when
+--   js_ReaScriptAPI is installed.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -61,10 +55,6 @@ package.path = r.ImGui_GetBuiltinPath() .. "/?.lua"
 local ImGui = require "imgui" "0.9"
 
 local ctx = ImGui.CreateContext("Wwise Tool")
--- Only the title bar moves the window, so dragging across preview rows never drags the window.
-if ImGui.ConfigVar_WindowsMoveFromTitleBarOnly then
-  ImGui.SetConfigVar(ctx, ImGui.ConfigVar_WindowsMoveFromTitleBarOnly, 1)
-end
 
 ----------------------------------------------------------------------
 -- State
@@ -707,6 +697,12 @@ local ch_drag_range = false -- plain click: dragging over rows picks the range
 local ch_rows, ch_rows_prev, ch_index = {}, {}, {} -- this frame's / last frame's rows in order
 local ch_names = {}      -- path -> { name, is_sound } for the menu header
 local open_ch_menu = false
+-- Main window position, kept up to date each frame. While picking rows with the mouse the
+-- window is held in place there, so a drag that starts while the menu is open (ImGui
+-- would treat it as dragging the window) only picks rows.
+local main_win_pos = { 0, 0 }
+local main_win_docked = false
+local ch_pin = nil
 
 local function ch_count()
   local n = 0
@@ -767,6 +763,7 @@ local function channels_cell(node)
       ch_drag_range = true
     end
     ch_dragging = true
+    if not main_win_docked then ch_pin = { main_win_pos[1], main_win_pos[2] } end
   elseif ImGui.IsMouseClicked(ctx, ImGui.MouseButton_Right) and ImGui.IsItemHovered(ctx, hov_flags) then
     if not ch_sel[path] then ch_sel = { [path] = true }; ch_anchor = path end
     open_ch_menu = true
@@ -781,7 +778,7 @@ end
 -- Called after the preview table: finishes a drag and draws the shared Channels menu.
 local function channels_menu()
   if ch_dragging and not ImGui.IsMouseDown(ctx, ImGui.MouseButton_Left) then
-    ch_dragging, ch_drag_range = false, false
+    ch_dragging, ch_drag_range, ch_pin = false, false, nil
     open_ch_menu = true -- letting go of a click or a drag opens the menu for what's picked
   end
   ch_rows_prev, ch_rows = ch_rows, {}
@@ -1271,8 +1268,36 @@ end
 local win_max = nil  -- { restore = {x, y, w, h}, target = {x, y, w, h} } while maximized
 local win_next = nil -- position and size to apply on the next frame
 
+-- Our window's rectangle in screen pixels, from js_ReaScriptAPI (Windows/Linux only;
+-- macOS flips Y). Comparing it with ImGui's own position and size gives the exact scale
+-- and offset between the two, whatever the display scaling is.
+local function native_window_rect()
+  if not r.JS_Window_Find or not r.JS_Window_GetRect or r.GetOS():match("OSX") or r.GetOS():match("mac") then return nil end
+  local hwnd = r.JS_Window_Find("Wwise Tool", true)
+  if not hwnd then return nil end
+  local ok, l, t, rt, b = r.JS_Window_GetRect(hwnd)
+  if not ok or rt <= l or b <= t then return nil end
+  return l, t, rt, b
+end
+
+-- The work area (screen minus taskbar) of the monitor the window is on, in ImGui coordinates.
 local function screen_work_area(x, y, w, h)
-  if not ImGui.PointConvertNative or not r.my_getViewport then return nil end
+  if not r.my_getViewport then return nil end
+  local nl, nt, nr, nb = native_window_rect()
+  if nl then
+    local sx, sy = (nr - nl) / w, (nb - nt) / h
+    -- Same scale both ways, or the window found isn't ours: use the fallback below.
+    if math.abs(sx - sy) > 0.05 * sx then nl = nil end
+  end
+  if nl then
+    local sx, sy = (nr - nl) / w, (nb - nt) / h
+    local cx, cy = math.floor((nl + nr) / 2), math.floor((nt + nb) / 2)
+    local L, T, R, B = r.my_getViewport(0, 0, 0, 0, cx, cy, cx, cy, true)
+    if not L or R <= L or B <= T or sx <= 0 or sy <= 0 then return nil end
+    return { x + (L - nl) / sx, y + (T - nt) / sy, (R - L) / sx, (B - T) / sy }, { L, T, R, B }
+  end
+  -- Without js_ReaScriptAPI: let ReaImGui convert (less exact with display scaling).
+  if not ImGui.PointConvertNative then return nil end
   local cx, cy = ImGui.PointConvertNative(ctx, x + w / 2, y + h / 2, true)
   cx, cy = math.floor(cx), math.floor(cy)
   local l, t, rt, b = r.my_getViewport(0, 0, 0, 0, cx, cy, cx, cy, true)
@@ -1286,7 +1311,19 @@ local function title_bar_double_click()
   if ImGui.IsWindowDocked(ctx) then return end
   local wx, wy = ImGui.GetWindowPos(ctx)
   local ww, wh = ImGui.GetWindowSize(ctx)
-  if win_max then
+  if win_max and win_max.native and win_max.checks > 0 and not win_next then
+    -- Check the result in screen pixels and correct it (a monitor with other scaling can
+    -- change the scale once the window lands there).
+    win_max.checks = win_max.checks - 1
+    local nl, nt, nr, nb = native_window_rect()
+    local n = win_max.native
+    if nl and (math.abs(nl - n[1]) > 1 or math.abs(nt - n[2]) > 1 or math.abs(nr - n[3]) > 1 or math.abs(nb - n[4]) > 1) then
+      local area = screen_work_area(wx, wy, ww, wh)
+      if area then win_max.target = area; win_next = area end
+    else
+      win_max.checks = 0
+    end
+  elseif win_max and not win_next then
     local t = win_max.target
     -- Resized or moved by hand since: it no longer counts as maximized.
     if math.abs(ww - t[3]) > 4 or math.abs(wh - t[4]) > 4 or math.abs(wx - t[1]) > 4 or math.abs(wy - t[2]) > 4 then
@@ -1300,9 +1337,9 @@ local function title_bar_double_click()
     win_next = win_max.restore
     win_max = nil
   else
-    local area = screen_work_area(wx, wy, ww, wh)
+    local area, native = screen_work_area(wx, wy, ww, wh)
     if area then
-      win_max = { restore = { wx, wy, ww, wh }, target = area }
+      win_max = { restore = { wx, wy, ww, wh }, target = area, native = native, checks = 3 }
       win_next = area
     end
   end
@@ -1317,6 +1354,8 @@ loop_body = function()
     ImGui.SetNextWindowPos(ctx, win_next[1], win_next[2], ImGui.Cond_Always)
     ImGui.SetNextWindowSize(ctx, win_next[3], win_next[4], ImGui.Cond_Always)
     win_next = nil
+  elseif ch_pin then
+    ImGui.SetNextWindowPos(ctx, ch_pin[1], ch_pin[2], ImGui.Cond_Always)
   end
   -- Older versions could leave the window collapsed (saved by ImGui); always open it.
   ImGui.SetNextWindowCollapsed(ctx, false, ImGui.Cond_Always)
@@ -1330,6 +1369,8 @@ loop_body = function()
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
   local visible, open = ImGui.Begin(ctx, "Wwise Tool", true, ImGui.WindowFlags_NoCollapse)
   if visible then
+    main_win_pos[1], main_win_pos[2] = ImGui.GetWindowPos(ctx)
+    main_win_docked = ImGui.IsWindowDocked(ctx)
     title_bar_double_click()
     -- Re-read the Wwise selection when coming back to this window (e.g. after clicking in Wwise).
     -- AnyWindow: our own popups (like the summary) don't count as leaving. Right after a
