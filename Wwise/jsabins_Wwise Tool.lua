@@ -1,10 +1,11 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.12.2
+-- @version 1.12.3
 -- @changelog
---   Double-clicking the title bar no longer changes the window size; it does nothing.
---   The window opens at its standard size (put back once if an earlier version made it
---   screen-sized) and you resize it by dragging its edges as usual.
+--   The window opens right away again. Connecting to Wwise now happens after the
+--   window is up, a step per frame, and each call gives up after 3 seconds, so a busy
+--   or stuck Wwise can no longer freeze REAPER (it used to wait up to 2 minutes).
+--   If Wwise is busy, it tries again on its own every few seconds.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -120,9 +121,16 @@ local WILDCARDS = {
   { "$tempo", "Tempo" }, { "$timesig", "Time signature" }, { "$date", "Date" }, { "$author", "Project author" },
 }
 
+-- Connecting runs in the background (see start_connect) with a short timeout per call,
+-- so opening the window never waits on Wwise and a busy Wwise can't freeze REAPER.
+local CONNECT_TIMEOUT = 3
+local connecting, reconnect_at = false, nil
 local function connect()
   core.http_port = S.http_port
-  conn, conn_err = core.connect()
+  local code
+  conn, conn_err, code = core.connect(CONNECT_TIMEOUT)
+  -- Busy (e.g. still loading a project): try again in a few seconds.
+  reconnect_at = (not conn and code == "busy") and (r.time_precise() + 5) or nil
   if conn and S.destination == "" then S.destination = conn.root .. "\\Default Work Unit" end
   if conn and S.leaf.voice and S.leaf.language == "" and conn.languages[1] then S.leaf.language = conn.languages[1] end
   forget_existing()
@@ -179,9 +187,19 @@ local bg_task, transfer_task = nil, nil
 local function run_task(task)
   if not task then return nil end
   local ok, err = coroutine.resume(task)
-  if not ok then status_line = "Error: " .. tostring(err); return nil end
+  if not ok then status_line = "Error: " .. tostring(err); connecting = false; return nil end
   if coroutine.status(task) == "dead" then return nil end
   return task
+end
+
+-- Connect without blocking the window: the first frame is drawn before any WAAPI call.
+local function start_connect()
+  connecting = true
+  bg_task = coroutine.create(function()
+    coroutine.yield()
+    connect()
+    connecting = false
+  end)
 end
 
 local function refresh_job(poll_selection, sig)
@@ -216,6 +234,7 @@ local function refresh_preview(force)
   if transfer_task then return end
   if bg_task then bg_task = run_task(bg_task); return end
   local now = r.time_precise()
+  if not conn and reconnect_at and now >= reconnect_at then reconnect_at = nil; start_connect(); return end
   if retry_at and now >= retry_at then retry_at = nil; force = true end
   local poll = S.use_wwise_selection and conn and sel_poll_at and now >= sel_poll_at
   if poll then sel_poll_at = nil end
@@ -347,6 +366,8 @@ local function section_connection()
     ImGui.Text(ctx, conn.project or "Wwise")
     if conn.project_path and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, conn.project_path) end
     if (conn.version or "") ~= "" then ImGui.SameLine(ctx); ImGui.TextDisabled(ctx, conn.version) end
+  elseif connecting then
+    ImGui.TextDisabled(ctx, "Connecting to Wwise...")
   else
     ImGui.TextColored(ctx, COLOR_BAD, "Not connected")
   end
@@ -989,7 +1010,7 @@ local function do_transfer()
   status_line = "Transferring..."
   local s2 = core.json.decode(core.json.encode(S))
   local t0 = r.time_precise()
-  bg_task = nil
+  bg_task = nil; connecting = false
   transfer_task = coroutine.create(function()
     summary = core.transfer(s2, conn, function(msg) status_line = msg end)
     summary.seconds = r.time_precise() - t0
@@ -1098,7 +1119,7 @@ local function settings_popup()
   c, v = ImGui.InputInt(ctx, "WAAPI HTTP port", S.http_port)
   if c then S.http_port = v; settings_changed() end
   ImGui.SameLine(ctx)
-  if ImGui.Button(ctx, "Reconnect") then core.disconnect(); connect() end
+  if ImGui.Button(ctx, "Reconnect") and not connecting then core.disconnect(); bg_task = nil; start_connect() end
   ImGui.PushTextWrapPos(ctx, 480)
   ImGui.TextColored(ctx, COLOR_DIM, "Must match Wwise > Project > User Preferences > Wwise Authoring API (default 8090). " ..
     "\"Allow connections from\" there should be 127.0.0.1,::1.")
@@ -1329,6 +1350,5 @@ loop_body = function()
   return open
 end
 
-connect()
-refresh_preview(true)
+start_connect()
 r.defer(loop)

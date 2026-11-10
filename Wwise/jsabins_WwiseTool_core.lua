@@ -9,7 +9,7 @@ M.EXT = "jsabins_WwiseTool"
 -- are copied over once; per-project settings are read from it when a project has
 -- none under the new key yet.
 M.OLD_EXT = "JS_WwiseTransfer"
-M.VERSION = "1.12.2"
+M.VERSION = "1.12.3"
 
 for _, key in ipairs({ "last_settings", "presets", "view" }) do
   if r.GetExtState(M.EXT, key) == "" then
@@ -438,9 +438,12 @@ function M.waapi(uri, args, options, timeout)
 end
 
 -- Connection info: version, project name, languages, root path.
-function M.connect()
-  local info, err = M.waapi("ak.wwise.core.getInfo")
-  if not info then return nil, err end
+-- `timeout` caps each call (default: the usual long WAAPI timeout). Inside a coroutine
+-- (the window) it yields between calls, so each frame waits for at most one call.
+function M.connect(timeout)
+  local function pause() if coroutine.isyieldable() then coroutine.yield() end end
+  local info, err, code = M.waapi("ak.wwise.core.getInfo", nil, nil, timeout)
+  if not info then return nil, err, code end
   local v = info.version or {}
   local c = {
     year = tonumber(v.year) or 0,
@@ -450,13 +453,15 @@ function M.connect()
   }
   c.new_types = c.year >= 2025  -- Wwise 2025.1+: "Sound" type, "Containers" root
   c.root = c.new_types and "\\Containers" or "\\Actor-Mixer Hierarchy"
-  local p = M.waapi("ak.wwise.core.object.get", { from = { ofType = { "Project" } } }, { ["return"] = { "name", "filePath" } })
+  pause()
+  local p = M.waapi("ak.wwise.core.object.get", { from = { ofType = { "Project" } } }, { ["return"] = { "name", "filePath" } }, timeout)
   if p and p["return"] and p["return"][1] then
     c.project = p["return"][1].name
     c.project_path = p["return"][1].filePath
   end
   c.languages = {}
-  local l = M.waapi("ak.wwise.core.object.get", { from = { ofType = { "Language" } } }, { ["return"] = { "name" } })
+  pause()
+  local l = M.waapi("ak.wwise.core.object.get", { from = { ofType = { "Language" } } }, { ["return"] = { "name" } }, timeout)
   if l and l["return"] then
     for _, o in ipairs(l["return"]) do
       if o.name ~= "SFX" and o.name ~= "External" and o.name ~= "Mixed" then c.languages[#c.languages + 1] = o.name end
