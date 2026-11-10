@@ -1,15 +1,10 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.11.0
+-- @version 1.11.1
 -- @changelog
---   Presets are now split in two, so loading one only changes what you meant to change:
---   - Structure presets (button under Wwise structure): just the levels, names, templates
---     and the Sound row.
---   - Settings presets (button at the top of the left side): everything else, such as
---     source, destination, Originals subfolder, conflict choice, Initial Delay, and the
---     render and transfer options in Settings.
---   Your existing presets carry over: each one becomes a structure preset and a settings
---   preset with the same name.
+--   Fixed: when the Sound row's name is empty and several items share a container name
+--   (for example $region), containers no longer get "-001", "-002"... added to their names.
+--   They're now merged into one container, as intended.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
