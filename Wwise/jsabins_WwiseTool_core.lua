@@ -696,16 +696,24 @@ end
 
 -- Wildcard pattern for the container rows + leaf, one "@"-prefixed segment
 -- per level so empty wildcards can't collapse a level.
+-- REAPER adds "-001", "-002"... to the file name when several targets resolve
+-- to the same path. Without a Sound name the last segment is a container, so a
+-- throwaway "@" file segment goes last to soak up that suffix instead.
 local function mapping_pattern(s)
   local segs = {}
   for _, row in ipairs(s.rows) do segs[#segs + 1] = "@" .. (row.name or ""):gsub("[\\/]", "_") end
   if s.leaf.name ~= "" then segs[#segs + 1] = "@" .. s.leaf.name:gsub("[\\/]", "_") end
   if #segs == 0 then return nil end
+  if s.leaf.name == "" then segs[#segs + 1] = "@" end
   return table.concat(segs, "/")
 end
 
 local function parse_mapping(resolved, nrows, has_leaf)
   local parts = split(resolved, "/")
+  if not has_leaf and nrows > 0 then
+    if #parts ~= nrows + 1 or not parts[#parts]:match("^@%-?%d*$") then return nil end
+    parts[#parts] = nil
+  end
   local want = nrows + (has_leaf and 1 or 0)
   if #parts ~= want then return nil end
   local names = {}

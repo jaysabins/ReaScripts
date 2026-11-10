@@ -10,6 +10,9 @@
 --   the window is on, and double-clicking again puts it back. A window left collapsed by
 --   an older version opens normally again.
 --   The window now only moves by its title bar, so dragging in the preview doesn't move it.
+--   Also includes 1.11.1: when the Sound row's name is empty and several items share a container name
+--   (for example $region), containers no longer get "-001", "-002"... added to their names.
+--   They're now merged into one container, as intended.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
