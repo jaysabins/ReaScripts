@@ -74,7 +74,7 @@ That's it. The rest of this guide covers the options.
 
 ## The window
 
-When the window is floating (not docked), double-click its title bar to make it fill the screen it's on, and double-click again to put it back. The window moves only by its title bar.
+When the window is floating (not docked), double-click its title bar to make it fill the screen it's on (above the taskbar), and double-click again to put it back. With display scaling on, the fit is exact when js_ReaScriptAPI is installed (ReaPack > ReaTeam Extensions). You can drag the window from anywhere on it.
 
 ### Toolbar
 
