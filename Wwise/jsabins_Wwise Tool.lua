@@ -1,12 +1,10 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.12.1
+-- @version 1.12.2
 -- @changelog
---   You can drag the window from anywhere again, not just the title bar. Picking rows
---   in the Channels column still never moves the window.
---   Double-clicking the title bar now fits the window exactly to the screen it's on
---   (above the taskbar), also with Windows display scaling. This is exact when
---   js_ReaScriptAPI is installed.
+--   Double-clicking the title bar no longer changes the window size; it does nothing.
+--   The window opens at its standard size (put back once if an earlier version made it
+--   screen-sized) and you resize it by dragging its edges as usual.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -74,6 +72,7 @@ do
       for k, c in pairs(t.colors) do if type(c) == "number" then view.colors[k] = math.floor(c) end end
     end
     if t.delay_unit == "ms" then view.delay_unit = "ms" end
+    if type(t.size_v) == "number" then view.size_v = t.size_v end
   end
 end
 local function save_view() r.SetExtState(core.EXT, "view", core.json.encode(view), true) end
@@ -1263,100 +1262,22 @@ local function follow_project_tab()
   last_sig = nil
 end
 
--- Double-clicking the title bar fills the screen the window is on, and again puts it back.
--- (ImGui's own double-click collapse is turned off with WindowFlags_NoCollapse.)
-local win_max = nil  -- { restore = {x, y, w, h}, target = {x, y, w, h} } while maximized
-local win_next = nil -- position and size to apply on the next frame
-
--- Our window's rectangle in screen pixels, from js_ReaScriptAPI (Windows/Linux only;
--- macOS flips Y). Comparing it with ImGui's own position and size gives the exact scale
--- and offset between the two, whatever the display scaling is.
-local function native_window_rect()
-  if not r.JS_Window_Find or not r.JS_Window_GetRect or r.GetOS():match("OSX") or r.GetOS():match("mac") then return nil end
-  local hwnd = r.JS_Window_Find("Wwise Tool", true)
-  if not hwnd then return nil end
-  local ok, l, t, rt, b = r.JS_Window_GetRect(hwnd)
-  if not ok or rt <= l or b <= t then return nil end
-  return l, t, rt, b
-end
-
--- The work area (screen minus taskbar) of the monitor the window is on, in ImGui coordinates.
-local function screen_work_area(x, y, w, h)
-  if not r.my_getViewport then return nil end
-  local nl, nt, nr, nb = native_window_rect()
-  if nl then
-    local sx, sy = (nr - nl) / w, (nb - nt) / h
-    -- Same scale both ways, or the window found isn't ours: use the fallback below.
-    if math.abs(sx - sy) > 0.05 * sx then nl = nil end
-  end
-  if nl then
-    local sx, sy = (nr - nl) / w, (nb - nt) / h
-    local cx, cy = math.floor((nl + nr) / 2), math.floor((nt + nb) / 2)
-    local L, T, R, B = r.my_getViewport(0, 0, 0, 0, cx, cy, cx, cy, true)
-    if not L or R <= L or B <= T or sx <= 0 or sy <= 0 then return nil end
-    return { x + (L - nl) / sx, y + (T - nt) / sy, (R - L) / sx, (B - T) / sy }, { L, T, R, B }
-  end
-  -- Without js_ReaScriptAPI: let ReaImGui convert (less exact with display scaling).
-  if not ImGui.PointConvertNative then return nil end
-  local cx, cy = ImGui.PointConvertNative(ctx, x + w / 2, y + h / 2, true)
-  cx, cy = math.floor(cx), math.floor(cy)
-  local l, t, rt, b = r.my_getViewport(0, 0, 0, 0, cx, cy, cx, cy, true)
-  if not l or rt == l or b == t then return nil end
-  local x1, y1 = ImGui.PointConvertNative(ctx, l, t, false)
-  local x2, y2 = ImGui.PointConvertNative(ctx, rt, b, false)
-  return { math.min(x1, x2), math.min(y1, y2), math.abs(x2 - x1), math.abs(y2 - y1) }
-end
-
-local function title_bar_double_click()
-  if ImGui.IsWindowDocked(ctx) then return end
-  local wx, wy = ImGui.GetWindowPos(ctx)
-  local ww, wh = ImGui.GetWindowSize(ctx)
-  if win_max and win_max.native and win_max.checks > 0 and not win_next then
-    -- Check the result in screen pixels and correct it (a monitor with other scaling can
-    -- change the scale once the window lands there).
-    win_max.checks = win_max.checks - 1
-    local nl, nt, nr, nb = native_window_rect()
-    local n = win_max.native
-    if nl and (math.abs(nl - n[1]) > 1 or math.abs(nt - n[2]) > 1 or math.abs(nr - n[3]) > 1 or math.abs(nb - n[4]) > 1) then
-      local area = screen_work_area(wx, wy, ww, wh)
-      if area then win_max.target = area; win_next = area end
-    else
-      win_max.checks = 0
-    end
-  elseif win_max and not win_next then
-    local t = win_max.target
-    -- Resized or moved by hand since: it no longer counts as maximized.
-    if math.abs(ww - t[3]) > 4 or math.abs(wh - t[4]) > 4 or math.abs(wx - t[1]) > 4 or math.abs(wy - t[2]) > 4 then
-      win_max = nil
-    end
-  end
-  if not ImGui.IsMouseDoubleClicked(ctx, ImGui.MouseButton_Left) or not ImGui.IsWindowHovered(ctx) then return end
-  local mx, my = ImGui.GetMousePos(ctx)
-  if my < wy or my >= wy + ImGui.GetFrameHeight(ctx) or mx < wx or mx >= wx + ww then return end
-  if win_max then
-    win_next = win_max.restore
-    win_max = nil
-  else
-    local area, native = screen_work_area(wx, wy, ww, wh)
-    if area then
-      win_max = { restore = { wx, wy, ww, wh }, target = area, native = native, checks = 3 }
-      win_next = area
-    end
-  end
-end
+-- 1.12.0/1.12.1 could leave the window screen-sized: put it back to the standard size once.
+local size_reset = view.size_v ~= 2
 
 loop_body = function()
   if not transfer_task then follow_project_tab() end
   if transfer_task then transfer_task = run_task(transfer_task) end
   refresh_preview(false)
   ImGui.SetNextWindowSize(ctx, 1180, 760, ImGui.Cond_FirstUseEver)
-  if win_next then
-    ImGui.SetNextWindowPos(ctx, win_next[1], win_next[2], ImGui.Cond_Always)
-    ImGui.SetNextWindowSize(ctx, win_next[3], win_next[4], ImGui.Cond_Always)
-    win_next = nil
+  if size_reset then
+    ImGui.SetNextWindowSize(ctx, 1180, 760, ImGui.Cond_Always)
+    size_reset = false
+    view.size_v = 2; save_view()
   elseif ch_pin then
     ImGui.SetNextWindowPos(ctx, ch_pin[1], ch_pin[2], ImGui.Cond_Always)
   end
+  -- No collapsing (WindowFlags_NoCollapse), so double-clicking the title bar does nothing.
   -- Older versions could leave the window collapsed (saved by ImGui); always open it.
   ImGui.SetNextWindowCollapsed(ctx, false, ImGui.Cond_Always)
   -- Always set it: ImGui's default window background is only ~94% opaque, so 100% must be explicit.
@@ -1371,7 +1292,6 @@ loop_body = function()
   if visible then
     main_win_pos[1], main_win_pos[2] = ImGui.GetWindowPos(ctx)
     main_win_docked = ImGui.IsWindowDocked(ctx)
-    title_bar_double_click()
     -- Re-read the Wwise selection when coming back to this window (e.g. after clicking in Wwise).
     -- AnyWindow: our own popups (like the summary) don't count as leaving. Right after a
     -- transfer (render dialog, Wwise busy importing) focus changes are ignored for a bit.
