@@ -80,7 +80,7 @@ The window opens at a standard size. Resize it by dragging its edges, and drag i
 
 The thin bar along the top shows a green dot when you're connected, then the Wwise project name and version. On the right, **?** opens this guide in your web browser, and next to it the gear button opens **Settings**.
 
-If Wwise can't be reached, the dot turns red and a yellow banner explains why. If you opened Wwise after REAPER, or Wwise restarted, open **Settings** and click **Reconnect**.
+The window opens right away and connects to Wwise in the background (the bar says **Connecting to Wwise...** meanwhile). If Wwise is busy, for example still loading a project, it tries again by itself every few seconds. If Wwise can't be reached, the dot turns red and a yellow banner explains why. If you opened Wwise after REAPER, or Wwise restarted, open **Settings** and click **Reconnect**.
 
 ### Presets
 
