@@ -1,15 +1,15 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.11.0
+-- @version 1.12.0
 -- @changelog
---   Presets are now split in two, so loading one only changes what you meant to change:
---   - Structure presets (button under Wwise structure): just the levels, names, templates
---     and the Sound row.
---   - Settings presets (button at the top of the left side): everything else, such as
---     source, destination, Originals subfolder, conflict choice, Initial Delay, and the
---     render and transfer options in Settings.
---   Your existing presets carry over: each one becomes a structure preset and a settings
---   preset with the same name.
+--   Channels column: pick several rows and set them all at once. Click and drag down the
+--   column, Shift+click for a range, or Ctrl+click to add or remove a row; when you let go
+--   the menu opens and Mono, Stereo or Auto applies to every picked row. Right-click also
+--   opens it. Esc clears the pick.
+--   Double-clicking the title bar no longer collapses the window. It now fills the screen
+--   the window is on, and double-clicking again puts it back. A window left collapsed by
+--   an older version opens normally again.
+--   The window now only moves by its title bar, so dragging in the preview doesn't move it.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -30,7 +30,8 @@
 --     transfer summary. One Wwise undo step per transfer.
 --   - Auto mono/stereo: a Sound whose left and right match is made mono
 --     (also for folder items). Click the preview's Channels column to force
---     Mono or Stereo for a Sound or a whole container.
+--     Mono or Stereo for a Sound or a whole container, or drag/Shift/Ctrl+click
+--     to set many rows at once.
 --   - Fast: untouched WAV items import without rendering; edited items render
 --     in one pass; everything is imported in one Wwise call.
 --
@@ -57,6 +58,10 @@ package.path = r.ImGui_GetBuiltinPath() .. "/?.lua"
 local ImGui = require "imgui" "0.9"
 
 local ctx = ImGui.CreateContext("Wwise Tool")
+-- Only the title bar moves the window, so dragging across preview rows never drags the window.
+if ImGui.ConfigVar_WindowsMoveFromTitleBarOnly then
+  ImGui.SetConfigVar(ctx, ImGui.ConfigVar_WindowsMoveFromTitleBarOnly, 1)
+end
 
 ----------------------------------------------------------------------
 -- State
@@ -689,11 +694,39 @@ end
 local CH_LABEL = { mono = "Mono", stereo = "Stereo" }
 local CH_OPTIONS = { { nil, "Auto" }, { "mono", "Mono" }, { "stereo", "Stereo" } }
 
+-- Channels column multi-select. Rows are picked by click, click-drag, Shift+click (range)
+-- or Ctrl+click (add/remove); the menu then sets every picked row at once.
+-- Rows are keyed by Wwise path. Ranges use the row order of the previous frame.
+local ch_sel = {}        -- path -> true
+local ch_anchor = nil    -- path a Shift range or drag starts from
+local ch_dragging = false   -- left button went down on a row; the menu opens when it's let go
+local ch_drag_range = false -- plain click: dragging over rows picks the range
+local ch_rows, ch_rows_prev, ch_index = {}, {}, {} -- this frame's / last frame's rows in order
+local ch_names = {}      -- path -> { name, is_sound } for the menu header
+local open_ch_menu = false
+
+local function ch_count()
+  local n = 0
+  for p in pairs(ch_sel) do if ch_names[p] then n = n + 1 end end
+  return n
+end
+
+local function ch_select_range(a, b)
+  local ia, ib = ch_index[a], ch_index[b]
+  ch_sel = {}
+  if not ia or not ib then ch_sel[b] = true; return end
+  if ia > ib then ia, ib = ib, ia end
+  for i = ia, ib do ch_sel[ch_rows_prev[i]] = true end
+end
+
 -- Channels column: shows Auto / Mono / Stereo; click to set an override on this Sound or
 -- container (a container's override counts for every Sound inside it).
 local function channels_cell(node)
-  local own = core.own_channel_override(S, plan, node.path)
-  local eff, from = core.channel_override(S, plan, node.path)
+  local path = node.path
+  ch_rows[#ch_rows + 1] = path
+  ch_names[path] = { node.name, node.entry ~= nil }
+  local own = core.own_channel_override(S, plan, path)
+  local eff, from = core.channel_override(S, plan, path)
   local text, col, tip
   if own then
     text, col = CH_LABEL[own], 0xFFFFFFFF
@@ -713,19 +746,79 @@ local function channels_cell(node)
     text, col, tip = "Auto", COLOR_DIM, "No override: each Sound inside decides for itself."
   end
   ImGui.PushStyleColor(ctx, ImGui.Col_Text, col)
-  if ImGui.Selectable(ctx, text .. "##ch", false) then ImGui.OpenPopup(ctx, "chpop") end
+  ImGui.Selectable(ctx, text .. "##ch", ch_sel[path] == true)
   ImGui.PopStyleColor(ctx)
-  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, tip .. "\nClick to change.") end
+  -- AllowWhenBlockedByPopup: with the menu open, the next click on a row still counts
+  -- (it closes the menu and picks the row) instead of needing a second click.
+  local hov_flags = ImGui.HoveredFlags_AllowWhenBlockedByPopup
+  if ImGui.IsMouseClicked(ctx, ImGui.MouseButton_Left) and ImGui.IsItemHovered(ctx, hov_flags) then
+    local mods = ImGui.GetKeyMods(ctx)
+    if mods & ImGui.Mod_Shift ~= 0 and ch_anchor then
+      ch_select_range(ch_anchor, path)
+    elseif mods & ImGui.Mod_Ctrl ~= 0 then
+      ch_sel[path] = (not ch_sel[path]) or nil
+      ch_anchor = path
+    else
+      ch_sel = { [path] = true }
+      ch_anchor = path
+      ch_drag_range = true
+    end
+    ch_dragging = true
+  elseif ImGui.IsMouseClicked(ctx, ImGui.MouseButton_Right) and ImGui.IsItemHovered(ctx, hov_flags) then
+    if not ch_sel[path] then ch_sel = { [path] = true }; ch_anchor = path end
+    open_ch_menu = true
+  elseif ch_drag_range and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenBlockedByActiveItem) then
+    ch_select_range(ch_anchor, path)
+  end
+  if not ch_dragging and ImGui.IsItemHovered(ctx) then
+    ImGui.SetTooltip(ctx, tip .. "\nClick to change. Drag, Shift+click or Ctrl+click to pick\nseveral rows, then right-click to change them all.")
+  end
+end
+
+-- Called after the preview table: finishes a drag and draws the shared Channels menu.
+local function channels_menu()
+  if ch_dragging and not ImGui.IsMouseDown(ctx, ImGui.MouseButton_Left) then
+    ch_dragging, ch_drag_range = false, false
+    open_ch_menu = true -- letting go of a click or a drag opens the menu for what's picked
+  end
+  ch_rows_prev, ch_rows = ch_rows, {}
+  ch_index = {}
+  for i, p in ipairs(ch_rows_prev) do ch_index[p] = i end
+  if open_ch_menu then
+    open_ch_menu = false
+    if ch_count() > 0 then ImGui.OpenPopup(ctx, "chpop") end
+  end
   if ImGui.BeginPopup(ctx, "chpop") then
-    dim_label(node.entry and ("Channels for " .. node.name) or ("Channels for every Sound in " .. node.name))
+    local paths = {}
+    for p in pairs(ch_sel) do if ch_index[p] then paths[#paths + 1] = p end end
+    table.sort(paths, function(a, b) return ch_index[a] < ch_index[b] end)
+    if #paths == 1 then
+      local nm = ch_names[paths[1]]
+      dim_label(nm[2] and ("Channels for " .. nm[1]) or ("Channels for every Sound in " .. nm[1]))
+    else
+      dim_label(string.format("Channels for %d selected rows", #paths))
+    end
+    -- Tick the option only when every picked row already has it.
+    local common, mixed = nil, false
+    for i, p in ipairs(paths) do
+      local o = core.own_channel_override(S, plan, p) or "auto"
+      if i == 1 then common = o elseif o ~= common then mixed = true end
+    end
     for _, o in ipairs(CH_OPTIONS) do
-      if ImGui.Selectable(ctx, o[2], own == o[1]) then
-        core.set_channel_override(S, plan, node.path, o[1])
+      if ImGui.Selectable(ctx, o[2], not mixed and common == (o[1] or "auto")) then
+        for _, p in ipairs(paths) do core.set_channel_override(S, plan, p, o[1]) end
         settings_changed()
+        ch_sel = {}
       end
     end
-    if not own and eff then dim_label("Now " .. CH_LABEL[eff] .. ", from " .. from .. ".") end
+    if #paths == 1 then
+      local own = core.own_channel_override(S, plan, paths[1])
+      local eff, from = core.channel_override(S, plan, paths[1])
+      if not own and eff then dim_label("Now " .. CH_LABEL[eff] .. ", from " .. from .. ".") end
+    end
     ImGui.EndPopup(ctx)
+  elseif not ch_dragging and next(ch_sel) and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then
+    ch_sel = {}
   end
 end
 
@@ -880,6 +973,7 @@ local function section_preview()
     if tree and #tree.children > 0 then draw_node(tree, 0) end
     ImGui.EndTable(ctx)
   end
+  channels_menu()
   if open_delay_menu then ImGui.OpenPopup(ctx, "delayunit"); open_delay_menu = false end
   if ImGui.BeginPopup(ctx, "delayunit") then
     ImGui.TextDisabled(ctx, "Show Initial delay in")
@@ -1169,11 +1263,60 @@ local function follow_project_tab()
   last_sig = nil
 end
 
+-- Double-clicking the title bar fills the screen the window is on, and again puts it back.
+-- (ImGui's own double-click collapse is turned off with WindowFlags_NoCollapse.)
+local win_max = nil  -- { restore = {x, y, w, h}, target = {x, y, w, h} } while maximized
+local win_next = nil -- position and size to apply on the next frame
+
+local function screen_work_area(x, y, w, h)
+  if not ImGui.PointConvertNative or not r.my_getViewport then return nil end
+  local cx, cy = ImGui.PointConvertNative(ctx, x + w / 2, y + h / 2, true)
+  cx, cy = math.floor(cx), math.floor(cy)
+  local l, t, rt, b = r.my_getViewport(0, 0, 0, 0, cx, cy, cx, cy, true)
+  if not l or rt == l or b == t then return nil end
+  local x1, y1 = ImGui.PointConvertNative(ctx, l, t, false)
+  local x2, y2 = ImGui.PointConvertNative(ctx, rt, b, false)
+  return { math.min(x1, x2), math.min(y1, y2), math.abs(x2 - x1), math.abs(y2 - y1) }
+end
+
+local function title_bar_double_click()
+  if ImGui.IsWindowDocked(ctx) then return end
+  local wx, wy = ImGui.GetWindowPos(ctx)
+  local ww, wh = ImGui.GetWindowSize(ctx)
+  if win_max then
+    local t = win_max.target
+    -- Resized or moved by hand since: it no longer counts as maximized.
+    if math.abs(ww - t[3]) > 4 or math.abs(wh - t[4]) > 4 or math.abs(wx - t[1]) > 4 or math.abs(wy - t[2]) > 4 then
+      win_max = nil
+    end
+  end
+  if not ImGui.IsMouseDoubleClicked(ctx, ImGui.MouseButton_Left) or not ImGui.IsWindowHovered(ctx) then return end
+  local mx, my = ImGui.GetMousePos(ctx)
+  if my < wy or my >= wy + ImGui.GetFrameHeight(ctx) or mx < wx or mx >= wx + ww then return end
+  if win_max then
+    win_next = win_max.restore
+    win_max = nil
+  else
+    local area = screen_work_area(wx, wy, ww, wh)
+    if area then
+      win_max = { restore = { wx, wy, ww, wh }, target = area }
+      win_next = area
+    end
+  end
+end
+
 loop_body = function()
   if not transfer_task then follow_project_tab() end
   if transfer_task then transfer_task = run_task(transfer_task) end
   refresh_preview(false)
   ImGui.SetNextWindowSize(ctx, 1180, 760, ImGui.Cond_FirstUseEver)
+  if win_next then
+    ImGui.SetNextWindowPos(ctx, win_next[1], win_next[2], ImGui.Cond_Always)
+    ImGui.SetNextWindowSize(ctx, win_next[3], win_next[4], ImGui.Cond_Always)
+    win_next = nil
+  end
+  -- Older versions could leave the window collapsed (saved by ImGui); always open it.
+  ImGui.SetNextWindowCollapsed(ctx, false, ImGui.Cond_Always)
   -- Always set it: ImGui's default window background is only ~94% opaque, so 100% must be explicit.
   ImGui.SetNextWindowBgAlpha(ctx, view.opacity)
   ImGui.PushStyleColor(ctx, ImGui.Col_PopupBg, 0x141414FF) -- solid popups and Settings/summary windows
@@ -1182,8 +1325,9 @@ loop_body = function()
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
-  local visible, open = ImGui.Begin(ctx, "Wwise Tool", true)
+  local visible, open = ImGui.Begin(ctx, "Wwise Tool", true, ImGui.WindowFlags_NoCollapse)
   if visible then
+    title_bar_double_click()
     -- Re-read the Wwise selection when coming back to this window (e.g. after clicking in Wwise).
     -- AnyWindow: our own popups (like the summary) don't count as leaving. Right after a
     -- transfer (render dialog, Wwise busy importing) focus changes are ignored for a bit.

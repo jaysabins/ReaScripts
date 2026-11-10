@@ -74,6 +74,8 @@ That's it. The rest of this guide covers the options.
 
 ## The window
 
+When the window is floating (not docked), double-click its title bar to make it fill the screen it's on, and double-click again to put it back. The window moves only by its title bar.
+
 ### Toolbar
 
 The thin bar along the top shows a green dot when you're connected, then the Wwise project name and version. On the right, **?** opens this guide in your web browser, and next to it the gear button opens **Settings**.
@@ -200,6 +202,7 @@ To decide yourself, click a row in the preview's **Channels** column and pick **
 
 - On a **Sound**, the choice is for that Sound only.
 - On a **container**, it's for every Sound inside it, so you can set a whole `Ambience` container to Stereo and a `Footsteps` container to Mono. A choice set on a Sound wins over its container's.
+- To set many at once, pick several rows first: **click and drag** down the column, **Shift+click** to pick everything between two rows, or **Ctrl+click** to add or remove single rows. When you let go of the mouse the menu opens, and your choice applies to every picked row. Right-click also opens the menu, and **Esc** clears the pick.
 - Mono on a stereo file mixes left and right together. Stereo on a mono file copies it to both sides. An untouched WAV is copied first, so the file on disk is never changed.
 
 Choices are remembered by the Sound's or container's name and place in the structure, and saved with the project. **Settings > Clear channel overrides** removes them all. This also works with **Source: Render settings**, where your own rendered files are copied before they're changed.
