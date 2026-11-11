@@ -19,7 +19,7 @@ Wwise Tool is a free REAPER script by Jay Sabins, written in Lua with a ReaImGui
 - **Conflict handling.** Choose to reuse, replace or rename objects that already exist.
 - **SFX and Voice.** Import as Sound SFX or as Sound Voice in a chosen language.
 - **Originals subfolders** with wildcards, and a folder picker for your Wwise project's Originals folder (SFX or any Voices language).
-- **Tabs.** Each tab along the top holds a whole setup (structure and settings), so you can flick between, say, a weapons setup and a footsteps setup with one click.
+- **Tabs.** Each tab along the top holds a whole setup (structure and settings) and can have its own color, so you can flick between, say, a weapons setup and a footsteps setup with one click.
 - **Two kinds of presets.** Structure presets hold just the Wwise structure; settings presets hold everything else. Load one without touching the other.
 - **One undo step.** Each transfer is a single undo in Wwise.
 - **Quick send.** A second action transfers with your last settings, without opening the window. Put it on a shortcut for one-key transfers.
@@ -91,7 +91,7 @@ Under the toolbar is a row of tabs. Each tab is a complete setup: the Wwise stru
 
 - **+** adds a new tab that starts as a copy of the one showing.
 - **Double-click** a tab to rename it.
-- **Right-click** a tab for **Rename**, **Duplicate**, **Move left**, **Move right** and **Close tab**.
+- **Right-click** a tab to edit it: click the color swatch to give the tab its own color, type a new name, or **Close tab**. Underneath, **Reset color** goes back to the normal tab color, **Duplicate** adds a copy next to it, and the **Tab order** arrows move it left or right. New and duplicated tabs keep the color of the tab they were copied from.
 - Close a tab with its **x** (or middle-click it). You're asked first, because its setup goes with it. The last tab can't be closed.
 
 Tabs are saved with each REAPER project, and the last-used tabs carry over to new projects, like the rest of the settings. **Quick send** uses the tab that was showing when you last used the window.

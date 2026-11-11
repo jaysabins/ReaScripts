@@ -9,7 +9,7 @@ M.EXT = "jsabins_WwiseTool"
 -- are copied over once; per-project settings are read from it when a project has
 -- none under the new key yet.
 M.OLD_EXT = "JS_WwiseTransfer"
-M.VERSION = "1.14.2"
+M.VERSION = "1.15.0"
 
 for _, key in ipairs({ "last_settings", "presets", "view" }) do
   if r.GetExtState(M.EXT, key) == "" then
@@ -328,7 +328,7 @@ end
 -- between setups. Saved like the settings: in the project, and as the default for
 -- projects that don't have their own tabs yet. The active tab's setup is also the
 -- project's "settings", so Quick send always uses the tab that was showing.
---   { active = n, list = { { id = n, name = "...", s = <settings> }, ... } }
+--   { active = n, list = { { id = n, name = "...", color = 0xRRGGBB or nil, s = <settings> }, ... } }
 local function read_tabs_text(txt)
   if txt == "" then return nil end
   local ok, t = pcall(json.decode, txt)
@@ -336,7 +336,8 @@ local function read_tabs_text(txt)
   local list = {}
   for _, tab in ipairs(t.list) do
     if type(tab) == "table" and type(tab.s) == "table" then
-      list[#list + 1] = { name = tostring(tab.name or ""), s = merge_defaults(tab.s) }
+      local color = type(tab.color) == "number" and (math.floor(tab.color) & 0xFFFFFF) or nil
+      list[#list + 1] = { name = tostring(tab.name or ""), color = color, s = merge_defaults(tab.s) }
     end
   end
   if #list == 0 then return nil end
@@ -366,7 +367,7 @@ end
 function M.save_tabs(t, proj)
   proj = proj or 0
   local list = {}
-  for i, tab in ipairs(t.list) do list[i] = { name = tab.name, s = tab.s } end
+  for i, tab in ipairs(t.list) do list[i] = { name = tab.name, color = tab.color, s = tab.s } end
   local txt = json.encode({ active = t.active, list = list })
   local _, old = r.GetProjExtState(proj, M.EXT, "tabs")
   if old ~= txt then r.SetProjExtState(proj, M.EXT, "tabs", txt) end

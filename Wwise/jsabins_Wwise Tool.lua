@@ -1,9 +1,11 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.14.2
+-- @version 1.15.0
 -- @changelog
---   Wwise structure: the Add level and Remove level buttons are now small + and -
---   buttons, with "Add level" / "Remove level" tooltips, so they take less room.
+--   Tabs can have their own color. Right-click a tab: pick its color from the swatch,
+--   rename it in place, close it, Reset color, Duplicate, or change the tab order with
+--   the arrow buttons. Colors are saved with the tabs; a new or duplicated tab keeps the
+--   color of the tab it was copied from. Light colors get dark text so names stay readable.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1559,12 +1561,45 @@ end
 
 ----------------------------------------------------------------------
 -- Tabs: each one is a whole setup (structure and settings). Click a tab to switch,
--- "+" adds a copy of the showing tab, double-click renames, right-click for more.
+-- "+" adds a copy of the showing tab, double-click renames, right-click for color, name and order.
 ----------------------------------------------------------------------
 local tab_select_pending = true -- ImGui still has to show tabs.active (first frame, after a switch)
 local tab_rename = nil          -- { i =, text = } while the Rename popup is open
 local tab_close = nil           -- index of the tab waiting for "Close tab?"
 local open_tab_rename, open_tab_close = false, false
+local tab_edit, tab_edit_text = nil, "" -- the tab whose right-click popup is open (name, color, order)
+local open_tab_edit = false
+
+-- Tab colors. Constant names changed between ReaImGui versions, so use whichever exists.
+local function imgui_const(...)
+  for _, name in ipairs({ ... }) do
+    local ok, v = pcall(function() return ImGui[name] end)
+    if ok and type(v) == "number" then return v end
+  end
+end
+local TAB_COLS = {
+  { imgui_const("Col_Tab"), 0xA0 },
+  { imgui_const("Col_TabHovered"), 0xE0 },
+  { imgui_const("Col_TabSelected", "Col_TabActive"), 0xFF },
+  { imgui_const("Col_TabDimmed", "Col_TabUnfocused"), 0x80 },
+  { imgui_const("Col_TabDimmedSelected", "Col_TabUnfocusedActive"), 0xD0 },
+}
+-- Push a tab's own color (0xRRGGBB); returns how many colors to pop.
+local function push_tab_color(rgb)
+  if not rgb then return 0 end
+  local n = 0
+  for _, c in ipairs(TAB_COLS) do
+    if c[1] then ImGui.PushStyleColor(ctx, c[1], (rgb << 8) | c[2]); n = n + 1 end
+  end
+  -- Dark text on light colors so the name stays readable.
+  local lum = (0.299 * ((rgb >> 16) & 0xFF) + 0.587 * ((rgb >> 8) & 0xFF) + 0.114 * (rgb & 0xFF)) / 255
+  ImGui.PushStyleColor(ctx, ImGui.Col_Text, lum > 0.62 and 0x111111FF or 0xFFFFFFFF)
+  return n + 1
+end
+local function default_tab_rgb()
+  local c = TAB_COLS[3][1] and ImGui.GetStyleColor(ctx, TAB_COLS[3][1])
+  return c and (c >> 8) & 0xFFFFFF or 0x3A6EA5
+end
 
 -- Forget everything the preview worked out for the setup that was showing.
 local function setup_switched()
@@ -1599,7 +1634,7 @@ end
 
 -- Add a copy of tab `from` at position `at` and show it.
 local function add_tab(from, at, name)
-  local tab = { id = tabs.next_id, name = name, s = core.copy_settings(tabs.list[from].s) }
+  local tab = { id = tabs.next_id, name = name, color = tabs.list[from].color, s = core.copy_settings(tabs.list[from].s) }
   tabs.next_id = tabs.next_id + 1
   table.insert(tabs.list, at, tab)
   if at <= tabs.active then tabs.active = tabs.active + 1 end
@@ -1637,23 +1672,16 @@ local function section_tabs()
       local flags = (tab_select_pending and i == tabs.active) and ImGui.TabItemFlags_SetSelected or ImGui.TabItemFlags_None
       local label = tab.name .. "###tab" .. tab.id
       local sel, keep
+      local pushed = push_tab_color(tab.color)
       if can_close then sel, keep = ImGui.BeginTabItem(ctx, label, true, flags)
       else sel = ImGui.BeginTabItem(ctx, label, nil, flags) end
+      if pushed > 0 then ImGui.PopStyleColor(ctx, pushed) end
       if can_close and keep == false then action = { "close", i } end
       if ImGui.IsItemHovered(ctx) then
         if ImGui.IsMouseDoubleClicked(ctx, ImGui.MouseButton_Left) then action = { "rename", i }
         elseif can_close and ImGui.IsMouseClicked(ctx, ImGui.MouseButton_Middle) then action = { "close", i } end
       end
-      if ImGui.BeginPopupContextItem(ctx, "tabmenu" .. tab.id) then
-        if ImGui.MenuItem(ctx, "Rename...") then action = { "rename", i } end
-        if ImGui.MenuItem(ctx, "Duplicate") then action = { "duplicate", i } end
-        ImGui.Separator(ctx)
-        if ImGui.MenuItem(ctx, "Move left", nil, false, i > 1) then action = { "move", i, -1 } end
-        if ImGui.MenuItem(ctx, "Move right", nil, false, i < #tabs.list) then action = { "move", i, 1 } end
-        ImGui.Separator(ctx)
-        if ImGui.MenuItem(ctx, "Close tab", nil, false, can_close) then action = { "close", i } end
-        ImGui.EndPopup(ctx)
-      end
+      if ImGui.IsItemClicked(ctx, ImGui.MouseButton_Right) then action = { "edit", i } end
       if sel then
         -- While a switch is pending ImGui may still report the old tab for a frame: ignore it.
         if i == tabs.active then tab_select_pending = false
@@ -1664,7 +1692,7 @@ local function section_tabs()
     if ImGui.TabItemButton(ctx, "+", ImGui.TabItemFlags_Trailing | ImGui.TabItemFlags_NoTooltip) then action = { "add" } end
     if ImGui.IsItemHovered(ctx) then
       ImGui.SetTooltip(ctx, "New tab, starting as a copy of this one.\n" ..
-        "Each tab keeps its own Wwise structure and settings.\nDouble-click a tab to rename it, right-click for more.")
+        "Each tab keeps its own Wwise structure and settings.\nDouble-click a tab to rename it, right-click for its color, name and order.")
     end
     ImGui.EndTabBar(ctx)
   end
@@ -1676,7 +1704,64 @@ local function section_tabs()
     elseif a == "duplicate" then add_tab(i, i + 1, new_tab_name(tabs.list[i].name .. " copy"))
     elseif a == "move" then move_tab(i, action[3])
     elseif a == "rename" then tab_rename = { i = i, text = tabs.list[i].name }; open_tab_rename = true
-    elseif a == "close" then tab_close = i; open_tab_close = true end
+    elseif a == "close" then tab_close = i; open_tab_close = true
+    elseif a == "edit" then tab_edit, tab_edit_text = tabs.list[i], tabs.list[i].name; open_tab_edit = true end
+  end
+
+  -- Right-click popup: color, name, close; reset color, duplicate, order.
+  if open_tab_edit then ImGui.OpenPopup(ctx, "tabedit"); open_tab_edit = false end
+  if ImGui.BeginPopup(ctx, "tabedit") then
+    local i
+    for k, t in ipairs(tabs.list) do if t == tab_edit then i = k end end
+    if not i then ImGui.CloseCurrentPopup(ctx)
+    else
+      local tab = tab_edit
+      local ch, rgb = ImGui.ColorEdit3(ctx, "##tabcolor", tab.color or default_tab_rgb(),
+        ImGui.ColorEditFlags_NoInputs | ImGui.ColorEditFlags_NoAlpha)
+      if ch then tab.color = rgb; settings_changed() end
+      if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Tab color") end
+      ImGui.SameLine(ctx)
+      ImGui.SetNextItemWidth(ctx, 200)
+      if ImGui.IsWindowAppearing(ctx) then ImGui.SetKeyboardFocusHere(ctx) end
+      local enter
+      ch, tab_edit_text = ImGui.InputText(ctx, "##tabeditname", tab_edit_text)
+      if ch then
+        local name = tab_edit_text:match("^%s*(.-)%s*$")
+        if name ~= "" then tab.name = name; settings_changed() end
+      end
+      enter = ImGui.IsItemDeactivatedAfterEdit(ctx) and ImGui.IsKeyPressed(ctx, ImGui.Key_Enter)
+      ImGui.SameLine(ctx)
+      local can_close = #tabs.list > 1
+      if not can_close then ImGui.BeginDisabled(ctx) end
+      ImGui.PushStyleColor(ctx, ImGui.Col_Button, 0x8E2A2AFF)
+      ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered, 0xB23636FF)
+      ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, 0x6E1F1FFF)
+      if ImGui.Button(ctx, "Close tab") then
+        tab_close = i; open_tab_close = true; ImGui.CloseCurrentPopup(ctx)
+      end
+      ImGui.PopStyleColor(ctx, 3)
+      if not can_close then ImGui.EndDisabled(ctx) end
+      if not tab.color then ImGui.BeginDisabled(ctx) end
+      if ImGui.Button(ctx, "Reset color") then tab.color = nil; settings_changed() end
+      if not tab.color then ImGui.EndDisabled(ctx) end
+      ImGui.SameLine(ctx)
+      if ImGui.Button(ctx, "Duplicate") then
+        add_tab(i, i + 1, new_tab_name(tab.name .. " copy")); ImGui.CloseCurrentPopup(ctx)
+      end
+      ImGui.SameLine(ctx)
+      ImGui.AlignTextToFramePadding(ctx)
+      ImGui.TextColored(ctx, COLOR_DIM, "Tab order:")
+      ImGui.SameLine(ctx)
+      if i == 1 then ImGui.BeginDisabled(ctx) end
+      if ImGui.ArrowButton(ctx, "##tableft", ImGui.Dir_Left) then move_tab(i, -1) end
+      if i == 1 then ImGui.EndDisabled(ctx) end
+      ImGui.SameLine(ctx)
+      if i == #tabs.list then ImGui.BeginDisabled(ctx) end
+      if ImGui.ArrowButton(ctx, "##tabright", ImGui.Dir_Right) then move_tab(i, 1) end
+      if i == #tabs.list then ImGui.EndDisabled(ctx) end
+      if enter then ImGui.CloseCurrentPopup(ctx) end
+    end
+    ImGui.EndPopup(ctx)
   end
 
   if open_tab_rename then ImGui.OpenPopup(ctx, "Rename tab"); open_tab_rename = false end
