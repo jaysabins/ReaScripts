@@ -1,12 +1,12 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.13.3
+-- @version 1.13.4
 -- @changelog
---   Wwise structure: + Add level now has - Remove level and move up/down arrow
---   buttons next to it. They act on the selected level (click its type or name; it's
---   highlighted), or the bottom level when none is selected.
---   Each row's "..." button is now a clipboard icon that only holds the property
---   template. It turns amber when a template is set, and the popup has a Clear button.
+--   New Loop column in the preview, like Streaming: click a Sound or container (or
+--   pick many rows with drag, Shift+click or Ctrl+click) and choose Loop (infinite),
+--   No loop or Auto (leave it as Wwise or the template has it). Written after
+--   property templates. Settings tab "Streaming" is now "Stream & loop" and has
+--   Clear loop overrides.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -31,6 +31,7 @@
 --     to set many rows at once.
 --   - Streaming: turn on Stream per Sound or container from the preview's
 --     Streaming column, or automatically for Sounds longer than a set length.
+--   - Loop: set Sounds to loop (infinite) from the preview's Loop column.
 --   - Fast: untouched WAV items import without rendering; edited items render
 --     in one pass; everything is imported in one Wwise call.
 --
@@ -776,6 +777,7 @@ end
 
 local CH_LABEL = { mono = "Mono", stereo = "Stereo" }
 local ST_LABEL = { on = "Stream", off = "No stream" }
+local LP_LABEL = { on = "Loop", off = "No loop" }
 
 -- Preview columns you can click to set something on a Sound or a whole container
 -- (a container's choice counts for every Sound inside it). Each one keeps its choices
@@ -796,6 +798,14 @@ local PICK_COLS = {
     own = function(path) return core.own_stream_override(S, plan, path) end,
     get = function(path) return core.stream_override(S, plan, path) end,
     set = function(path, v) core.set_stream_override(S, plan, path, v) end,
+  },
+  lp = {
+    what = "Loop",
+    options = { { nil, "Auto" }, { "on", "Loop" }, { "off", "No loop" } },
+    labels = LP_LABEL,
+    own = function(path) return core.own_loop_override(S, plan, path) end,
+    get = function(path) return core.loop_override(S, plan, path) end,
+    set = function(path, v) core.set_loop_override(S, plan, path, v) end,
   },
 }
 
@@ -940,6 +950,26 @@ local function streaming_cell(node)
   pick_cell("st", path, text, col, tip)
 end
 
+-- Loop column: shows Loop / No loop, or "-" when it's left as Wwise or the template has it.
+local function loop_cell(node)
+  local path = node.path
+  local own = core.own_loop_override(S, plan, path)
+  local eff, from = core.loop_override(S, plan, path)
+  local text, col, tip
+  if own then
+    text, col = LP_LABEL[own], 0xFFFFFFFF
+    tip = (own == "on" and "Loops forever" or "Looping turned off") ..
+      (node.entry and " for this Sound." or (" for every Sound in " .. node.name .. "."))
+  elseif eff then
+    text, col = LP_LABEL[eff], 0xCFCFCFFF
+    tip = (eff == "on" and "Loops forever" or "Looping turned off") .. ", set on " .. from .. "."
+  else
+    text, col = "-", COLOR_DIM
+    tip = node.entry and "Left as Wwise or the template has it." or "No override: each Sound inside decides for itself."
+  end
+  pick_cell("lp", path, text, col, tip)
+end
+
 -- Called after the preview table: finishes a drag and draws the shared menu.
 local function pick_menu()
   if pk_dragging and not ImGui.IsMouseDown(ctx, ImGui.MouseButton_Left) then
@@ -1042,6 +1072,8 @@ local function draw_node(node, depth)
   ImGui.TableNextColumn(ctx)
   if depth > 0 and node.path then streaming_cell(node) end
   ImGui.TableNextColumn(ctx)
+  if depth > 0 and node.path then loop_cell(node) end
+  ImGui.TableNextColumn(ctx)
   if node.entry then
     local o = core.originals_name(node.entry)
     if o then
@@ -1076,6 +1108,7 @@ local PREVIEW_COLS = {
   { id = "Audio", w = 120 },
   { id = "Channels", w = 80 },
   { id = "Streaming", w = 90 },
+  { id = "Loop", w = 70 },
   { id = "Originals file", stretch = true, w = 3 },
   { id = "Initial delay", w = 80 },
 }
@@ -1243,6 +1276,8 @@ local function summary_popup()
     if (s.templates or 0) > 0 then ImGui.Text(ctx, string.format("Templates applied: %d", s.templates)) end
     if (s.streaming_on or 0) > 0 then ImGui.Text(ctx, string.format("Sounds set to stream: %d", s.streaming_on)) end
     if (s.streaming_off or 0) > 0 then ImGui.Text(ctx, string.format("Streaming turned off: %d", s.streaming_off)) end
+    if (s.loop_on or 0) > 0 then ImGui.Text(ctx, string.format("Sounds set to loop: %d", s.loop_on)) end
+    if (s.loop_off or 0) > 0 then ImGui.Text(ctx, string.format("Looping turned off: %d", s.loop_off)) end
     if (s.delays or 0) > 0 then ImGui.Text(ctx, string.format("Initial delays set: %d", s.delays)) end
     if s.notes and #s.notes > 0 then
       ImGui.PushTextWrapPos(ctx, 500)
@@ -1368,6 +1403,19 @@ local function settings_streaming()
       help("Removes every Stream/No stream choice made in the preview's Streaming column (this project).")
     end
   end
+  ImGui.Dummy(ctx, 0, 6)
+  ImGui.SeparatorText(ctx, "Loop")
+  ImGui.PushTextWrapPos(ctx, 0)
+  dim_label("Click a Sound or container in the preview's Loop column to set Loop (infinite) or No loop. " ..
+    "Auto leaves it as Wwise or the template has it. Written after the property templates, so it wins.")
+  ImGui.PopTextWrapPos(ctx)
+  do
+    local n = core.count_loop_overrides(S)
+    if n > 0 then
+      if ImGui.SmallButton(ctx, string.format("Clear loop overrides (%d)", n)) then S.loops = {}; settings_changed() end
+      help("Removes every Loop/No loop choice made in the preview's Loop column (this project).")
+    end
+  end
 end
 
 local function settings_interface()
@@ -1430,7 +1478,7 @@ local SETTINGS_TABS = {
   { "Rendering", settings_rendering },
   { "Channels", settings_channels },
   { "Transfer", settings_transfer },
-  { "Streaming", settings_streaming },
+  { "Stream & loop", settings_streaming },
   { "Interface", settings_interface },
   { "Diagnostics", settings_diagnostics },
 }
