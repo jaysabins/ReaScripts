@@ -125,7 +125,7 @@ This sets the containers that are created above each Sound, from the top down:
 - Click **+ Add level** and choose its type: Actor-Mixer, Random Container, Sequence Container, Switch Container, Blend Container, Virtual Folder, Work Unit or Physical Folder.
 - Name each level. Names can use REAPER wildcards, and the **$** button inserts one. Every item gets its own name from the wildcard, so `$region` puts each item in a container named after its region.
 - The last row is the **Sound** itself. Choose **Sound SFX** or **Sound Voice** (pick a language for Voice). In Wwise 2025.1 and later both are simply called Sound. Leave its name empty to use the item's name.
-- Each row (type dropdown, name, **$** and **...** buttons) is colored by its type, the same color its tag uses in the preview: orange for Random Containers, purple for Blend Containers, blue for Sounds, and so on. You can pick your own colors in **Settings > Type colors**.
+- Each row (type dropdown, name, **$** and **...** buttons) is colored by its type, the same color its tag uses in the preview: orange for Random Containers, purple for Blend Containers, blue for Sounds, and so on. You can pick your own colors in **Settings > Interface > Type colors**.
 - Each level's **...** button holds its property template plus **Move up**, **Move down** and **Remove level**. The button shows **T** when a template is set.
 - **Structure presets...** saves just the structure (the levels with their names and templates, and the Sound row with its type, name, template and language) under a name, and loads or deletes saved ones. Loading one changes only the structure. See [Presets](#presets).
 
@@ -185,7 +185,7 @@ The right side shows what the transfer will create, laid out like Wwise's Projec
   - **Channels** shows whether a Sound will be mono or stereo, and lets you change it. See [Mono and stereo](#mono-and-stereo).
   - **Streaming** shows whether a Sound will be set to stream in Wwise, and lets you change it. See [Streaming](#streaming).
   - **Originals file** is the file name Wwise will keep in Originals. Hover for the full path.
-  - **Initial delay** shows the layer timing delays, in seconds by default (0.042 s, as Wwise shows it). Right-click a value to switch to milliseconds (42 ms), or change it in **Settings > Window**.
+  - **Initial delay** shows the layer timing delays, in seconds by default (0.042 s, as Wwise shows it). Right-click a value to switch to milliseconds (42 ms), or change it in **Settings > Interface**.
 - **Right-click any column header** to choose which columns you see.
 - **Drag a column header** left or right to put the columns in the order you like (Name always stays first). The order is remembered. To go back to the original order, right-click a header and pick **Reset order**.
 - **Expand all** opens everything. **Collapse all** folds the containers that hold Sounds, so you see the container layout on its own.
@@ -199,7 +199,7 @@ By default, Wwise Tool works out on its own whether each Sound should be mono or
 - Edited items and folder items render in stereo. After rendering, each file is checked, and if its left and right channels are the same, it's imported as a mono file. Differences quieter than -90 dB (like dither noise) count as the same. A true stereo sound stays stereo, and the transfer summary lists those Sounds with how much left and right differ.
 - Untouched WAV items that import straight from disk keep the channels the file has.
 
-This is **Auto**, and you can turn it off in Settings (**Auto channels**). With it off, files keep whatever channel count they render with.
+This is **Auto**, and you can turn it off in **Settings > Channels** (**Auto channels**). With it off, files keep whatever channel count they render with.
 
 To decide yourself, click a row in the preview's **Channels** column and pick **Mono**, **Stereo** or **Auto**:
 
@@ -208,7 +208,7 @@ To decide yourself, click a row in the preview's **Channels** column and pick **
 - To set many at once, pick several rows first: **click and drag** down the column, **Shift+click** to pick everything between two rows, or **Ctrl+click** to add or remove single rows. When you let go of the mouse the menu opens, and your choice applies to every picked row. Right-click also opens the menu, and **Esc** clears the pick.
 - Mono on a stereo file mixes left and right together. Stereo on a mono file copies it to both sides. An untouched WAV is copied first, so the file on disk is never changed.
 
-Choices are remembered by the Sound's or container's name and place in the structure, and saved with the project. **Settings > Clear channel overrides** removes them all. This also works with **Source: Render settings**, where your own rendered files are copied before they're changed.
+Choices are remembered by the Sound's or container's name and place in the structure, and saved with the project. **Settings > Channels > Clear channel overrides** removes them all. This also works with **Source: Render settings**, where your own rendered files are copied before they're changed.
 
 The check only reads WAV files. With other render formats (MP3, OGG...), Auto leaves the files as they are.
 
@@ -221,7 +221,7 @@ Long files such as music and ambience loops usually stream from disk in Wwise in
 - **Auto** with Auto streaming off, or a Sound shorter than the length, leaves streaming as Wwise or your property template has it. **No stream** turns it off.
 - In Settings you can also have **Zero latency** and **Non-cachable** turned on for every Sound that's set to stream. The Prefetch length stays as Wwise has it.
 
-Streaming is written after the property templates, so a template can't undo it. If you'd rather keep streaming in templates, that works too: leave every row on Auto with Auto streaming off, and Wwise Tool doesn't touch it. Choices are saved with the project, and **Settings > Clear streaming overrides** removes them all.
+Streaming is written after the property templates, so a template can't undo it. If you'd rather keep streaming in templates, that works too: leave every row on Auto with Auto streaming off, and Wwise Tool doesn't touch it. Choices are saved with the project, and **Settings > Streaming > Clear streaming overrides** removes them all.
 
 ### Transfer
 
@@ -235,17 +235,20 @@ Afterwards a summary shows the destination, the number of files imported, object
 
 ## Settings
 
+The gear button opens **Settings**, split into tabs. The window keeps its size as you switch tabs; drag its corner to make it bigger, and a long tab scrolls.
+
 - **Connection:** the WAAPI HTTP port (8090 by default, must match Wwise) and **Reconnect**.
-- **Rendering selected items:**
+- **Rendering** (for Source: Selected items):
   - **Import untouched WAV files directly (no render).** Turn it off to always render.
   - **Render items through track FX and master.** Off renders just the items.
   - **Render folder items through master.**
-  - **Auto channels: make a Sound mono when left and right are the same.** On by default. See [Mono and stereo](#mono-and-stereo). When you've set any Mono/Stereo choices in the preview, **Clear channel overrides** appears here.
   - **Keep rendered files in:** by default, item renders go to a temporary folder that's deleted after the transfer. Type a folder to keep them, such as `Renders` or `Renders\$project`. Relative paths start in the REAPER project folder, and wildcards are allowed. A file there with the same name as a new render is replaced.
+- **Channels:** **Auto channels: make a Sound mono when left and right are the same.** On by default. See [Mono and stereo](#mono-and-stereo). When you've set any Mono/Stereo choices in the preview, **Clear channel overrides** appears here.
 - **Transfer:** paste templates onto all objects or new objects only, and whether imported Sounds are selected in Wwise afterwards.
 - **Streaming:** **Auto streaming** for Sounds at least a set number of seconds long, and whether Zero latency and Non-cachable come along with streaming. See [Streaming](#streaming). When you've set any choices in the Streaming column, **Clear streaming overrides** appears here.
-- **Window:** background opacity, for when the window is floating (not docked), and whether the preview's Initial delay column shows seconds or milliseconds.
-- **Type colors:** a color picker for each Wwise type (Actor-Mixer, Random, Sequence, Switch and Blend Containers, Virtual Folder, Work Unit, Physical Folder, Sound, Destination). These colors are used for the structure rows and the preview's tags. **Reset colors to defaults** brings back the built-in scheme.
+- **Interface:**
+  - **Window:** background opacity, for when the window is floating (not docked), and whether the preview's Initial delay column shows seconds or milliseconds.
+  - **Type colors:** a color picker for each Wwise type (Actor-Mixer, Random, Sequence, Switch and Blend Containers, Virtual Folder, Work Unit, Physical Folder, Sound, Destination). These colors are used for the structure rows and the preview's tags. **Reset colors to defaults** brings back the built-in scheme.
 - **Diagnostics:** a log of moments where REAPER was slow. If something stutters, click **Copy slow-moment log** and include it in a bug report.
 
 Settings are saved with each REAPER project, and the last-used settings carry over to new projects. Presets, visible columns and their order, window opacity, the delay unit and type colors apply to every project.

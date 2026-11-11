@@ -1,12 +1,10 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.13.1
+-- @version 1.13.2
 -- @changelog
---   Transferring from a REAPER project that has never been saved now stops with a clear
---   message: "Save the REAPER project first". The Transfer button is greyed out with the
---   same message until you save (only when something needs rendering; items sent as
---   they are still work in an unsaved project).
---   The Transfer to Wwise button is now green (#1a7f37) when it's ready to click.
+--   Settings is now split into tabs: Connection, Rendering, Channels, Transfer,
+--   Streaming, Interface (window and type colors) and Diagnostics. The window keeps
+--   its size when you switch tabs, and you can resize it; long tabs scroll.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1206,13 +1204,9 @@ local function summary_popup()
   end
 end
 
-local function settings_popup()
-  if open_settings then ImGui.OpenPopup(ctx, "Settings"); open_settings = false end
-  ImGui.SetNextWindowSize(ctx, 500, 0, ImGui.Cond_Appearing)
-  if not ImGui.BeginPopupModal(ctx, "Settings", nil, ImGui.WindowFlags_AlwaysAutoResize) then return end
+-- Settings window: one tab per group. Each tab's contents are drawn by its own function.
+local function settings_connection()
   local c, v
-
-  ImGui.SeparatorText(ctx, "Connection")
   ImGui.SetNextItemWidth(ctx, 100)
   c, v = ImGui.InputInt(ctx, "WAAPI HTTP port", S.http_port)
   if c then S.http_port = v; settings_changed() end
@@ -1222,9 +1216,11 @@ local function settings_popup()
   ImGui.TextColored(ctx, COLOR_DIM, "Must match Wwise > Project > User Preferences > Wwise Authoring API (default 8090). " ..
     "\"Allow connections from\" there should be 127.0.0.1,::1.")
   ImGui.PopTextWrapPos(ctx)
-  ImGui.Dummy(ctx, 0, 4)
+end
 
-  ImGui.SeparatorText(ctx, "Rendering selected items")
+local function settings_rendering()
+  local c
+  dim_label("For Source: Selected items.")
   c, S.skip_render_untouched = ImGui.Checkbox(ctx, "Import untouched WAV files directly (no render)", S.skip_render_untouched)
   if c then settings_changed() end
   help("An item that plays a whole WAV file with no trims, FX, fades, pitch or volume changes\nis imported straight from disk. This is the fastest path.")
@@ -1233,6 +1229,22 @@ local function settings_popup()
   c, S.folders_via_master = ImGui.Checkbox(ctx, "Render folder items through master", S.folders_via_master)
   if c then settings_changed() end
   help("An empty item on a folder track renders the folder's mix (folder + children)\nover that item's time range, named after the item.")
+  ImGui.Dummy(ctx, 0, 4)
+  dim_label("Keep rendered files in")
+  S.render_folder = input("##renderfolder", S.render_folder, "(empty: temporary, deleted after the transfer)", 380)
+  wildcard_menu("rf", function(w) S.render_folder = S.render_folder .. w end)
+  help("A folder for the files rendered from selected items, e.g. Renders or Renders\\$project.\n" ..
+    "Relative paths start in the project folder. REAPER wildcards are allowed.\n" ..
+    "A file there with the same name as a new render is replaced.\n" ..
+    "Untouched WAV items aren't rendered (they import straight from disk) unless that option is off.")
+  do
+    local base, rest = core.render_folder_parts(S)
+    if base then ImGui.TextDisabled(ctx, base .. ((rest ~= "") and ("\\" .. rest:gsub("/", "\\")) or "")) end
+  end
+end
+
+local function settings_channels()
+  local c
   c, S.mono_to_mono = ImGui.Checkbox(ctx, "Auto channels: make a Sound mono when left and right are the same", S.mono_to_mono)
   if c then settings_changed() end
   help("Edited items and folder items render in stereo. Afterwards each file is checked:\n" ..
@@ -1246,21 +1258,10 @@ local function settings_popup()
       help("Removes every Mono/Stereo choice made in the preview's Channels column (this project).")
     end
   end
-  ImGui.Dummy(ctx, 0, 2)
-  dim_label("Keep rendered files in")
-  S.render_folder = input("##renderfolder", S.render_folder, "(empty: temporary, deleted after the transfer)", 380)
-  wildcard_menu("rf", function(w) S.render_folder = S.render_folder .. w end)
-  help("A folder for the files rendered from selected items, e.g. Renders or Renders\\$project.\n" ..
-    "Relative paths start in the project folder. REAPER wildcards are allowed.\n" ..
-    "A file there with the same name as a new render is replaced.\n" ..
-    "Untouched WAV items aren't rendered (they import straight from disk) unless that option is off.")
-  do
-    local base, rest = core.render_folder_parts(S)
-    if base then ImGui.TextDisabled(ctx, base .. ((rest ~= "") and ("\\" .. rest:gsub("/", "\\")) or "")) end
-  end
-  ImGui.Dummy(ctx, 0, 4)
+end
 
-  ImGui.SeparatorText(ctx, "Transfer")
+local function settings_transfer()
+  local c
   dim_label("Paste each level's property template onto:")
   c, S.apply_template = combo("##apply_template", core.TEMPLATE_OPS, S.apply_template, 320)
   if c then settings_changed() end
@@ -1268,9 +1269,10 @@ local function settings_popup()
     "\"New objects only\" leaves objects that already existed in Wwise as they are.")
   c, S.select_in_wwise = ImGui.Checkbox(ctx, "Select imported Sounds in Wwise afterwards", S.select_in_wwise)
   if c then settings_changed() end
-  ImGui.Dummy(ctx, 0, 6)
+end
 
-  ImGui.SeparatorText(ctx, "Streaming")
+local function settings_streaming()
+  local c, v
   c, S.stream_auto = ImGui.Checkbox(ctx, "Auto streaming: stream Sounds at least", S.stream_auto)
   if c then settings_changed() end
   ImGui.SameLine(ctx)
@@ -1297,8 +1299,10 @@ local function settings_popup()
       help("Removes every Stream/No stream choice made in the preview's Streaming column (this project).")
     end
   end
-  ImGui.Dummy(ctx, 0, 6)
+end
 
+local function settings_interface()
+  local c
   ImGui.SeparatorText(ctx, "Window")
   dim_label("Background opacity")
   ImGui.SetNextItemWidth(ctx, 260)
@@ -1338,9 +1342,9 @@ local function settings_popup()
     view.colors = {}; view_dirty = true
   end
   if view_dirty and not ImGui.IsAnyItemActive(ctx) then save_view(); view_dirty = false end
-  ImGui.Dummy(ctx, 0, 6)
+end
 
-  ImGui.SeparatorText(ctx, "Diagnostics")
+local function settings_diagnostics()
   ImGui.PushTextWrapPos(ctx, 480)
   ImGui.TextColored(ctx, COLOR_DIM, string.format("Slow moments recorded: %d. If REAPER stutters or freezes, " ..
     "copy this log and send it over.", #slow_log))
@@ -1350,7 +1354,44 @@ local function settings_popup()
   end
   ImGui.SameLine(ctx)
   if ImGui.Button(ctx, "Clear log") then slow_log = {} end
-  ImGui.Dummy(ctx, 0, 6)
+end
+
+local SETTINGS_TABS = {
+  { "Connection", settings_connection },
+  { "Rendering", settings_rendering },
+  { "Channels", settings_channels },
+  { "Transfer", settings_transfer },
+  { "Streaming", settings_streaming },
+  { "Interface", settings_interface },
+  { "Diagnostics", settings_diagnostics },
+}
+
+-- New ID (title still reads "Settings") so the old auto-sized window's saved size
+-- doesn't carry over to the tabbed one.
+local SETTINGS_ID = "Settings##tabbed"
+
+local function settings_popup()
+  if open_settings then ImGui.OpenPopup(ctx, SETTINGS_ID); open_settings = false end
+  ImGui.SetNextWindowSize(ctx, 560, 440, ImGui.Cond_FirstUseEver)
+  ImGui.SetNextWindowSizeConstraints(ctx, 420, 300, 2000, 2000)
+  if not ImGui.BeginPopupModal(ctx, SETTINGS_ID) then return end
+
+  -- Fixed-size window: switching tabs doesn't make it jump around. The tab's
+  -- contents scroll when they don't fit; the footer stays put.
+  local footer_h = ImGui.GetFrameHeightWithSpacing(ctx) + 8
+  if ImGui.BeginTabBar(ctx, "settingstabs") then
+    for _, t in ipairs(SETTINGS_TABS) do
+      if ImGui.BeginTabItem(ctx, t[1]) then
+        if ImGui.BeginChild(ctx, "##settings_" .. t[1], 0, -footer_h) then
+          ImGui.Dummy(ctx, 0, 2)
+          t[2]()
+          ImGui.EndChild(ctx)
+        end
+        ImGui.EndTabItem(ctx)
+      end
+    end
+    ImGui.EndTabBar(ctx)
+  end
 
   ImGui.Separator(ctx)
   ImGui.TextDisabled(ctx, "Wwise Tool " .. core.VERSION)
