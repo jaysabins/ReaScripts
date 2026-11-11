@@ -1,8 +1,9 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.16.8
+-- @version 1.16.9
 -- @changelog
---   Rounded corners on the Wwise Tool window and on the Transfer to Wwise button.
+--   The close button is now a red rounded square with a white X, set in a little from the
+--   window's top-right corner (same size as before). The title bar is a bit taller to fit it.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -377,47 +378,42 @@ local function gear_button(id, size)
   return pressed
 end
 
--- Big close button (an X drawn with the draw list), replacing ImGui's small title-bar X.
--- Gray X, turns red on hover. Returns true when clicked. Drawn in the title bar's top-right
--- corner (see title_close_button).
-local function close_button(id, size, corner)
+-- Big close button: a red rounded square with a white X (drawn with the draw list), replacing
+-- ImGui's small title-bar X. Lighter red on hover, darker while pressed. Returns true when clicked.
+-- Drawn inset from the window's top-right corner (see title_close_button).
+local function close_button(id, size)
   local pressed = ImGui.InvisibleButton(ctx, id, size, size)
   local hovered, held = ImGui.IsItemHovered(ctx), ImGui.IsItemActive(ctx)
   local x1, y1 = ImGui.GetItemRectMin(ctx)
   local dl = ImGui.GetWindowDrawList(ctx)
-  if hovered then
-    -- `corner`: round only the top-right corner by that much, to follow the window's rounded corner.
-    local col = held and 0xA02828FF or 0xC83C3CFF
-    if corner then
-      ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, col, corner, ImGui.DrawFlags_RoundCornersTopRight)
-    else
-      ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, col, size * 0.15)
-    end
-  end
-  local col = hovered and 0xFFFFFFFF or ImGui.GetColor(ctx, ImGui.Col_Text)
-  local m, th = size * 0.28, math.max(2, size * 0.09)
-  ImGui.DrawList_AddLine(dl, x1 + m, y1 + m, x1 + size - m, y1 + size - m, col, th)
-  ImGui.DrawList_AddLine(dl, x1 + size - m, y1 + m, x1 + m, y1 + size - m, col, th)
+  local bg = held and 0xB8323AFF or (hovered and 0xF0525AFF or 0xE04048FF)
+  ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, bg, size * 0.22)
+  local m, th = size * 0.30, math.max(2, size * 0.08)
+  ImGui.DrawList_AddLine(dl, x1 + m, y1 + m, x1 + size - m, y1 + size - m, 0xFFFFFFFF, th)
+  ImGui.DrawList_AddLine(dl, x1 + size - m, y1 + m, x1 + m, y1 + size - m, 0xFFFFFFFF, th)
   return pressed
 end
 local close_clicked = false
 
--- The title bar is made taller (FramePadding pushed around Begin) so the big X fits in it:
--- twice the font size each way, about 4x the area of ImGui's own X.
 local WINDOW_ROUNDING = 10   -- main window corners
 local TRANSFER_ROUNDING = 8  -- "Transfer to Wwise" button corners
-local function title_bar_size() return math.floor(ImGui.GetFontSize(ctx) * 2 + 0.5) end
+-- Close button: twice the font size each way (about 4x the area of ImGui's own X), with an even
+-- margin from the window's top and right edges. The title bar is made taller (FramePadding pushed
+-- around Begin) so the button plus its margins fit above the title bar's divider line.
+local function close_size() return math.floor(ImGui.GetFontSize(ctx) * 2 + 0.5) end
+local function close_margin() return math.floor(ImGui.GetFontSize(ctx) * 0.5 + 0.5) end
+local function title_bar_size() return close_size() + close_margin() * 2 end
 
--- Put the big X in the window's top-right corner, over the title bar. Called at the end of the
+-- Put the big X near the window's top-right corner, over the title bar. Called at the end of the
 -- window so it draws on top. The title bar is outside the content clip area, so the clip rect
--- is widened to the whole window while the button is drawn.
+-- is widened to the whole title bar while the button is drawn.
 local function title_close_button()
-  local size = title_bar_size()
+  local size, m = close_size(), close_margin()
   local wx, wy = ImGui.GetWindowPos(ctx)
   local ww = ImGui.GetWindowSize(ctx)
-  ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + size, false)
-  ImGui.SetCursorScreenPos(ctx, wx + ww - size, wy)
-  if close_button("##closewin", size, WINDOW_ROUNDING) then close_clicked = true end
+  ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + title_bar_size(), false)
+  ImGui.SetCursorScreenPos(ctx, wx + ww - size - m, wy + m)
+  if close_button("##closewin", size) then close_clicked = true end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Close Wwise Tool") end
   ImGui.PopClipRect(ctx)
   -- Don't move the cursor back afterwards: ImGui errors in End() when the cursor is moved
