@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="ec3b2b6ab9e2bcaf20f55932a7dc09a1354ee25d">
+<index version="1" name="Jay Sabins Scripts" commit="add57e8f12616c9d451d09b46c70e3900cd136a9">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -59,6 +59,29 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/c856c6b670dd44e90ed324b442270fdbb0bbb0da/Items/jsabins_Build%20layer%20variations.lua</source>
       </version>
     </reapack>
+    <reapack name="jsabins_Build rapid-fire burst from shots.lua" type="script" desc="Build a rapid-fire burst from single shots (sausage file)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Select a "sausage" item holding a row of single shots (or several items, or shots you already split) and run the script. It finds every shot's transient and builds a rapid-fire burst out of them on a new track below, starting at the edit cursor.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Rate of fire in RPM or in ms between shots, with an optional ramp (spin-up / spin-down) to a second rate.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Number of shots and the order they're used in: in order, ping-pong, random (no shot twice in a row) or shuffled rounds.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Gain per shot: draw the gain of every shot with the mouse, or start from a preset shape (fade out, fade in, accent first, random) and tweak it.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Humanize timing, gain and pitch.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Shots can ring out over each other or be cut off by the next one.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Click a shot in the waveform to leave it out of the burst.\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 With "Live update" on, the last burst you built is rebuilt every time you change a setting, so you can loop playback over it while you dial in the rate and gain. Each change is one undo step.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Requires ReaImGui (install it from ReaPack).\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Jay Sabins" time="2026-11-11T20:50:08Z">
+        <changelog><![CDATA[First version.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/add57e8f12616c9d451d09b46c70e3900cd136a9/Items/jsabins_Build%20rapid-fire%20burst%20from%20shots.lua</source>
+      </version>
+    </reapack>
     <reapack name="jsabins_Measure timing between selected layers.lua" type="script" desc="Measure timing between selected layers (for Wwise initial delay)">
       <metadata>
         <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
@@ -87,7 +110,8 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
 
 {\pard \ql \f0 \sa180 \li0 \fi0 Select one or more items that each hold a rapid-fire burst (machine gun, SMG, auto rifle...) and run the script. It finds every shot's transient, splits the item just before each one, and spreads the shots out along the timeline with a gap between them, so every shot ends up as its own item.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Each shot runs from just before its transient up to the next shot (the last shot keeps the full tail). You can cap the shot length, set fades, number the shots in their take names and add a region per shot, ready for rendering.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 The window shows a live preview of the selected item's waveform with every detected shot marked, so you can tune the detection before you split. Later items on the same track are moved out of the way (optional). Fully undoable.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The window shows a live preview of the selected item's waveform with every detected shot marked, so you can tune the detection before you split. Layered bursts: with "Lock layers together" on, items that overlap in time on different tracks are treated as one burst. Shot times come from one guide layer (auto = sharpest attacks, or pick one) and every layer is cut at those times, then the shots are spread as aligned groups. Cuts that land within a few ms of an existing item edge are skipped, so layers you already chopped stay as they are.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Later items on the same track are moved out of the way (optional). Fully undoable.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Requires ReaImGui (install it from ReaPack).\par}
 }
 ]]></description>
@@ -95,6 +119,15 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
       <version name="1.0.0" author="Jay Sabins" time="2026-11-11T20:07:43Z">
         <changelog><![CDATA[Initial release]]></changelog>
         <source main="main">https://github.com/jaysabins/reascripts/raw/ec3b2b6ab9e2bcaf20f55932a7dc09a1354ee25d/Items/jsabins_Split%20rapid-fire%20into%20single%20shots.lua</source>
+      </version>
+      <version name="1.1.0" author="Jay Sabins" time="2026-11-11T20:20:45Z">
+        <changelog><![CDATA[New "Lock layers together" mode (on by default): when a burst is built from
+several layer tracks, the shot times are found once on a guide layer and every
+layer is cut at those same times, so shot 1 of every layer stays stacked,
+then shot 2, and so on. The guide is picked automatically (the layer with the
+sharpest attacks) or you can choose it. The preview shows the shared cut lines
+on whichever layer you're looking at.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/717395e642c5185b82fbd7d1824d5e98a50e2383/Items/jsabins_Split%20rapid-fire%20into%20single%20shots.lua</source>
       </version>
     </reapack>
   </category>
