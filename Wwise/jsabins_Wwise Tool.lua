@@ -1,12 +1,9 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.16.1
+-- @version 1.16.2
 -- @changelog
---   Work Units are tagged [WU] again. The destination's real type ([WU], [RND]...) still shows
---   on the preview's top row.
---   The preview's "Audio" column is now "File from", with clearer values: Original WAV
---   (imported as is, no render), Item render, Folder render, Project render. Hover the header
---   or a value to see what it means.
+--   The preview's "File from" column is now called "Source" (values unchanged: Original WAV,
+--   Item render, Folder render, Project render; hover for what each means).
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1065,7 +1062,7 @@ local function pick_menu()
   end
 end
 
--- Preview's "File from" column: where the audio file Wwise imports comes from.
+-- Preview's "Source" column: where the audio file Wwise imports comes from.
 local KIND_LABEL = { direct = "Original WAV", render = "Item render", folder = "Folder render", project = "Project render" }
 local KIND_HELP = {
   direct = "The item's own WAV is imported as is, no render.\nThe item is untouched: whole file, no fades, FX, volume, pitch or rate changes.",
@@ -1113,7 +1110,7 @@ local function draw_node(node, depth)
   if ImGui.IsItemHovered(ctx) then
     local tip = hover_type .. "\n" .. (node.path or "")
     if node.entry then
-      tip = tip .. "\nFile from: " .. (KIND_LABEL[node.entry.kind] or "")
+      tip = tip .. "\nSource: " .. (KIND_LABEL[node.entry.kind] or "")
       if node.entry.file then tip = tip .. "\nAudio: " .. node.entry.file end
       if node.entry.origsub then tip = tip .. "\nOriginals\\" .. node.entry.origsub end
     end
@@ -1167,8 +1164,8 @@ end
 local PREVIEW_COLS = {
   { id = "Name", stretch = true, w = 4, nohide = true },
   { id = "Status", w = 70 },
-  -- id stays "Audio" so saved column choices still apply; the header reads "File from".
-  { id = "Audio", label = "File from", w = 110,
+  -- id stays "Audio" so saved column choices still apply; the header reads "Source".
+  { id = "Audio", label = "Source", w = 110,
     tip = "Where the audio file Wwise imports comes from:\n" ..
       "Original WAV: the item's own file, imported as is (no render).\n" ..
       "Item render: the item has edits, so it's rendered first.\n" ..
