@@ -2,14 +2,23 @@ name: deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: write
+# Only one deploy runs at a time. If several merges land quickly, later runs
+# wait instead of racing each other to push index.xml. A waiting run is
+# replaced by a newer one, which is fine: each run indexes every commit since
+# the last indexed one.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
 jobs:
   reapack-index:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
       - name: Configure git
         run: |
@@ -25,4 +34,14 @@ jobs:
       - name: Update index.xml
         run: reapack-index --commit
       - name: Push changes
-        run: git push
+        run: |
+          # If main moved while we were indexing, rebase onto it and retry.
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt), rebasing onto latest main"
+            git pull --rebase origin main || { git rebase --abort; exit 1; }
+            sleep $((attempt * 3))
+          done
+          exit 1
