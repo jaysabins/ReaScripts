@@ -11,6 +11,7 @@ Wwise Tool is a free REAPER script by Jay Sabins, written in Lua with a ReaImGui
 - **Folder items.** An empty item on a folder track renders the folder's mix over that time range.
 - **Automatic mono or stereo.** Rendered Sounds whose left and right channels are the same are imported as mono, folder items included. You can force Mono or Stereo for any Sound or container from the preview.
 - **Build the Wwise structure for you.** Add levels of Actor-Mixers, Random, Sequence, Switch and Blend Containers, Virtual Folders or Work Units above each Sound, named with REAPER wildcards like `$region` and `$track`.
+- **Streaming.** Turn on Stream per Sound or per container from the preview, or let Auto streaming do it for every Sound longer than a length you pick. Zero latency and Non-cachable can come along with it.
 - **Property templates.** Point any level at a template object in Wwise and its settings (volume, bus, attenuation, randomizers...) are pasted onto the new objects.
 - **Initial Delay from layer timing.** For layered sounds like gunshots, the gap between each layer and the first one is written into Wwise's Initial Delay.
 - **Live preview.** See every object that will be created, marked New, Exists or Duplicate, before anything is sent.
@@ -182,9 +183,11 @@ The right side shows what the transfer will create, laid out like Wwise's Projec
 - **Columns:**
   - **Audio** says whether a Sound is imported directly or rendered.
   - **Channels** shows whether a Sound will be mono or stereo, and lets you change it. See [Mono and stereo](#mono-and-stereo).
+  - **Streaming** shows whether a Sound will be set to stream in Wwise, and lets you change it. See [Streaming](#streaming).
   - **Originals file** is the file name Wwise will keep in Originals. Hover for the full path.
   - **Initial delay** shows the layer timing delays, in seconds by default (0.042 s, as Wwise shows it). Right-click a value to switch to milliseconds (42 ms), or change it in **Settings > Window**.
 - **Right-click any column header** to choose which columns you see.
+- **Drag a column header** left or right to put the columns in the order you like (Name always stays first). The order is remembered. To go back to the original order, right-click a header and pick **Reset order**.
 - **Expand all** opens everything. **Collapse all** folds the containers that hold Sounds, so you see the container layout on its own.
 
 The preview updates as you change the selection in REAPER or the settings.
@@ -209,11 +212,22 @@ Choices are remembered by the Sound's or container's name and place in the struc
 
 The check only reads WAV files. With other render formats (MP3, OGG...), Auto leaves the files as they are.
 
+### Streaming
+
+Long files such as music and ambience loops usually stream from disk in Wwise instead of loading into memory. Wwise Tool can turn on **Stream** on the Sounds it imports:
+
+- Click a row in the preview's **Streaming** column and pick **Stream**, **No stream** or **Auto**. It works like the Channels column: on a container it counts for every Sound inside, a choice on a Sound wins over its container's, and you can drag, Shift+click or Ctrl+click to set many rows at once.
+- **Auto streaming** (Settings > Streaming, off by default) streams every Sound at least as long as the length you set (10 seconds to start with). The column then shows **Auto: stream** for those Sounds, and hovering shows each Sound's length. Selected items use the item length. With **Source: Render settings** the length isn't known until the files are rendered, so the column shows **Auto** and the check happens during the transfer.
+- **Auto** with Auto streaming off, or a Sound shorter than the length, leaves streaming as Wwise or your property template has it. **No stream** turns it off.
+- In Settings you can also have **Zero latency** and **Non-cachable** turned on for every Sound that's set to stream. The Prefetch length stays as Wwise has it.
+
+Streaming is written after the property templates, so a template can't undo it. If you'd rather keep streaming in templates, that works too: leave every row on Auto with Auto streaming off, and Wwise Tool doesn't touch it. Choices are saved with the project, and **Settings > Clear streaming overrides** removes them all.
+
 ### Transfer
 
 **Transfer to Wwise** runs the whole transfer as one Wwise undo step. When the button is greyed out, the text next to it (and its tooltip) says why, for example "Select one or more items in REAPER".
 
-Afterwards a summary shows the destination, the number of files imported, objects created, templates applied and delays set, how long each step took, and any problems. **Copy details** copies the problems so you can paste them somewhere. If **Select imported Sounds in Wwise afterwards** is on, Wwise jumps to the new Sounds.
+Afterwards a summary shows the destination, the number of files imported, objects created, templates applied, Sounds set to stream and delays set, how long each step took, and any problems. **Copy details** copies the problems so you can paste them somewhere. If **Select imported Sounds in Wwise afterwards** is on, Wwise jumps to the new Sounds.
 
 ## Quick send
 
@@ -229,11 +243,12 @@ Afterwards a summary shows the destination, the number of files imported, object
   - **Auto channels: make a Sound mono when left and right are the same.** On by default. See [Mono and stereo](#mono-and-stereo). When you've set any Mono/Stereo choices in the preview, **Clear channel overrides** appears here.
   - **Keep rendered files in:** by default, item renders go to a temporary folder that's deleted after the transfer. Type a folder to keep them, such as `Renders` or `Renders\$project`. Relative paths start in the REAPER project folder, and wildcards are allowed. A file there with the same name as a new render is replaced.
 - **Transfer:** paste templates onto all objects or new objects only, and whether imported Sounds are selected in Wwise afterwards.
+- **Streaming:** **Auto streaming** for Sounds at least a set number of seconds long, and whether Zero latency and Non-cachable come along with streaming. See [Streaming](#streaming). When you've set any choices in the Streaming column, **Clear streaming overrides** appears here.
 - **Window:** background opacity, for when the window is floating (not docked), and whether the preview's Initial delay column shows seconds or milliseconds.
 - **Type colors:** a color picker for each Wwise type (Actor-Mixer, Random, Sequence, Switch and Blend Containers, Virtual Folder, Work Unit, Physical Folder, Sound, Destination). These colors are used for the structure rows and the preview's tags. **Reset colors to defaults** brings back the built-in scheme.
 - **Diagnostics:** a log of moments where REAPER was slow. If something stutters, click **Copy slow-moment log** and include it in a bug report.
 
-Settings are saved with each REAPER project, and the last-used settings carry over to new projects. Presets, visible columns, window opacity, the delay unit and type colors apply to every project.
+Settings are saved with each REAPER project, and the last-used settings carry over to new projects. Presets, visible columns and their order, window opacity, the delay unit and type colors apply to every project.
 
 ## Example setups
 

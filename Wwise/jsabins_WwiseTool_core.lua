@@ -218,6 +218,11 @@ function M.default_settings()
     folders_via_master = false,
     mono_to_mono = true,             -- Auto channels: a sound whose left and right match becomes mono
     channels = {},                   -- channel overrides: { [lowercase path below the destination] = "mono"|"stereo" }
+    streaming = {},                  -- streaming overrides: { [lowercase path below the destination] = "on"|"off" }
+    stream_auto = false,             -- Auto streaming: stream Sounds at least stream_min_sec long
+    stream_min_sec = 10,
+    stream_zero_latency = false,     -- with streaming on, also turn on Zero latency
+    stream_non_cachable = false,     -- with streaming on, also turn on Non-cachable
     use_wwise_selection = true,      -- destination = Wwise selection at transfer time
     destination = "",
     originals_subfolder = "",
@@ -241,6 +246,8 @@ local function merge_defaults(s)
   for k, v in pairs(d.leaf) do if s.leaf[k] == nil then s.leaf[k] = v end end
   if type(s.rows) ~= "table" then s.rows = {} end
   if type(s.channels) ~= "table" then s.channels = {} end
+  if type(s.streaming) ~= "table" then s.streaming = {} end
+  if type(s.stream_min_sec) ~= "number" or s.stream_min_sec < 0 then s.stream_min_sec = 10 end
   if s.port and s.http_port == 8090 then s.http_port = s.port end -- settings from 1.0.x
   s.port = nil
   return s
@@ -275,10 +282,11 @@ end
 --   "structure": the Wwise structure only (levels with their names and templates, and the Sound row).
 --   "settings":  everything else that shapes a transfer (source, destination, Originals subfolder,
 --                conflict choice, Initial Delay, render and transfer options).
--- The connection port and the preview's Mono/Stereo overrides are never part of a preset.
+-- The connection port and the preview's Mono/Stereo and Streaming overrides are never part of a preset.
 M.SETTINGS_PRESET_KEYS = { "source", "use_wwise_selection", "destination", "originals_subfolder",
   "conflict", "set_initial_delay", "delay_target", "skip_render_untouched", "items_via_master",
-  "folders_via_master", "mono_to_mono", "render_folder", "apply_template", "select_in_wwise" }
+  "folders_via_master", "mono_to_mono", "render_folder", "apply_template", "select_in_wwise",
+  "stream_auto", "stream_min_sec", "stream_zero_latency", "stream_non_cachable" }
 local PRESET_KEYS = { structure = "structure_presets", settings = "settings_presets" }
 
 local function read_table(key)
@@ -770,6 +778,7 @@ local function plan_selected_items(s, snap)
       e.kind = file and "direct" or "render"
       e.file = file or nil
       e.src_ch = source_channels(it)
+      e.len = r.GetMediaItemInfo_Value(it, "D_LENGTH")
       entries[#entries + 1] = e
     end
   elseif #normal > 0 then
@@ -788,6 +797,7 @@ local function plan_selected_items(s, snap)
       e.kind = file and "direct" or "render"
       e.file = file or nil
       e.src_ch = source_channels(it)
+      e.len = r.GetMediaItemInfo_Value(it, "D_LENGTH")
     end
     local order = targets_for("$item")
     for take, nm in pairs(snap.names) do r.GetSetMediaItemTakeInfo_String(take, "P_NAME", nm, true) end
@@ -1062,23 +1072,35 @@ function M.layer_delays(plan, s)
   return out, warnings
 end
 
+-- Set properties on Wwise objects in one call. objs: { { object = path, ["@Prop"] = value, ... } }.
+-- Returns how many objects were set, plus an error.
+function M.set_props(objs, timeout)
+  if #objs == 0 then return 0 end
+  local res, err = M.waapi("ak.wwise.core.object.set", { objects = objs }, nil, timeout)
+  if res then return #objs end
+  -- Older Wwise (before 2022.1) has no object.set: one call per property.
+  local n, last = 0, err
+  for _, o in ipairs(objs) do
+    local all = true
+    for k, v in pairs(o) do
+      if k:sub(1, 1) == "@" then
+        local ok, e2 = M.waapi("ak.wwise.core.object.setProperty", { object = o.object, property = k:sub(2), value = v }, nil, timeout)
+        if not ok then all, last = false, e2 end
+      end
+    end
+    if all then n = n + 1 end
+  end
+  if n == 0 then return 0, last end
+  return n, (n < #objs) and last or nil
+end
+
 -- Write Initial Delay (seconds) on Wwise objects given by path. Returns count, error.
 function M.apply_delays(delays, timeout)
   local objs = json.array()
   for path, v in pairs(delays) do
     objs[#objs + 1] = { object = path, ["@InitialDelay"] = math.floor(v * 10000 + 0.5) / 10000 }
   end
-  if #objs == 0 then return 0 end
-  local res, err = M.waapi("ak.wwise.core.object.set", { objects = objs }, nil, timeout)
-  if res then return #objs end
-  -- Older Wwise (before 2022.1) has no object.set: one call per object.
-  local n, last = 0, err
-  for _, o in ipairs(objs) do
-    local ok, e2 = M.waapi("ak.wwise.core.object.setProperty", { object = o.object, property = "InitialDelay", value = o["@InitialDelay"] }, nil, timeout)
-    if ok then n = n + 1 else last = e2 end
-  end
-  if n == 0 then return 0, last end
-  return n
+  return M.set_props(objs, timeout)
 end
 
 -- Turn the plan into a tree shaped like Wwise's Project Explorer.
@@ -1180,34 +1202,90 @@ function M.rel_path(plan, path)
   return (path:gsub("^\\+", ""))
 end
 
--- "mono", "stereo" or nil (Auto) for a Wwise path, plus the name of the object the
--- override was set on (the Sound itself or a container above it).
-function M.channel_override(s, plan, path)
-  local ov = s.channels or {}
+-- Overrides set in the preview's columns (Channels, Streaming). Each kind lives in its own
+-- settings table and allows a fixed set of values.
+local OVERRIDES = { channels = { mono = true, stereo = true }, streaming = { on = true, off = true } }
+
+-- The value for a Wwise path (set on it or on a container above it) or nil (Auto), plus the
+-- name of the object the override was set on.
+local function get_override(kind, s, plan, path)
+  local ov, ok = s[kind] or {}, OVERRIDES[kind]
   local rel = M.rel_path(plan, path)
   while rel and rel ~= "" do
     local m = ov[rel:lower()]
-    if m == "mono" or m == "stereo" then return m, rel:match("[^\\]+$") end
+    if m and ok[m] then return m, rel:match("[^\\]+$") end
     rel = rel:match("^(.*)\\[^\\]+$")
   end
   return nil
 end
 
 -- The override set on exactly this path (not inherited), or nil.
-function M.own_channel_override(s, plan, path)
-  local m = (s.channels or {})[M.rel_path(plan, path):lower()]
-  if m == "mono" or m == "stereo" then return m end
+local function own_override(kind, s, plan, path)
+  local m = (s[kind] or {})[M.rel_path(plan, path):lower()]
+  if m and OVERRIDES[kind][m] then return m end
 end
 
-function M.set_channel_override(s, plan, path, mode)
-  if type(s.channels) ~= "table" then s.channels = {} end
-  s.channels[M.rel_path(plan, path):lower()] = (mode == "mono" or mode == "stereo") and mode or nil
+local function set_override(kind, s, plan, path, mode)
+  if type(s[kind]) ~= "table" then s[kind] = {} end
+  s[kind][M.rel_path(plan, path):lower()] = (mode and OVERRIDES[kind][mode]) and mode or nil
 end
 
-function M.count_channel_overrides(s)
+local function count_overrides(kind, s)
   local n = 0
-  for _ in pairs(s.channels or {}) do n = n + 1 end
+  for _ in pairs(s[kind] or {}) do n = n + 1 end
   return n
+end
+
+-- "mono", "stereo" or nil (Auto) for a Wwise path, plus where it was set.
+function M.channel_override(s, plan, path) return get_override("channels", s, plan, path) end
+function M.own_channel_override(s, plan, path) return own_override("channels", s, plan, path) end
+function M.set_channel_override(s, plan, path, mode) set_override("channels", s, plan, path, mode) end
+function M.count_channel_overrides(s) return count_overrides("channels", s) end
+
+-- "on", "off" or nil (Auto) for a Wwise path, plus where it was set.
+function M.stream_override(s, plan, path) return get_override("streaming", s, plan, path) end
+function M.own_stream_override(s, plan, path) return own_override("streaming", s, plan, path) end
+function M.set_stream_override(s, plan, path, mode) set_override("streaming", s, plan, path, mode) end
+function M.count_stream_overrides(s) return count_overrides("streaming", s) end
+
+-- What a Sound gets: true (stream), false (don't stream) or nil (leave it as Wwise or the
+-- template has it), plus why: "set" (override), "auto" (long enough), "short" (Auto streaming
+-- is on but it's shorter), "unknown" (Auto streaming is on but the length isn't known yet).
+function M.wanted_streaming(s, plan, e)
+  local m = e.plain and M.stream_override(s, plan, e.plain)
+  if m then return m == "on", "set" end
+  if not s.stream_auto then return nil end
+  if not e.len then return nil, "unknown" end
+  if e.len >= (s.stream_min_sec or 10) - 1e-6 then return true, "auto" end
+  return nil, "short"
+end
+
+-- Turn streaming on/off on the imported Sounds. Returns how many were turned on and off, plus an error.
+function M.apply_streaming(s, plan, timeout)
+  local objs, on, off = json.array(), 0, 0
+  for _, e in ipairs(plan.entries or {}) do
+    if e.plain and e.file and not e.unresolved then
+      if not e.len and s.stream_auto then
+        -- Files from REAPER's render settings: the length is known once they're rendered.
+        local info = M.wav_info(e.file)
+        if info and info.rate and info.rate > 0 then e.len = info.frames / info.rate end
+      end
+      local want = M.wanted_streaming(s, plan, e)
+      if want == true then
+        local o = { object = e.plain, ["@IsStreamingEnabled"] = true }
+        if s.stream_zero_latency then o["@IsZeroLatency"] = true end
+        if s.stream_non_cachable then o["@IsNonCachable"] = true end
+        objs[#objs + 1] = o
+        on = on + 1
+      elseif want == false then
+        objs[#objs + 1] = { object = e.plain, ["@IsStreamingEnabled"] = false }
+        off = off + 1
+      end
+    end
+  end
+  local n, err = M.set_props(objs, timeout)
+  if n == 0 and err then return 0, 0, err end
+  return on, off, err
 end
 
 -- What a Sound will get: "mono", "stereo", "auto" (check after rendering) or nil (keep as is).
@@ -1758,6 +1836,15 @@ function M.transfer(s, conn, on_status)
   end
 
   if next(by_template) then lap("Property templates") end
+
+  -- Streaming (after templates, so a template can't overwrite it).
+  if s.stream_auto or M.count_stream_overrides(s) > 0 then
+    status("Setting streaming...")
+    local on, off, serr = M.apply_streaming(s, plan)
+    summary.streaming_on, summary.streaming_off = on, off
+    if serr then summary.errors[#summary.errors + 1] = "Streaming: " .. tostring(serr) end
+    lap("Streaming")
+  end
 
   -- Initial delay from layer timing (after templates, so a template can't overwrite it).
   if s.set_initial_delay then
