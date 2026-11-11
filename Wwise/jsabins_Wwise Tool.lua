@@ -1,12 +1,12 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.16.0
+-- @version 1.16.1
 -- @changelog
---   The preview's top row now shows what the destination is in Wwise, read from Wwise:
---   [WWU] for a Work Unit, [VF] Virtual Folder, [PF] Physical Folder, [AM] Actor-Mixer,
---   [RND]/[SEQ]/[SW]/[BLD] for containers, in that type's color. It shows [DEST] while
---   Wwise isn't connected or the destination doesn't exist. Work Units are now tagged
---   [WWU] instead of [WU].
+--   Work Units are tagged [WU] again. The destination's real type ([WU], [RND]...) still shows
+--   on the preview's top row.
+--   The preview's "Audio" column is now "File from", with clearer values: Original WAV
+--   (imported as is, no render), Item render, Folder render, Project render. Hover the header
+--   or a value to see what it means.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -603,7 +603,7 @@ local function type_color(t)
   return view.colors[k] or DEFAULT_TYPE_COLORS[k]
 end
 local TYPE_TAGS = {
-  ["Destination"] = "[DEST]", ["Work Unit"] = "[WWU]", ["Virtual Folder"] = "[VF]", ["Physical Folder"] = "[PF]",
+  ["Destination"] = "[DEST]", ["Work Unit"] = "[WU]", ["Virtual Folder"] = "[VF]", ["Physical Folder"] = "[PF]",
   ["Actor-Mixer"] = "[AM]", ["Random Container"] = "[RND]", ["Sequence Container"] = "[SEQ]",
   ["Switch Container"] = "[SW]", ["Blend Container"] = "[BLD]", ["Sound SFX"] = "[SFX]", ["Sound Voice"] = "[VO]",
   ["Sound"] = "[SND]", ["Bus"] = "[BUS]", ["AuxBus"] = "[AUX]", ["Event"] = "[EVT]",
@@ -1065,7 +1065,14 @@ local function pick_menu()
   end
 end
 
-local KIND_LABEL = { direct = "Direct (no render)", render = "Render item", folder = "Render folder", project = "Render" }
+-- Preview's "File from" column: where the audio file Wwise imports comes from.
+local KIND_LABEL = { direct = "Original WAV", render = "Item render", folder = "Folder render", project = "Project render" }
+local KIND_HELP = {
+  direct = "The item's own WAV is imported as is, no render.\nThe item is untouched: whole file, no fades, FX, volume, pitch or rate changes.",
+  render = "The item is rendered first (it has edits, FX, fades or isn't a WAV),\nthen that render is imported.",
+  folder = "The folder item is rendered with everything under it mixed in,\nthen that render is imported.",
+  project = "The file comes from REAPER's render settings (regions, stems...),\nrendered first, then imported.",
+}
 local tree_open_all = nil -- true/false for one frame to expand/collapse everything
 
 local function status_cell(st)
@@ -1106,7 +1113,7 @@ local function draw_node(node, depth)
   if ImGui.IsItemHovered(ctx) then
     local tip = hover_type .. "\n" .. (node.path or "")
     if node.entry then
-      tip = tip .. "\n" .. (KIND_LABEL[node.entry.kind] or "")
+      tip = tip .. "\nFile from: " .. (KIND_LABEL[node.entry.kind] or "")
       if node.entry.file then tip = tip .. "\nAudio: " .. node.entry.file end
       if node.entry.origsub then tip = tip .. "\nOriginals\\" .. node.entry.origsub end
     end
@@ -1115,7 +1122,12 @@ local function draw_node(node, depth)
   ImGui.TableNextColumn(ctx)
   if depth > 0 then status_cell(node.status) end
   ImGui.TableNextColumn(ctx)
-  if node.entry then ImGui.TextDisabled(ctx, KIND_LABEL[node.entry.kind] or "") end
+  if node.entry then
+    ImGui.TextDisabled(ctx, KIND_LABEL[node.entry.kind] or "")
+    if KIND_HELP[node.entry.kind] and ImGui.IsItemHovered(ctx) then
+      ImGui.SetTooltip(ctx, KIND_HELP[node.entry.kind] .. (node.entry.file and ("\n\n" .. node.entry.file) or ""))
+    end
+  end
   if depth > 0 and node.path then pick_row(node) end
   ImGui.TableNextColumn(ctx)
   if depth > 0 and node.path then channels_cell(node) end
@@ -1155,7 +1167,13 @@ end
 local PREVIEW_COLS = {
   { id = "Name", stretch = true, w = 4, nohide = true },
   { id = "Status", w = 70 },
-  { id = "Audio", w = 120 },
+  -- id stays "Audio" so saved column choices still apply; the header reads "File from".
+  { id = "Audio", label = "File from", w = 110,
+    tip = "Where the audio file Wwise imports comes from:\n" ..
+      "Original WAV: the item's own file, imported as is (no render).\n" ..
+      "Item render: the item has edits, so it's rendered first.\n" ..
+      "Folder render: a folder item, rendered with what's under it.\n" ..
+      "Project render: made by REAPER's render settings (regions, stems...)." },
   { id = "Channels", w = 80 },
   { id = "Streaming", w = 90 },
   { id = "Loop", w = 70 },
@@ -1223,9 +1241,16 @@ local function section_preview()
       local cf = c.stretch and ImGui.TableColumnFlags_WidthStretch or ImGui.TableColumnFlags_WidthFixed
       if c.nohide then cf = cf | ImGui.TableColumnFlags_NoHide | ImGui.TableColumnFlags_NoReorder end
       if view.hidden[c.id] then cf = cf | ImGui.TableColumnFlags_DefaultHide end
-      ImGui.TableSetupColumn(ctx, c.id, cf, c.w)
+      ImGui.TableSetupColumn(ctx, c.label or c.id, cf, c.w)
     end
-    ImGui.TableHeadersRow(ctx)
+    -- Header row drawn by hand (same as TableHeadersRow) so a header can have a tooltip.
+    ImGui.TableNextRow(ctx, ImGui.TableRowFlags_Headers)
+    for i, c in ipairs(PREVIEW_COLS) do
+      if ImGui.TableSetColumnIndex(ctx, i - 1) then
+        ImGui.TableHeader(ctx, c.label or c.id)
+        if c.tip and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, c.tip) end
+      end
+    end
     sync_columns()
     if tree and #tree.children > 0 then draw_node(tree, 0) end
     ImGui.EndTable(ctx)
