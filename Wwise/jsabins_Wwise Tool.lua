@@ -1,8 +1,12 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.16.3
+-- @version 1.16.4
 -- @changelog
---   The header line (status dot, Wwise project name and Wwise version) is a little bigger.
+--   Wwise structure: every level row now has its own + and - buttons at the right.
+--   + adds a new level right below that row, - removes that row. The Sound row's +
+--   adds a level just above the Sound. The buttons stay on their rows, so nothing
+--   shifts under the mouse. To reorder levels, drag the handle at the left of a row
+--   onto another row. The old buttons under the list are gone.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -105,7 +109,6 @@ local plan = { entries = {}, errors = {} }
 -- Two kinds of presets: the Wwise structure only, and the rest of the settings.
 local presets = { structure = core.load_presets("structure"), settings = core.load_presets("settings") }
 local preset_name = { structure = "", settings = "" }
-local selected_row = 0           -- the Wwise structure level that Remove / Move act on (0 = none)
 local summary = nil
 local status_line = ""
 local last_sig, last_check, sel_poll_at = nil, 0, 0
@@ -701,47 +704,92 @@ local function level_options(id, get_t, set_t)
   if tinted then push_row_colors(tinted) end
 end
 
+-- Drag handle (three short lines) at the start of a structure row; drag it onto another row to move the level.
+local function grip_handle(id, w, h)
+  ImGui.InvisibleButton(ctx, id, w, h)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  local x2, y2 = ImGui.GetItemRectMax(ctx)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local col = ImGui.GetColor(ctx, (ImGui.IsItemHovered(ctx) or ImGui.IsItemActive(ctx)) and ImGui.Col_Text or ImGui.Col_TextDisabled)
+  local cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+  local hw = math.min(x2 - x1, y2 - y1) * 0.30
+  for k = -1, 1 do
+    local ly = cy + k * hw * 0.75
+    ImGui.DrawList_AddLine(dl, cx - hw, ly, cx + hw, ly, col, 1.5)
+  end
+end
+
+local function new_level(at)
+  table.insert(S.rows, at, { type = #S.rows == 0 and "Actor-Mixer" or "Random Container", name = "", template = "" })
+  settings_changed()
+end
+
+-- Drop target for a dragged level: dropping row `from` onto row `i` puts it at row i's place.
+local function level_drop_target(i, out)
+  if ImGui.BeginDragDropTarget(ctx) then
+    local ok, payload = ImGui.AcceptDragDropPayload(ctx, "WT_LEVEL")
+    if ok then out.move = { tonumber(payload), i } end
+    ImGui.EndDragDropTarget(ctx)
+  end
+end
+
 local function section_hierarchy()
   ImGui.SeparatorText(ctx, "Wwise structure")
   ImGui.PushTextWrapPos(ctx, 0)
   dim_label("Levels created under the destination, top to bottom. Names can use wildcards.")
   ImGui.PopTextWrapPos(ctx)
 
+  local sq = ImGui.GetFrameHeight(ctx)
+  local sp = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
   local flags = ImGui.TableFlags_RowBg | ImGui.TableFlags_BordersInnerV
-  if ImGui.BeginTable(ctx, "map", 3, flags) then
+  local act = {}
+  if ImGui.BeginTable(ctx, "map", 5, flags) then
+    ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, 12)
     ImGui.TableSetupColumn(ctx, "Type", ImGui.TableColumnFlags_WidthFixed, 150)
     ImGui.TableSetupColumn(ctx, "Name", ImGui.TableColumnFlags_WidthStretch)
     ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, 30)
+    ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, sq * 2 + sp)
     ImGui.TableHeadersRow(ctx)
 
-    if selected_row > #S.rows then selected_row = #S.rows end
     for i, row in ipairs(S.rows) do
       ImGui.PushID(ctx, tostring(i))
       ImGui.TableNextRow(ctx)
-      if i == selected_row then
-        ImGui.TableSetBgColor(ctx, ImGui.TableBgTarget_RowBg1, 0x4A90E255)
+      ImGui.TableNextColumn(ctx)
+      grip_handle("##grip", 12, sq)
+      if ImGui.IsItemHovered(ctx) and not ImGui.IsItemActive(ctx) then ImGui.SetTooltip(ctx, "Drag onto another level to move it") end
+      if ImGui.BeginDragDropSource(ctx) then
+        ImGui.SetDragDropPayload(ctx, "WT_LEVEL", tostring(i))
+        ImGui.Text(ctx, "Move: " .. ((row.name or "") ~= "" and row.name or row.type))
+        ImGui.EndDragDropSource(ctx)
       end
+      level_drop_target(i, act)
       ImGui.TableNextColumn(ctx)
       local c
       push_row_colors(row.type)
       c, row.type = combo("##type", core.CONTAINER_TYPES, row.type, -1)
-      if ImGui.IsItemActivated(ctx) then selected_row = i end
-      if c then settings_changed(); selected_row = i; pop_row_colors(); push_row_colors(row.type) end
+      if c then settings_changed(); pop_row_colors(); push_row_colors(row.type) end
+      level_drop_target(i, act)
       ImGui.TableNextColumn(ctx)
       ImGui.SetNextItemWidth(ctx, -28)
       local ch, v = ImGui.InputTextWithHint(ctx, "##name", "e.g. $region", row.name or "")
       if ch then row.name = v; settings_changed() end
-      if ImGui.IsItemActive(ctx) then selected_row = i end
       wildcard_menu("r" .. i, function(w) row.name = (row.name or "") .. w end)
       ImGui.TableNextColumn(ctx)
       level_options("r" .. i, function() return row.template end, function(t) row.template = t end)
       pop_row_colors()
+      ImGui.TableNextColumn(ctx)
+      if ImGui.Button(ctx, "+##add", sq, sq) then act.add = i + 1 end
+      if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Add level below this one") end
+      ImGui.SameLine(ctx, 0, sp)
+      if ImGui.Button(ctx, "-##rem", sq, sq) then act.remove = i end
+      if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Remove this level") end
       ImGui.PopID(ctx)
     end
 
     -- Leaf (the Sound itself)
     ImGui.PushID(ctx, "leaf")
     ImGui.TableNextRow(ctx)
+    ImGui.TableNextColumn(ctx)
     ImGui.TableNextColumn(ctx)
     local c
     push_row_colors("Sound")
@@ -758,73 +806,41 @@ local function section_hierarchy()
     ImGui.TableNextColumn(ctx)
     level_options("leaf", function() return S.leaf.template end, function(t) S.leaf.template = t end)
     pop_row_colors()
+    ImGui.TableNextColumn(ctx)
+    if ImGui.Button(ctx, "+##add", sq, sq) then act.add = #S.rows + 1 end
+    if ImGui.IsItemHovered(ctx) then
+      ImGui.SetTooltip(ctx, #S.rows == 0 and "Add level above the Sound" or "Add level just above the Sound")
+    end
     ImGui.PopID(ctx)
     ImGui.EndTable(ctx)
   end
 
-  -- Level buttons. Remove / Move act on the selected level (click its type or name to select it),
-  -- or the bottom level when none is selected.
-  local sq = ImGui.GetFrameHeight(ctx)
-  if ImGui.Button(ctx, "+##addlvl", sq, sq) then
-    S.rows[#S.rows + 1] = { type = #S.rows == 0 and "Actor-Mixer" or "Random Container", name = "", template = "" }
-    selected_row = #S.rows
-    settings_changed()
+  if act.remove then table.remove(S.rows, act.remove); settings_changed()
+  elseif act.add then new_level(act.add)
+  elseif act.move then
+    local from, to = act.move[1], act.move[2]
+    if from and S.rows[from] and to ~= from then
+      local r = table.remove(S.rows, from)
+      table.insert(S.rows, to, r)
+      settings_changed()
+    end
   end
-  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Add level\nAdds one at the bottom, just above the Sound.") end
-  local n = #S.rows
-  local target = (selected_row >= 1 and selected_row <= n) and selected_row or n
-  local tname = n > 0 and ((S.rows[target].name or "") ~= "" and S.rows[target].name or S.rows[target].type) or nil
-  ImGui.SameLine(ctx)
-  if n == 0 then ImGui.BeginDisabled(ctx) end
-  if ImGui.Button(ctx, "-##remlvl", sq, sq) and n > 0 then
-    table.remove(S.rows, target)
-    selected_row = math.min(target, #S.rows)
-    settings_changed()
-  end
-  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then
-    ImGui.SetTooltip(ctx, n > 0 and ("Remove level\nRemoves level " .. target .. ": " .. tname ..
-      "\nClick a level's type or name to pick which one.") or "Remove level\nNo levels to remove.")
-  end
-  ImGui.SameLine(ctx)
-  if n < 2 or target <= 1 then ImGui.BeginDisabled(ctx) end
-  if ImGui.ArrowButton(ctx, "##lvlup", ImGui.Dir_Up) and target > 1 then
-    S.rows[target], S.rows[target - 1] = S.rows[target - 1], S.rows[target]
-    selected_row = target - 1
-    settings_changed()
-  end
-  if n < 2 or target <= 1 then ImGui.EndDisabled(ctx) end
-  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) and n > 0 then
-    ImGui.SetTooltip(ctx, "Move level " .. target .. " (" .. tname .. ") up")
-  end
-  ImGui.SameLine(ctx)
-  if n < 2 or target >= n then ImGui.BeginDisabled(ctx) end
-  if ImGui.ArrowButton(ctx, "##lvldown", ImGui.Dir_Down) and target < n then
-    S.rows[target], S.rows[target + 1] = S.rows[target + 1], S.rows[target]
-    selected_row = target + 1
-    settings_changed()
-  end
-  if n < 2 or target >= n then ImGui.EndDisabled(ctx) end
-  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) and n > 0 then
-    ImGui.SetTooltip(ctx, "Move level " .. target .. " (" .. tname .. ") down")
-  end
-  if n == 0 then ImGui.EndDisabled(ctx) end
+
   if S.leaf.voice then
-    ImGui.SameLine(ctx)
     local langs = (conn and #conn.languages > 0) and conn.languages or { S.leaf.language ~= "" and S.leaf.language or "English(US)" }
     local c
     c, S.leaf.language = combo("Voice language", langs, S.leaf.language, 160)
     if c then settings_changed() end
-  end
-
-  -- Same line when it fits, otherwise on the next one.
-  local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
-  local need = ImGui.CalcTextSize(ctx, "Structure presets...") + pad_x * 2 + 20
-  ImGui.SameLine(ctx)
-  if ImGui.GetContentRegionAvail(ctx) >= need then
-    ImGui.Dummy(ctx, 12, 0)
+    -- Same line when it fits, otherwise on the next one.
+    local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
+    local need = ImGui.CalcTextSize(ctx, "Structure presets...") + pad_x * 2 + 20
     ImGui.SameLine(ctx)
-  else
-    ImGui.NewLine(ctx)
+    if ImGui.GetContentRegionAvail(ctx) >= need then
+      ImGui.Dummy(ctx, 12, 0)
+      ImGui.SameLine(ctx)
+    else
+      ImGui.NewLine(ctx)
+    end
   end
   presets_button("structure", "Structure presets...",
     "Save or load just the Wwise structure (levels, names, templates and the Sound row).\n" ..
@@ -1653,7 +1669,6 @@ local function setup_switched()
   forget_existing()
   if not connecting then bg_task = nil end -- a half-done preview of the old setup
   pk_col, pk_sel, pk_anchor = nil, {}, nil
-  selected_row = 0
   sel_poll_at = 0
   last_sig = nil
 end
