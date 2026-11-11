@@ -1,9 +1,8 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.16.9
+-- @version 1.16.10
 -- @changelog
---   The close button is now a red rounded square with a white X, set in a little from the
---   window's top-right corner (same size as before). The title bar is a bit taller to fit it.
+--   The close button is dark gray and only turns red when you hover over it.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -378,19 +377,21 @@ local function gear_button(id, size)
   return pressed
 end
 
--- Big close button: a red rounded square with a white X (drawn with the draw list), replacing
--- ImGui's small title-bar X. Lighter red on hover, darker while pressed. Returns true when clicked.
+-- Big close button: a rounded square with an X (drawn with the draw list), replacing ImGui's
+-- small title-bar X. Dark gray with a light X normally; red with a white X on hover, darker red
+-- while pressed. Returns true when clicked.
 -- Drawn inset from the window's top-right corner (see title_close_button).
 local function close_button(id, size)
   local pressed = ImGui.InvisibleButton(ctx, id, size, size)
   local hovered, held = ImGui.IsItemHovered(ctx), ImGui.IsItemActive(ctx)
   local x1, y1 = ImGui.GetItemRectMin(ctx)
   local dl = ImGui.GetWindowDrawList(ctx)
-  local bg = held and 0xB8323AFF or (hovered and 0xF0525AFF or 0xE04048FF)
+  local bg = held and 0xB8323AFF or (hovered and 0xE04048FF or 0x2A2A2AFF)
+  local fg = hovered and 0xFFFFFFFF or ImGui.GetColor(ctx, ImGui.Col_Text)
   ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, bg, size * 0.22)
   local m, th = size * 0.30, math.max(2, size * 0.08)
-  ImGui.DrawList_AddLine(dl, x1 + m, y1 + m, x1 + size - m, y1 + size - m, 0xFFFFFFFF, th)
-  ImGui.DrawList_AddLine(dl, x1 + size - m, y1 + m, x1 + m, y1 + size - m, 0xFFFFFFFF, th)
+  ImGui.DrawList_AddLine(dl, x1 + m, y1 + m, x1 + size - m, y1 + size - m, fg, th)
+  ImGui.DrawList_AddLine(dl, x1 + size - m, y1 + m, x1 + m, y1 + size - m, fg, th)
   return pressed
 end
 local close_clicked = false
