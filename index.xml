@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="1f8ef32c0c9d3b9e778a3a9b91edf51f63f61d47">
+<index version="1" name="Jay Sabins Scripts" commit="9717b6d01af97e5972657a0841db8d1b3f749e02">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -447,6 +447,13 @@ to extend window/parent boundaries") because of the new corner close button.]]><
         <source main="main">https://github.com/jaysabins/reascripts/raw/50f87cfd3da195130bad2c8b55782190543714eb/Wwise/jsabins_Wwise%20Tool.lua</source>
         <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/50f87cfd3da195130bad2c8b55782190543714eb/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
         <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/50f87cfd3da195130bad2c8b55782190543714eb/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.16.9" author="Jay Sabins" time="2026-11-11T17:33:59Z">
+        <changelog><![CDATA[The close button is now a red rounded square with a white X, set in a little from the
+window's top-right corner (same size as before). The title bar is a bit taller to fit it.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/9717b6d01af97e5972657a0841db8d1b3f749e02/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/9717b6d01af97e5972657a0841db8d1b3f749e02/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/9717b6d01af97e5972657a0841db8d1b3f749e02/Wwise/jsabins_WwiseTool_core.lua</source>
       </version>
     </reapack>
   </category>
