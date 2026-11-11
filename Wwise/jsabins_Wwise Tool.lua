@@ -1,9 +1,8 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.16.7
+-- @version 1.16.8
 -- @changelog
---   Fixed: 1.16.6 stopped with an ImGui_End error ("Code uses SetCursorPos()/SetCursorScreenPos()
---   to extend window/parent boundaries") because of the new corner close button.
+--   Rounded corners on the Wwise Tool window and on the Transfer to Wwise button.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -381,13 +380,19 @@ end
 -- Big close button (an X drawn with the draw list), replacing ImGui's small title-bar X.
 -- Gray X, turns red on hover. Returns true when clicked. Drawn in the title bar's top-right
 -- corner (see title_close_button).
-local function close_button(id, size)
+local function close_button(id, size, corner)
   local pressed = ImGui.InvisibleButton(ctx, id, size, size)
   local hovered, held = ImGui.IsItemHovered(ctx), ImGui.IsItemActive(ctx)
   local x1, y1 = ImGui.GetItemRectMin(ctx)
   local dl = ImGui.GetWindowDrawList(ctx)
   if hovered then
-    ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, held and 0xA02828FF or 0xC83C3CFF, size * 0.15)
+    -- `corner`: round only the top-right corner by that much, to follow the window's rounded corner.
+    local col = held and 0xA02828FF or 0xC83C3CFF
+    if corner then
+      ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, col, corner, ImGui.DrawFlags_RoundCornersTopRight)
+    else
+      ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, col, size * 0.15)
+    end
   end
   local col = hovered and 0xFFFFFFFF or ImGui.GetColor(ctx, ImGui.Col_Text)
   local m, th = size * 0.28, math.max(2, size * 0.09)
@@ -399,6 +404,8 @@ local close_clicked = false
 
 -- The title bar is made taller (FramePadding pushed around Begin) so the big X fits in it:
 -- twice the font size each way, about 4x the area of ImGui's own X.
+local WINDOW_ROUNDING = 10   -- main window corners
+local TRANSFER_ROUNDING = 8  -- "Transfer to Wwise" button corners
 local function title_bar_size() return math.floor(ImGui.GetFontSize(ctx) * 2 + 0.5) end
 
 -- Put the big X in the window's top-right corner, over the title bar. Called at the end of the
@@ -410,7 +417,7 @@ local function title_close_button()
   local ww = ImGui.GetWindowSize(ctx)
   ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + size, false)
   ImGui.SetCursorScreenPos(ctx, wx + ww - size, wy)
-  if close_button("##closewin", size) then close_clicked = true end
+  if close_button("##closewin", size, WINDOW_ROUNDING) then close_clicked = true end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Close Wwise Tool") end
   ImGui.PopClipRect(ctx)
   -- Don't move the cursor back afterwards: ImGui errors in End() when the cursor is moved
@@ -1395,7 +1402,9 @@ local function section_transfer()
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, 0x166A2EFF)
     ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0xFFFFFFFF)
   end
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, TRANSFER_ROUNDING)
   if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", bw, 34) and not transfer_task then do_transfer() end
+  ImGui.PopStyleVar(ctx)
   if busy then ImGui.EndDisabled(ctx) else ImGui.PopStyleColor(ctx, 4) end
   if why and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then ImGui.SetTooltip(ctx, why) end
 end
@@ -1978,8 +1987,9 @@ loop_body = function()
   local pad_x, pad_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
   local title_pad = (title_bar_size() - ImGui.GetFontSize(ctx)) / 2
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_FramePadding, pad_x, math.max(pad_y, title_pad))
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowRounding, WINDOW_ROUNDING) -- rounded window corners
   local visible, open = ImGui.Begin(ctx, "Wwise Tool", main_win_docked and true or nil, ImGui.WindowFlags_NoCollapse)
-  ImGui.PopStyleVar(ctx)
+  ImGui.PopStyleVar(ctx, 2)
   if open == nil then open = true end
   if visible then
     main_win_pos[1], main_win_pos[2] = ImGui.GetWindowPos(ctx)
