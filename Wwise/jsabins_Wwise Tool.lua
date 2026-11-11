@@ -1,9 +1,8 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.16.2
+-- @version 1.16.3
 -- @changelog
---   The preview's "File from" column is now called "Source" (values unchanged: Original WAV,
---   Item render, Folder render, Project render; hover for what each means).
+--   The header line (status dot, Wwise project name and Wwise version) is a little bigger.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -55,6 +54,18 @@ package.path = r.ImGui_GetBuiltinPath() .. "/?.lua"
 local ImGui = require "imgui" "0.9"
 
 local ctx = ImGui.CreateContext("Wwise Tool")
+-- Slightly bigger font for the header line (status dot, Wwise project, Wwise version).
+-- If the font can't be made, the header just uses the normal font.
+local HEADER_FONT_SIZE = 15
+local header_font = nil
+do
+  local ok, f = pcall(ImGui.CreateFont, "sans-serif", HEADER_FONT_SIZE)
+  if ok and f and pcall(ImGui.Attach, ctx, f) then header_font = f end
+end
+local function push_header_font()
+  if header_font and pcall(ImGui.PushFont, ctx, header_font) then return true end
+  return false
+end
 
 ----------------------------------------------------------------------
 -- State
@@ -370,8 +381,9 @@ end
 local function section_connection()
   -- Left: status dot, Wwise project and Wwise version. Right: "?" (opens the guide) and Settings (which also has Reconnect).
   -- A connection problem shows as a banner underneath.
+  local big = push_header_font()
   local lh = ImGui.GetFrameHeight(ctx)
-  local dot = 8
+  local dot = big and 10 or 8
   local dl = ImGui.GetWindowDrawList(ctx)
   local x, y = ImGui.GetCursorScreenPos(ctx)
   ImGui.DrawList_AddCircleFilled(dl, x + dot / 2, y + lh / 2, dot / 2, conn and COLOR_OK or COLOR_BAD)
@@ -387,6 +399,7 @@ local function section_connection()
   else
     ImGui.TextColored(ctx, COLOR_BAD, "Not connected")
   end
+  if big then ImGui.PopFont(ctx) end
 
   local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
   local spacing = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
