@@ -198,7 +198,7 @@ The right side shows what the transfer will create, laid out like Wwise's Projec
 - The top row is the import destination, and its tag shows what that object is in Wwise: `[WU]` for a Work Unit, `[VF]` for a Virtual Folder, `[RND]`, `[SEQ]`, `[SW]`, `[BLD]` for containers, `[AM]` for an Actor-Mixer, and so on. It shows `[DEST]` while Wwise isn't connected or the destination doesn't exist yet.
 - Hover over a name to see its full Wwise path and Originals subfolder.
 - **Columns:**
-  - **File from** says where the audio file Wwise imports comes from (hover the header or a value for a reminder):
+  - **Source** says where the audio file Wwise imports comes from (hover the header or a value for a reminder):
     - **Original WAV**: the item's own WAV file is imported as is, no render. Only for untouched items (whole file, no fades, FX, volume, pitch or rate changes).
     - **Item render**: the item has edits (or isn't a WAV), so it's rendered first and the render is imported.
     - **Folder render**: a folder item, rendered with everything under it mixed in.
