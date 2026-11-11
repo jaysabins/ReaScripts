@@ -65,7 +65,7 @@ If you change the HTTP port in Wwise, set the same number in Wwise Tool's **Sett
 
 ## Quick start: your first transfer
 
-1. Open your Wwise project, then run **Wwise Tool** in REAPER. The dot at the top left turns green and shows the Wwise project name.
+1. Open your Wwise project, then run **Wwise Tool** in REAPER. Save your REAPER project at least once first: rendering needs a saved project. The dot at the top left turns green and shows the Wwise project name.
 2. In Wwise, select the object the new Sounds should go into, for example a Work Unit or an Actor-Mixer.
 3. In REAPER, select the items you want to send.
 4. Check the preview on the right. Each new object is green and marked New.
@@ -275,6 +275,8 @@ Result: `Pistol` holds three Random Containers (`Muzzle`, `Mech`, `Tail`), each 
 - **"Wwise refused the connection (HTTP 404)".** Set **Allow connections from** to `127.0.0.1,::1` in Wwise's User Preferences, make sure the WAMP and HTTP ports are different, and restart Wwise.
 - **"Wwise is busy and didn't answer in time".** Wwise is still loading or working on something. Wait a moment; the preview updates on its own.
 - **Transfer is greyed out.** Read the text next to the button. Usually nothing is selected in REAPER or in Wwise, or a structure level has no name.
+- **"Save the REAPER project first".** The REAPER project has never been saved, and the transfer needs to render. Save it (**File > Save project**) and transfer again. Items sent as they are (no render) work without saving.
+- **"REAPER didn't render a file for it".** REAPER ran the render but the file for that Sound wasn't where Wwise Tool expected it. Check that the **Keep rendered files in** folder can be written to, and try again.
 - **"A wildcard in the hierarchy didn't resolve to a single name".** A wildcard came out empty for some items, for example `$region` on an item that's outside every region.
 - **Two audio sources with the same name on one Sound.** Older versions could add a second source when you transferred onto an existing Sound. From 1.7.1 the existing source gets the new audio, and the next transfer of that Sound also removes the older duplicate.
 - **A Sound came in stereo but should be mono (or the other way).** Left and right must match within -90 dB for Auto to pick mono, so a stereo effect, a stereo source file or a panned item keeps it stereo. The transfer summary says how much they differ. Click the Sound (or its container) in the preview's **Channels** column and pick Mono.
