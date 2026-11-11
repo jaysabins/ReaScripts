@@ -6,6 +6,7 @@
 --   message: "Save the REAPER project first". The Transfer button is greyed out with the
 --   same message until you save (only when something needs rendering; items sent as
 --   they are still work in an unsaved project).
+--   The Transfer to Wwise button is now green (#1a7f37) when it's ready to click.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1148,9 +1149,17 @@ local function section_transfer()
   ImGui.SameLine(ctx)
   avail = ImGui.GetContentRegionAvail(ctx)
   if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
-  if not can or transfer_task then ImGui.BeginDisabled(ctx) end
+  local busy = not can or transfer_task
+  if busy then ImGui.BeginDisabled(ctx)
+  else
+    -- Green when ready; the greyed-out look stays as it was while disabled.
+    ImGui.PushStyleColor(ctx, ImGui.Col_Button, 0x1A7F37FF)
+    ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered, 0x2C974BFF)
+    ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, 0x166A2EFF)
+    ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0xFFFFFFFF)
+  end
   if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", bw, 34) and not transfer_task then do_transfer() end
-  if not can or transfer_task then ImGui.EndDisabled(ctx) end
+  if busy then ImGui.EndDisabled(ctx) else ImGui.PopStyleColor(ctx, 4) end
   if why and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then ImGui.SetTooltip(ctx, why) end
 end
 
