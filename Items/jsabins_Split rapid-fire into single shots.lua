@@ -1,7 +1,13 @@
 -- @description Split rapid-fire gunshots into single shots and spread them out
 -- @author Jay Sabins
--- @version 1.0.0
--- @changelog Initial release
+-- @version 1.1.0
+-- @changelog
+--   New "Lock layers together" mode (on by default): when a burst is built from
+--   several layer tracks, the shot times are found once on a guide layer and every
+--   layer is cut at those same times, so shot 1 of every layer stays stacked,
+--   then shot 2, and so on. The guide is picked automatically (the layer with the
+--   sharpest attacks) or you can choose it. The preview shows the shared cut lines
+--   on whichever layer you're looking at.
 -- @about
 --   Select one or more items that each hold a rapid-fire burst (machine gun, SMG,
 --   auto rifle...) and run the script. It finds every shot's transient, splits the
@@ -14,6 +20,12 @@
 --
 --   The window shows a live preview of the selected item's waveform with every
 --   detected shot marked, so you can tune the detection before you split.
+--   Layered bursts: with "Lock layers together" on, items that overlap in time on
+--   different tracks are treated as one burst. Shot times come from one guide layer
+--   (auto = sharpest attacks, or pick one) and every layer is cut at those times,
+--   then the shots are spread as aligned groups. Cuts that land within a few ms of
+--   an existing item edge are skipped, so layers you already chopped stay as they are.
+--
 --   Later items on the same track are moved out of the way (optional).
 --   Fully undoable.
 --
@@ -29,6 +41,7 @@ local TITLE = "Split Rapid-Fire Shots"
 local HOP_MS      = 1    -- envelope resolution used for detection
 local LOOKBACK_MS = 5    -- how far back the attack jump is measured
 local MAX_ITEM_S  = 600  -- skip analysing items longer than this
+local SNAP_MS     = 10   -- lock mode: skip a cut this close to an existing item edge
 ----------------------------------------------------------------------
 
 if not r.ImGui_CreateContext then
@@ -61,6 +74,7 @@ local DEFAULTS = {
   ripple = true,     -- move later items on the same track out of the way
   rename = true,     -- number the shots in their take names
   regions = false,   -- add a region per shot
+  lock = true,       -- cut every layer of a burst at the same shot times
 }
 
 local function load_settings()
@@ -135,8 +149,8 @@ end
 
 -- Transient times (seconds from item start).
 local function detect(env, o)
-  local onsets = {}
-  if env.peak <= SILENCE_DB then return onsets end
+  local onsets, rises = {}, {}
+  if env.peak <= SILENCE_DB then return onsets, rises end
   local db, hop = env.db, env.hop
   local floor_db = env.peak + o.floor_db
   local k = math.max(1, math.floor(LOOKBACK_MS / 1000 / hop + 0.5))
@@ -154,11 +168,12 @@ local function detect(env, o)
       if v - lo >= o.rise_db then
         -- the attack starts right after the quietest window before the jump
         onsets[#onsets + 1] = math.max(0, lo_i) * hop
+        rises[#rises + 1] = v - math.max(lo, env.peak - 90)
         last = i
       end
     end
   end
-  return onsets
+  return onsets, rises
 end
 
 -- Shots as { start, len, onset } in seconds from item start.
@@ -234,6 +249,7 @@ local function collect_items()
     if a.tidx ~= b.tidx then return a.tidx < b.tidx end
     return a.pos < b.pos
   end)
+  for i, e in ipairs(items) do e.idx = i end
   -- drop cache entries for items no longer selected
   local keep = {}
   for _, e in ipairs(items) do keep[e.item] = true end
@@ -366,12 +382,249 @@ local function apply(items, o)
 end
 
 ----------------------------------------------------------------------
+-- LOCK LAYERS TOGETHER
+----------------------------------------------------------------------
+
+-- Items that overlap in time (on any track) form one burst.
+local function group_items(items)
+  local sorted = {}
+  for _, e in ipairs(items) do sorted[#sorted + 1] = e end
+  table.sort(sorted, function(a, b) return a.pos < b.pos end)
+  local groups, cur = {}, nil
+  for _, e in ipairs(sorted) do
+    local e_end = e.pos + len_of(e.item)
+    if cur and e.pos < cur.stop - 1e-6 then
+      cur.items[#cur.items + 1] = e
+      if e_end > cur.stop then cur.stop = e_end end
+    else
+      cur = { items = { e }, start = e.pos, stop = e_end }
+      groups[#groups + 1] = cur
+    end
+  end
+  return groups
+end
+
+-- Pick the guide layer and the shared shot times (absolute project time).
+-- guide_item: the layer the user picked, or nil for auto (sharpest attacks).
+local function plan_group(g, o, guide_item)
+  local best, best_score
+  for _, e in ipairs(g.items) do
+    local env = get_env(e.item)
+    if env then
+      local onsets, rises = detect(env, o)
+      local score
+      if e.item == guide_item then
+        score = math.huge
+      elseif #rises > 0 then
+        -- sharp, clearly separated attacks on every shot win; each jump counts
+        -- up to 40 dB so one big attack out of silence can't outweigh the rest
+        score = 0
+        for _, v in ipairs(rises) do score = score + math.min(v, 40) end
+      end
+      if score and (not best_score or score > best_score) then
+        best, best_score = { e = e, env = env, onsets = onsets }, score
+      end
+    end
+  end
+  if not best then return nil end
+
+  local shots = plan_shots(best.env, best.onsets, o)
+  if #shots == 0 then return nil end
+  local times, onsets = {}, {}
+  for k, s in ipairs(shots) do
+    times[k] = best.e.pos + s.start
+    onsets[k] = best.e.pos + s.onset
+  end
+  return { guide = best.e, times = times, onsets = onsets }
+end
+
+-- The shared shots as seen from one layer item (seconds from that item's start), for the preview.
+local function shots_for_item(g, plan, e, o)
+  local shots, T = {}, plan.times
+  for k = 1, #T do
+    local s = T[k] - e.pos
+    local nxt = (T[k + 1] or g.stop) - e.pos
+    local l = nxt - s
+    if o.max_ms > 0 then l = math.min(l, o.max_ms / 1000) end
+    shots[k] = { start = s, len = l, onset = plan.onsets[k] - e.pos }
+  end
+  return shots
+end
+
+local function shot_of(T, t)
+  local k = 1
+  for i = 2, #T do if T[i] <= t then k = i else break end end
+  return k
+end
+
+local function apply_locked(items, o, guide_item)
+  local groups = group_items(items)
+  local plans = {}
+  for gi, g in ipairs(groups) do plans[gi] = plan_group(g, o, guide_item) end
+
+  local any = false
+  for gi in ipairs(groups) do if plans[gi] then any = true end end
+  if not any then return 0, 0, 0 end
+
+  r.Undo_BeginBlock()
+  r.PreventUIRefresh(1)
+  r.Main_OnCommand(40289, 0) -- Item: Unselect all items
+
+  -- snapshot the other items on the involved tracks, to move them out of the way later
+  local in_sel, tracks, seen = {}, {}, {}
+  for _, e in ipairs(items) do
+    in_sel[e.item] = true
+    if not seen[e.track] then seen[e.track] = true; tracks[#tracks + 1] = e.track end
+  end
+  local others = {}
+  for _, tr in ipairs(tracks) do
+    for i = 0, r.CountTrackMediaItems(tr) - 1 do
+      local it = r.GetTrackMediaItem(tr, i)
+      if not in_sel[it] then others[#others + 1] = { item = it, pos = pos_of(it) } end
+    end
+  end
+
+  local snap = SNAP_MS / 1000
+  local fin, fout = o.fadein_ms / 1000, o.fadeout_ms / 1000
+  local offset, growth = 0, {}
+  local n_groups, n_shots, n_pieces = 0, 0, 0
+
+  for gi, g in ipairs(groups) do
+    local plan = plans[gi]
+    growth[gi] = 0
+    if plan then
+      n_groups = n_groups + 1
+      local T = {}
+      for k, t in ipairs(plan.times) do T[k] = t + offset end
+      local n = #T
+      n_shots = n_shots + n
+      local digits = math.max(2, #tostring(n))
+      local old_end = g.stop + offset
+      local gname = base_name(take_label(plan.guide.item))
+      local segs = {}
+
+      for _, e in ipairs(g.items) do
+        local item = e.item
+        local ipos = e.pos + offset
+        if offset ~= 0 then r.SetMediaItemInfo_Value(item, "D_POSITION", ipos) end
+        local iend = ipos + len_of(item)
+        local name = base_name(take_label(item))
+
+        local cur, s, cut_s = item, ipos, false
+        local mine = {}
+        for k = 2, n do
+          local t = T[k]
+          if t > ipos + snap and t < iend - snap then
+            local right = r.SplitMediaItem(cur, t)
+            if right then
+              mine[#mine + 1] = { item = cur, s = s, e = t, cut_s = cut_s, cut_e = true }
+              cur, s, cut_s = right, t, true
+            end
+          end
+        end
+        mine[#mine + 1] = { item = cur, s = s, e = iend, cut_s = cut_s, cut_e = false }
+
+        for _, sg in ipairs(mine) do
+          sg.k = shot_of(T, (sg.s + sg.e) / 2)
+          if o.max_ms > 0 then
+            local limit = T[sg.k] + o.max_ms / 1000
+            if sg.e > limit then sg.e, sg.cut_e = limit, true end
+          end
+          if sg.e <= sg.s + 0.001 then
+            r.DeleteTrackMediaItem(e.track, sg.item)
+          else
+            local it = sg.item
+            local l = sg.e - sg.s
+            r.SetMediaItemInfo_Value(it, "D_LENGTH", l)
+            if sg.cut_s then
+              r.SetMediaItemInfo_Value(it, "D_FADEINLEN", math.min(fin, l / 2))
+              r.SetMediaItemInfo_Value(it, "D_FADEINLEN_AUTO", 0)
+            end
+            if sg.cut_e then
+              r.SetMediaItemInfo_Value(it, "D_FADEOUTLEN", math.min(fout, l / 2))
+              r.SetMediaItemInfo_Value(it, "D_FADEOUTLEN_AUTO", 0)
+            end
+            if o.rename then
+              local take = r.GetActiveTake(it)
+              if take then
+                r.GetSetMediaItemTakeInfo_String(take, "P_NAME",
+                  ("%s_%0" .. digits .. "d"):format(name, sg.k), true)
+              end
+            end
+            r.SetMediaItemSelected(it, true)
+            segs[#segs + 1] = sg
+            n_pieces = n_pieces + 1
+          end
+        end
+      end
+
+      -- how far each shot reaches, across all layers
+      local reach, lead = {}, {}
+      for k = 1, n do reach[k], lead[k] = 0, 0 end
+      for _, sg in ipairs(segs) do
+        reach[sg.k] = math.max(reach[sg.k], sg.e - T[sg.k])
+        lead[sg.k] = math.max(lead[sg.k], T[sg.k] - sg.s)
+      end
+
+      -- new start of every shot
+      local N = { T[1] }
+      if o.spread then
+        for k = 2, n do N[k] = N[k - 1] + reach[k - 1] + o.gap + lead[k] end
+        for _, sg in ipairs(segs) do
+          r.SetMediaItemInfo_Value(sg.item, "D_POSITION", sg.s + (N[sg.k] - T[sg.k]))
+        end
+      else
+        for k = 2, n do N[k] = T[k] end
+      end
+
+      if o.regions then
+        for k = 1, n do
+          r.AddProjectMarker2(0, true, N[k] - lead[k], N[k] + reach[k],
+            ("%s_%0" .. digits .. "d"):format(gname, k), -1, 0)
+        end
+      end
+
+      local new_end = old_end
+      if o.spread then
+        new_end = -math.huge
+        for _, sg in ipairs(segs) do
+          new_end = math.max(new_end, sg.s + (N[sg.k] - T[sg.k]) + (sg.e - sg.s))
+        end
+      end
+      growth[gi] = new_end - old_end
+      offset = offset + growth[gi]
+    elseif offset ~= 0 then
+      for _, e in ipairs(g.items) do
+        r.SetMediaItemInfo_Value(e.item, "D_POSITION", e.pos + offset)
+      end
+    end
+  end
+
+  if o.spread and o.ripple then
+    for _, oe in ipairs(others) do
+      local shift = 0
+      for gi, g in ipairs(groups) do
+        if g.stop <= oe.pos + 1e-6 then shift = shift + growth[gi] end
+      end
+      if shift ~= 0 then r.SetMediaItemInfo_Value(oe.item, "D_POSITION", oe.pos + shift) end
+    end
+  end
+
+  r.PreventUIRefresh(-1)
+  r.UpdateArrange()
+  r.Undo_EndBlock(("Split %d burst%s into %d shots (layers locked)"):format(
+    n_groups, n_groups == 1 and "" or "s", n_shots), -1)
+  return n_groups, n_shots, n_pieces
+end
+
+----------------------------------------------------------------------
 -- GUI
 ----------------------------------------------------------------------
 local ctx = r.ImGui_CreateContext(TITLE)
 local opt = load_settings()
 local items, last_state = {}, nil
 local preview_idx = 1
+local guide_item = nil -- lock mode: the layer the user picked as guide (nil = auto)
 local status = ""
 
 local PREVIEW_W, PREVIEW_H = 460, 120
@@ -400,13 +653,16 @@ local function tooltip(text)
   if r.ImGui_IsItemHovered(ctx) then r.ImGui_SetTooltip(ctx, text) end
 end
 
-local function draw_preview(env, shots)
+local function draw_preview(env, shots, keep_lead)
   local dl = r.ImGui_GetWindowDrawList(ctx)
   local x0, y0 = r.ImGui_GetCursorScreenPos(ctx)
   local W, H = PREVIEW_W, PREVIEW_H
   r.ImGui_DrawList_AddRectFilled(dl, x0, y0, x0 + W, y0 + H, COL_BG)
 
-  local function tx(t) return x0 + (t / env.len) * W end
+  local function tx(t)
+    if t < 0 then t = 0 elseif t > env.len then t = env.len end
+    return x0 + (t / env.len) * W
+  end
   local range = 60
   local function ty(d)
     local f = (d - (env.peak - range)) / range
@@ -424,7 +680,7 @@ local function draw_preview(env, shots)
       r.ImGui_DrawList_AddRectFilled(dl, tx(s.start + s.len), y0, tx(e), y0 + H, COL_CUT)
     end
   end
-  if shots[1] and shots[1].start > 0 then
+  if not keep_lead and shots[1] and shots[1].start > 0 then
     r.ImGui_DrawList_AddRectFilled(dl, x0, y0, tx(shots[1].start), y0 + H, COL_CUT)
   end
 
@@ -450,8 +706,10 @@ local function draw_preview(env, shots)
 
   -- shot starts
   for _, s in ipairs(shots) do
-    local x = tx(s.onset)
-    r.ImGui_DrawList_AddLine(dl, x, y0, x, y0 + H, COL_ONSET, 1)
+    if s.onset >= 0 and s.onset <= env.len then
+      local x = tx(s.onset)
+      r.ImGui_DrawList_AddLine(dl, x, y0, x, y0 + H, COL_ONSET, 1)
+    end
   end
 
   r.ImGui_Dummy(ctx, W, H)
@@ -462,9 +720,38 @@ local function draw_preview(env, shots)
   end
 end
 
-local memo_sig, memo_counts, memo_total = nil, {}, 0
+local memo_sig, memo_counts, memo_total, memo_summary = nil, {}, 0, ""
+
+local function analyse_locked()
+  local counts, total, layers = {}, 0, 0
+  local groups = group_items(items)
+  for _, g in ipairs(groups) do
+    local plan = plan_group(g, opt, guide_item)
+    for _, e in ipairs(g.items) do
+      local env, err = get_env(e.item)
+      if plan and env then
+        counts[e.idx] = { n = #plan.times, env = env, shots = shots_for_item(g, plan, e, opt),
+                          guide = e == plan.guide }
+      else
+        counts[e.idx] = { n = 0, env = env, shots = {}, err = err }
+      end
+    end
+    if plan then
+      total = total + #plan.times
+      layers = layers + #g.items
+    end
+  end
+  local summary
+  if #groups == 1 then
+    summary = ("%d shots, %d layer%s locked together"):format(total, layers, layers == 1 and "" or "s")
+  else
+    summary = ("%d bursts, %d shots in total, layers locked together"):format(#groups, total)
+  end
+  return counts, total, summary
+end
 
 local function analyse()
+  if opt.lock then return analyse_locked() end
   local counts, total = {}, 0
   for i, e in ipairs(items) do
     local env, err = get_env(e.item)
@@ -476,7 +763,7 @@ local function analyse()
       counts[i] = { n = 0, err = err }
     end
   end
-  return counts, total
+  return counts, total, ("%d shots found in %d item%s"):format(total, #items, #items == 1 and "" or "s")
 end
 
 local function draw()
@@ -484,10 +771,11 @@ local function draw()
   local rv
 
   -- Items + preview ---------------------------------------------------------
-  local sig = table.concat({ last_state, opt.rise_db, opt.floor_db, opt.min_ms, opt.preroll_ms, opt.max_ms }, "|")
+  local sig = table.concat({ last_state, opt.rise_db, opt.floor_db, opt.min_ms, opt.preroll_ms,
+    opt.max_ms, tostring(opt.lock), tostring(guide_item) }, "|")
   if sig ~= memo_sig then
     memo_sig = sig
-    memo_counts, memo_total = analyse()
+    memo_counts, memo_total, memo_summary = analyse()
   end
   local counts, total = memo_counts, memo_total
 
@@ -497,12 +785,38 @@ local function draw()
       "Each shot gets split out and spread along the timeline.")
     r.ImGui_Dummy(ctx, PREVIEW_W, 0)
   else
-    r.ImGui_Text(ctx, ("%d shots found in %d item%s"):format(total, #items, #items == 1 and "" or "s"))
+    r.ImGui_Text(ctx, memo_summary)
 
     local function item_text(i)
       local c = counts[i]
       local extra = c.err and ("(" .. c.err .. ")") or ("%d shots"):format(c.n)
+      if c.guide then extra = extra .. ", guide" end
       return ("%d. %s  [%s]"):format(i, items[i].name, extra)
+    end
+
+    rv, opt.lock = r.ImGui_Checkbox(ctx, "Lock layers together (same shot times on every layer)", opt.lock)
+    tooltip("Items that overlap in time on different tracks are one burst.\n" ..
+      "Shot times come from one guide layer and every layer is cut at those times,\n" ..
+      "so the layers stay lined up when the shots are spread out.")
+
+    if opt.lock then
+      if guide_item and not r.ValidatePtr(guide_item, "MediaItem*") then guide_item = nil end
+      local guide_label = "Auto (sharpest attacks)"
+      for i, e in ipairs(items) do
+        if e.item == guide_item then guide_label = ("%d. %s"):format(i, e.name) end
+      end
+      label("Guide layer")
+      r.ImGui_SetNextItemWidth(ctx, PREVIEW_W - 170)
+      if r.ImGui_BeginCombo(ctx, "##guide", guide_label) then
+        if r.ImGui_Selectable(ctx, "Auto (sharpest attacks)", guide_item == nil) then guide_item = nil end
+        for i, e in ipairs(items) do
+          if r.ImGui_Selectable(ctx, ("%d. %s##g%d"):format(i, e.name, i), e.item == guide_item) then
+            guide_item = e.item
+          end
+        end
+        r.ImGui_EndCombo(ctx)
+      end
+      tooltip("The layer whose transients decide the shot times.\nAuto picks the layer with the sharpest attacks in each burst.")
     end
 
     label("Preview")
@@ -516,7 +830,7 @@ local function draw()
 
     local c = counts[preview_idx]
     if c and c.env then
-      draw_preview(c.env, c.shots)
+      draw_preview(c.env, c.shots, opt.lock)
     else
       r.ImGui_Dummy(ctx, PREVIEW_W, PREVIEW_H)
     end
@@ -590,9 +904,15 @@ local function draw()
   r.ImGui_BeginDisabled(ctx, total == 0)
   if r.ImGui_Button(ctx, ("Split into %d shots"):format(total), 200, 0) then
     save_settings(opt)
-    local n_items, n_shots = apply(items, opt)
-    status = ("Split %d item%s into %d shots. Ctrl+Z to undo."):format(
-      n_items, n_items == 1 and "" or "s", n_shots)
+    if opt.lock then
+      local n_groups, n_shots = apply_locked(items, opt, guide_item)
+      status = ("Split %d burst%s into %d shots. Ctrl+Z to undo."):format(
+        n_groups, n_groups == 1 and "" or "s", n_shots)
+    else
+      local n_items, n_shots = apply(items, opt)
+      status = ("Split %d item%s into %d shots. Ctrl+Z to undo."):format(
+        n_items, n_items == 1 and "" or "s", n_shots)
+    end
     last_state = nil
   end
   r.ImGui_EndDisabled(ctx)
