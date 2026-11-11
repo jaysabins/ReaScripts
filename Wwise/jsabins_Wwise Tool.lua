@@ -1,11 +1,12 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.15.0
+-- @version 1.16.0
 -- @changelog
---   Tabs can have their own color. Right-click a tab: pick its color from the swatch,
---   rename it in place, close it, Reset color, Duplicate, or change the tab order with
---   the arrow buttons. Colors are saved with the tabs; a new or duplicated tab keeps the
---   color of the tab it was copied from. Light colors get dark text so names stay readable.
+--   The preview's top row now shows what the destination is in Wwise, read from Wwise:
+--   [WWU] for a Work Unit, [VF] Virtual Folder, [PF] Physical Folder, [AM] Actor-Mixer,
+--   [RND]/[SEQ]/[SW]/[BLD] for containers, in that type's color. It shows [DEST] while
+--   Wwise isn't connected or the destination doesn't exist. Work Units are now tagged
+--   [WWU] instead of [WU].
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -107,7 +108,9 @@ local retry_at = nil
 local quiet_until = 0
 -- What the preview knows exists in Wwise under known_dest (lowercase path -> id, or false).
 local known_existing, known_dest = {}, nil
-local function forget_existing() known_existing = {} end
+-- Type of the import destination in Wwise (shown as the preview's top tag), looked up once per destination.
+local dest_type, dest_type_for = nil, nil
+local function forget_existing() known_existing = {}; dest_type_for = nil end
 local wwise_sel_path = nil
 local dirty_settings = false
 local open_summary = false
@@ -228,6 +231,11 @@ local function refresh_job(poll_selection, sig)
     if conn and newplan.destination ~= "" then
       if known_dest ~= newplan.destination then known_existing, known_dest = {}, newplan.destination end
       local _, err = core.mark_existing(newplan, PREVIEW_TIMEOUT, known_existing)
+      if dest_type_for ~= newplan.destination and err ~= "offline" and err ~= "busy" then
+        local t, _, code = core.object_type(newplan.destination, PREVIEW_TIMEOUT)
+        if t then dest_type, dest_type_for = t, newplan.destination end
+      end
+      if dest_type_for == newplan.destination then newplan.dest_type = dest_type end
       if err == "offline" then conn = nil; conn_err = "Lost connection to Wwise."
       elseif err == "busy" then
         status_line = "Wwise is busy, the preview will update in a moment."
@@ -595,10 +603,10 @@ local function type_color(t)
   return view.colors[k] or DEFAULT_TYPE_COLORS[k]
 end
 local TYPE_TAGS = {
-  ["Destination"] = "[DEST]", ["Work Unit"] = "[WU]", ["Virtual Folder"] = "[VF]", ["Physical Folder"] = "[PF]",
+  ["Destination"] = "[DEST]", ["Work Unit"] = "[WWU]", ["Virtual Folder"] = "[VF]", ["Physical Folder"] = "[PF]",
   ["Actor-Mixer"] = "[AM]", ["Random Container"] = "[RND]", ["Sequence Container"] = "[SEQ]",
   ["Switch Container"] = "[SW]", ["Blend Container"] = "[BLD]", ["Sound SFX"] = "[SFX]", ["Sound Voice"] = "[VO]",
-  ["Sound"] = "[SND]",
+  ["Sound"] = "[SND]", ["Bus"] = "[BUS]", ["AuxBus"] = "[AUX]", ["Event"] = "[EVT]",
 }
 -- Color a Wwise structure row's fields (type dropdown, name, $ and ... buttons) with its type's
 -- tag color instead of the default blue, the same colors as the preview's [RND], [SND]... tags.
@@ -1083,17 +1091,20 @@ local function draw_node(node, depth)
       ImGui.SetNextItemOpen(ctx, tree_open_all or not holds_sounds, ImGui.Cond_Always)
     end
   end
-  ImGui.PushStyleColor(ctx, ImGui.Col_Text, type_color(node.type) or 0xFFFFFFFF)
-  local tag = TYPE_TAGS[node.type] or "[?]"
+  -- The top row shows what the destination is in Wwise ([WWU], [RND]...), [DEST] until that's known.
+  local shown = node.dest_type or node.type
+  ImGui.PushStyleColor(ctx, ImGui.Col_Text, type_color(shown) or type_color("Destination") or 0xFFFFFFFF)
+  local tag = TYPE_TAGS[shown] or ("[" .. shown:sub(1, 3):upper() .. "]")
   local open = ImGui.TreeNodeEx(ctx, node.path or node.name, tag, flags)
   ImGui.PopStyleColor(ctx)
-  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, node.type) end
+  local hover_type = node.dest_type and ("Destination (" .. node.dest_type .. ")") or node.type
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, hover_type) end
   ImGui.SameLine(ctx)
   local label = node.name
   if not is_leaf then label = label .. string.format("  (%d)", node.sounds) end
   ImGui.Text(ctx, label)
   if ImGui.IsItemHovered(ctx) then
-    local tip = node.type .. "\n" .. (node.path or "")
+    local tip = hover_type .. "\n" .. (node.path or "")
     if node.entry then
       tip = tip .. "\n" .. (KIND_LABEL[node.entry.kind] or "")
       if node.entry.file then tip = tip .. "\nAudio: " .. node.entry.file end

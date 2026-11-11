@@ -195,6 +195,7 @@ The right side shows what the transfer will create, laid out like Wwise's Projec
 
 - Each object is marked **New** (green), **Exists** (orange) or **Duplicate** (two items would end up with the same name and path).
 - The tag in front of each name, such as `[RND]` or `[SFX]`, shows its type. Hover over it for the full type name.
+- The top row is the import destination, and its tag shows what that object is in Wwise: `[WWU]` for a Work Unit, `[VF]` for a Virtual Folder, `[RND]`, `[SEQ]`, `[SW]`, `[BLD]` for containers, `[AM]` for an Actor-Mixer, and so on. It shows `[DEST]` while Wwise isn't connected or the destination doesn't exist yet.
 - Hover over a name to see its full Wwise path and Originals subfolder.
 - **Columns:**
   - **Audio** says whether a Sound is imported directly or rendered.

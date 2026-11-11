@@ -1201,11 +1201,49 @@ function M.apply_delays(delays, timeout)
   return M.set_props(objs, timeout)
 end
 
+-- WAAPI type names mapped to the names the tool uses for its rows (and tags/colors).
+local WAAPI_TYPE_NAMES = {
+  WorkUnit = "Work Unit", ActorMixer = "Actor-Mixer", PropertyContainer = "Actor-Mixer",
+  SwitchContainer = "Switch Container", BlendContainer = "Blend Container", Sound = "Sound",
+}
+
+-- What kind of Wwise object sits at `path` (the import destination), as a type name the
+-- preview knows ("Work Unit", "Random Container", "Virtual Folder"...) or WAAPI's own type
+-- name for anything else (e.g. "Bus"). Returns type, error, error code.
+function M.object_type(path, timeout)
+  local res, err, code = M.waapi("ak.wwise.core.object.get", { from = { path = { path } } },
+    { ["return"] = { "type" } }, timeout)
+  if not res then return nil, err, code end
+  local o = (res["return"] or {})[1]
+  if not o or not o.type then return nil, "not found", "missing" end
+  local t = o.type
+  if WAAPI_TYPE_NAMES[t] then return WAAPI_TYPE_NAMES[t] end
+  if t == "RandomSequenceContainer" then
+    -- RandomOrSequence: 0 = Sequence, 1 = Random
+    local p = M.waapi("ak.wwise.core.object.get", { from = { path = { path } } },
+      { ["return"] = { "@RandomOrSequence" } }, timeout)
+    local v = p and p["return"] and p["return"][1] and p["return"][1]["@RandomOrSequence"]
+    return (v == 0) and "Sequence Container" or "Random Container"
+  end
+  if t == "Folder" then
+    -- Inside a Work Unit a Folder is a Virtual Folder; above Work Units it's a Physical Folder.
+    local a = M.waapi("ak.wwise.core.object.get",
+      { from = { path = { path } }, transform = { { select = { "ancestors" } } } },
+      { ["return"] = { "type" } }, timeout)
+    for _, x in ipairs((a and a["return"]) or {}) do
+      if x.type == "WorkUnit" then return "Virtual Folder" end
+    end
+    return "Physical Folder"
+  end
+  return t
+end
+
 -- Turn the plan into a tree shaped like Wwise's Project Explorer.
 -- Node: { name, type, path, children = {...}, entry = e (Sounds only), status = "new"|"exists"|"duplicate"|nil,
 --         sounds = number of Sounds below, new_count = new objects below (incl. self) }
 function M.build_tree(plan, s, conn)
   local root = { name = plan.destination ~= "" and plan.destination or "(no destination)", type = "Destination",
+                 dest_type = (not plan.dest_missing) and plan.dest_type or nil,
                  path = plan.destination, children = {}, index = {}, sounds = 0, new_count = 0 }
   local existing = plan.existing
   local function status_of(path)
