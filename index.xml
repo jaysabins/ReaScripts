@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="3ab4459d27591c96c2f5d57e138b5b8d161bf0a9">
+<index version="1" name="Jay Sabins Scripts" commit="a057ddea4ee63fc0b0a7c032985e1ee3a82f7d8b">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -283,6 +283,34 @@ is remembered, and right-click a header > Reset order brings back the original.]
         <source main="main">https://github.com/jaysabins/reascripts/raw/3ab4459d27591c96c2f5d57e138b5b8d161bf0a9/Wwise/jsabins_Wwise%20Tool.lua</source>
         <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/3ab4459d27591c96c2f5d57e138b5b8d161bf0a9/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
         <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/3ab4459d27591c96c2f5d57e138b5b8d161bf0a9/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.13.1" author="Jay Sabins" time="2026-11-11T00:34:04Z">
+        <changelog><![CDATA[Transferring from a REAPER project that has never been saved now stops with a clear
+message: "Save the REAPER project first". The Transfer button is greyed out with the
+same message until you save (only when something needs rendering; items sent as
+they are still work in an unsaved project).
+The Transfer to Wwise button is now green (#1a7f37) when it's ready to click.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/eab9103a8726a5dbfc9f6da184bec682c44c3247/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/eab9103a8726a5dbfc9f6da184bec682c44c3247/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/eab9103a8726a5dbfc9f6da184bec682c44c3247/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.13.2" author="Jay Sabins" time="2026-11-11T00:34:37Z">
+        <changelog><![CDATA[Settings is now split into tabs: Connection, Rendering, Channels, Transfer,
+Streaming, Interface (window and type colors) and Diagnostics. The window keeps
+its size when you switch tabs, and you can resize it; long tabs scroll.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/bd389d389dc3238dc08a69516ed0e7153e6a2a72/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/bd389d389dc3238dc08a69516ed0e7153e6a2a72/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/bd389d389dc3238dc08a69516ed0e7153e6a2a72/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.13.3" author="Jay Sabins" time="2026-11-11T00:35:47Z">
+        <changelog><![CDATA[Wwise structure: + Add level now has - Remove level and move up/down arrow
+buttons next to it. They act on the selected level (click its type or name; it's
+highlighted), or the bottom level when none is selected.
+Each row's "..." button is now a clipboard icon that only holds the property
+template. It turns amber when a template is set, and the popup has a Clear button.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/a057ddea4ee63fc0b0a7c032985e1ee3a82f7d8b/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/a057ddea4ee63fc0b0a7c032985e1ee3a82f7d8b/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/a057ddea4ee63fc0b0a7c032985e1ee3a82f7d8b/Wwise/jsabins_WwiseTool_core.lua</source>
       </version>
     </reapack>
   </category>
