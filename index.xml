@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="50f87cfd3da195130bad2c8b55782190543714eb">
+<index version="1" name="Jay Sabins Scripts" commit="1f8ef32c0c9d3b9e778a3a9b91edf51f63f61d47">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -165,6 +165,22 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
       <version name="1.0.0" author="Jay Sabins" time="2026-11-06T23:00:51Z">
         <changelog><![CDATA[Initial public release]]></changelog>
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/c856c6b670dd44e90ed324b442270fdbb0bbb0da/Utility/jsabins_ListInstalledPlugins.lua</source>
+      </version>
+    </reapack>
+    <reapack name="jsabins_Remove missing scripts from action list.lua" type="script" desc="Remove missing scripts from action list">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Combs through every script registered in the Action List (all sections: Main, MIDI Editor, Media Explorer...) and finds the ones whose script file no longer exists on disk. Shows them in a list so you can pick which to remove, backs up reaper-kb.ini first, then unregisters them.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Without ReaImGui it falls back to a simple Yes/No prompt that removes all missing scripts at once.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Jay Sabins" time="2026-11-11T17:29:57Z">
+        <changelog><![CDATA[Initial release]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/1f8ef32c0c9d3b9e778a3a9b91edf51f63f61d47/Utility/jsabins_Remove%20missing%20scripts%20from%20action%20list.lua</source>
       </version>
     </reapack>
   </category>
