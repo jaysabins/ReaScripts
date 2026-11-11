@@ -180,6 +180,23 @@ function M.project_dir()
   return d
 end
 
+-- True when the current REAPER project has been saved to a file at least once.
+function M.project_saved()
+  local _, fn = r.EnumProjects(-1)
+  return fn ~= nil and fn ~= ""
+end
+
+-- True when a transfer of this plan has to render something in REAPER.
+function M.plan_needs_render(s, plan)
+  if s.source == "render" then return true end
+  for _, e in ipairs((plan and plan.entries) or {}) do
+    if e.kind == "render" or e.kind == "folder" then return true end
+  end
+  return false
+end
+
+M.UNSAVED_MSG = "Save the REAPER project first (File > Save project). Transfers that render audio need a saved project."
+
 -- Split the "Keep rendered files in" setting into a real folder and a wildcard part for
 -- RENDER_PATTERN: "Renders\$project\$region" -> "<project folder>\Renders", "$project/$region".
 -- A relative path is relative to the project folder. Returns nil when renders are temporary.
@@ -1714,6 +1731,10 @@ function M.transfer(s, conn, on_status)
   summary.plan = plan
   for _, e in ipairs(plan.errors) do summary.errors[#summary.errors + 1] = e end
   if #plan.entries == 0 then return summary end
+  if M.plan_needs_render(s, plan) and not M.project_saved() then
+    summary.errors[#summary.errors + 1] = M.UNSAVED_MSG
+    return summary
+  end
   lap("Read project")
   status("Checking Wwise...")
   local existing = M.mark_existing(plan)
@@ -1760,7 +1781,7 @@ function M.transfer(s, conn, on_status)
     if e.unresolved then
       summary.errors[#summary.errors + 1] = "Skipped one file: a wildcard in the hierarchy didn't resolve to a single name."
     elseif not e.file then
-      summary.errors[#summary.errors + 1] = "Skipped \"" .. e.name .. "\": it didn't render."
+      summary.errors[#summary.errors + 1] = "Skipped \"" .. e.name .. "\": REAPER didn't render a file for it."
     else
       local im = { audioFile = e.file, objectPath = e.path }
       local src = sources_before and e.exists and existing_source_name(sources_before[e.plain:lower()], e.file)

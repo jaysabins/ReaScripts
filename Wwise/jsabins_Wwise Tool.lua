@@ -1,14 +1,11 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.13.0
+-- @version 1.13.1
 -- @changelog
---   New Streaming column in the preview: click a Sound or container (or pick many rows
---   with drag, Shift+click or Ctrl+click) and choose Stream, No stream or Auto.
---   Settings > Streaming adds Auto streaming for every Sound at least N seconds long,
---   and can turn on Zero latency and Non-cachable along with streaming.
---   Streaming is written after property templates, so a template can't undo it.
---   Preview columns can now be dragged into any order (Name stays first); the order
---   is remembered, and right-click a header > Reset order brings back the original.
+--   Transferring from a REAPER project that has never been saved now stops with a clear
+--   message: "Save the REAPER project first". The Transfer button is greyed out with the
+--   same message until you save (only when something needs rendering; items sent as
+--   they are still work in an unsaved project).
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1131,6 +1128,7 @@ local function section_transfer()
       or "Set an import destination."
   elseif #problems > 0 then why = problems[1]
   elseif #plan.entries == 0 then why = (plan.errors and plan.errors[1]) or "Select one or more items in REAPER."
+  elseif core.plan_needs_render(S, plan) and not core.project_saved() then why = core.UNSAVED_MSG
   end
   local can = why == nil
   ImGui.Separator(ctx)
