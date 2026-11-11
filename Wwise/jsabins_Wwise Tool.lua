@@ -1098,7 +1098,7 @@ local function draw_node(node, depth)
       ImGui.SetNextItemOpen(ctx, tree_open_all or not holds_sounds, ImGui.Cond_Always)
     end
   end
-  -- The top row shows what the destination is in Wwise ([WWU], [RND]...), [DEST] until that's known.
+  -- The top row shows what the destination is in Wwise ([WU], [RND]...), [DEST] until that's known.
   local shown = node.dest_type or node.type
   ImGui.PushStyleColor(ctx, ImGui.Col_Text, type_color(shown) or type_color("Destination") or 0xFFFFFFFF)
   local tag = TYPE_TAGS[shown] or ("[" .. shown:sub(1, 3):upper() .. "]")
