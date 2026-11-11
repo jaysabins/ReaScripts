@@ -9,7 +9,7 @@ M.EXT = "jsabins_WwiseTool"
 -- are copied over once; per-project settings are read from it when a project has
 -- none under the new key yet.
 M.OLD_EXT = "JS_WwiseTransfer"
-M.VERSION = "1.13.3"
+M.VERSION = "1.14.0"
 
 for _, key in ipairs({ "last_settings", "presets", "view" }) do
   if r.GetExtState(M.EXT, key) == "" then
@@ -296,6 +296,57 @@ function M.save_settings(s, proj)
   if old ~= txt then r.SetProjExtState(proj, M.EXT, "settings", txt) end
   r.SetExtState(M.EXT, "last_settings", txt, true)
 end
+
+-- Tabs: each tab holds a whole setup (structure and every setting), so you can flick
+-- between setups. Saved like the settings: in the project, and as the default for
+-- projects that don't have their own tabs yet. The active tab's setup is also the
+-- project's "settings", so Quick send always uses the tab that was showing.
+--   { active = n, list = { { id = n, name = "...", s = <settings> }, ... } }
+local function read_tabs_text(txt)
+  if txt == "" then return nil end
+  local ok, t = pcall(json.decode, txt)
+  if not ok or type(t) ~= "table" or type(t.list) ~= "table" then return nil end
+  local list = {}
+  for _, tab in ipairs(t.list) do
+    if type(tab) == "table" and type(tab.s) == "table" then
+      list[#list + 1] = { name = tostring(tab.name or ""), s = merge_defaults(tab.s) }
+    end
+  end
+  if #list == 0 then return nil end
+  local active = math.floor(tonumber(t.active) or 1)
+  return { active = math.max(1, math.min(#list, active)), list = list }
+end
+
+function M.load_tabs()
+  local _, txt = r.GetProjExtState(0, M.EXT, "tabs")
+  local t = read_tabs_text(txt) or read_tabs_text(r.GetExtState(M.EXT, "last_tabs"))
+  local s = M.load_settings()
+  if not t then
+    t = { active = 1, list = { { name = "Default", s = s } } }
+  else
+    -- The project's own settings win for the active tab (an older version or another
+    -- script may have changed them since the tabs were saved).
+    t.list[t.active].s = s
+  end
+  for i, tab in ipairs(t.list) do
+    tab.id = i
+    if tab.name == "" then tab.name = "Tab " .. i end
+  end
+  t.next_id = #t.list + 1
+  return t
+end
+
+function M.save_tabs(t, proj)
+  proj = proj or 0
+  local list = {}
+  for i, tab in ipairs(t.list) do list[i] = { name = tab.name, s = tab.s } end
+  local txt = json.encode({ active = t.active, list = list })
+  local _, old = r.GetProjExtState(proj, M.EXT, "tabs")
+  if old ~= txt then r.SetProjExtState(proj, M.EXT, "tabs", txt) end
+  r.SetExtState(M.EXT, "last_tabs", txt, true)
+end
+
+function M.copy_settings(s) return merge_defaults(json.decode(json.encode(s))) end
 
 -- Presets come in two kinds, saved separately and the same in every project:
 --   "structure": the Wwise structure only (levels with their names and templates, and the Sound row).

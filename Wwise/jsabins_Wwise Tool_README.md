@@ -19,6 +19,7 @@ Wwise Tool is a free REAPER script by Jay Sabins, written in Lua with a ReaImGui
 - **Conflict handling.** Choose to reuse, replace or rename objects that already exist.
 - **SFX and Voice.** Import as Sound SFX or as Sound Voice in a chosen language.
 - **Originals subfolders** with wildcards, and a folder picker that opens in your Wwise project's Originals folder.
+- **Tabs.** Each tab along the top holds a whole setup (structure and settings), so you can flick between, say, a weapons setup and a footsteps setup with one click.
 - **Two kinds of presets.** Structure presets hold just the Wwise structure; settings presets hold everything else. Load one without touching the other.
 - **One undo step.** Each transfer is a single undo in Wwise.
 - **Quick send.** A second action transfers with your last settings, without opening the window. Put it on a shortcut for one-key transfers.
@@ -83,6 +84,19 @@ The window opens at a standard size. Resize it by dragging its edges, and drag i
 The thin bar along the top shows a green dot when you're connected, then the Wwise project name and version. On the right, **?** opens this guide in your web browser, and next to it the gear button opens **Settings**.
 
 The window opens right away and connects to Wwise in the background (the bar says **Connecting to Wwise...** meanwhile). If Wwise is busy, for example still loading a project, it tries again by itself every few seconds. If Wwise can't be reached, the dot turns red and a yellow banner explains why. If you opened Wwise after REAPER, or Wwise restarted, open **Settings** and click **Reconnect**.
+
+### Tabs
+
+Under the toolbar is a row of tabs. Each tab is a complete setup: the Wwise structure, the destination, the source, the Originals subfolder, the conflict and Initial Delay options, the Mono/Stereo, Streaming and Loop choices from the preview, and the Rendering, Channels, Transfer and Stream & loop options in **Settings**. Click a tab to switch to it; everything on the left and the preview change to that tab's setup. Only the connection port is shared by all tabs.
+
+- **+** adds a new tab that starts as a copy of the one showing.
+- **Double-click** a tab to rename it.
+- **Right-click** a tab for **Rename**, **Duplicate**, **Move left**, **Move right** and **Close tab**.
+- Close a tab with its **x** (or middle-click it). You're asked first, because its setup goes with it. The last tab can't be closed.
+
+Tabs are saved with each REAPER project, and the last-used tabs carry over to new projects, like the rest of the settings. **Quick send** uses the tab that was showing when you last used the window.
+
+Presets still work inside a tab: loading a structure or settings preset changes the tab that's showing, and saving a preset saves from it.
 
 ### Presets
 
@@ -244,7 +258,7 @@ Afterwards a summary shows the destination, the number of files imported, object
 
 ## Quick send
 
-**Wwise Tool - Quick send** does a transfer with the window's last-used settings, without opening the window. It shows a message only when something goes wrong. Assign it a keyboard shortcut in REAPER's Actions list, then iterating on a sound is: tweak it in REAPER, press the key, play it in Wwise.
+**Wwise Tool - Quick send** does a transfer with the window's last-used settings (the tab that was showing), without opening the window. It shows a message only when something goes wrong. Assign it a keyboard shortcut in REAPER's Actions list, then iterating on a sound is: tweak it in REAPER, press the key, play it in Wwise.
 
 ## Settings
 
@@ -264,7 +278,7 @@ The gear button opens **Settings**, split into tabs. The window keeps its size a
   - **Type colors:** a color picker for each Wwise type (Actor-Mixer, Random, Sequence, Switch and Blend Containers, Virtual Folder, Work Unit, Physical Folder, Sound, Destination). These colors are used for the structure rows and the preview's tags. **Reset colors to defaults** brings back the built-in scheme.
 - **Diagnostics:** a log of moments where REAPER was slow. If something stutters, click **Copy slow-moment log** and include it in a bug report.
 
-Settings are saved with each REAPER project, and the last-used settings carry over to new projects. Presets, visible columns and their order, window opacity, the delay unit and type colors apply to every project.
+Settings are saved with each REAPER project, and the last-used settings carry over to new projects. The Rendering, Channels, Transfer and Stream & loop options belong to the tab that's showing (see [Tabs](#tabs)); the port is shared by all tabs. Presets, visible columns and their order, window opacity, the delay unit and type colors apply to every project.
 
 ## Example setups
 

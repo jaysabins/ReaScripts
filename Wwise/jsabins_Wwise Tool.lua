@@ -1,12 +1,13 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.13.4
+-- @version 1.14.0
 -- @changelog
---   New Loop column in the preview, like Streaming: click a Sound or container (or
---   pick many rows with drag, Shift+click or Ctrl+click) and choose Loop (infinite),
---   No loop or Auto (leave it as Wwise or the template has it). Written after
---   property templates. Settings tab "Streaming" is now "Stream & loop" and has
---   Clear loop overrides.
+--   Tabs: a row of tabs under the toolbar, each holding a whole setup (Wwise structure
+--   and every setting), so you can flick between setups with one click.
+--   "+" adds a tab that starts as a copy of the one showing; double-click a tab to rename it;
+--   right-click for Rename, Duplicate, Move left/right and Close. Closing asks first.
+--   Tabs are saved with the project (and carry over to new projects). Structure and
+--   settings presets load into the tab that's showing. Quick send uses the showing tab.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -23,7 +24,7 @@
 --     Work Units) named with REAPER wildcards like $region, $track, $item.
 --   - Property templates per level, Sound SFX or Sound Voice (with language),
 --     Originals subfolder (wildcards allowed).
---   - Conflict handling, structure and settings presets, live preview (new vs existing objects),
+--   - Tabs, each a whole setup you can flick between. Conflict handling, structure and settings presets, live preview (new vs existing objects),
 --     transfer summary. One Wwise undo step per transfer.
 --   - Auto mono/stereo: a Sound whose left and right match is made mono
 --     (also for folder items). Click the preview's Channels column to force
@@ -62,7 +63,9 @@ local ctx = ImGui.CreateContext("Wwise Tool")
 ----------------------------------------------------------------------
 -- State
 ----------------------------------------------------------------------
-local S = core.load_settings()
+-- Tabs (see core.load_tabs): S is always the showing tab's settings table.
+local tabs = core.load_tabs()
+local S = tabs.list[tabs.active].s
 core.http_port = S.http_port
 -- Look of the window (same in every project): background opacity, hidden preview columns,
 -- type colors and the unit the preview's Initial delay column shows ("s" or "ms").
@@ -142,6 +145,12 @@ local function connect()
 end
 
 local function settings_changed() dirty_settings = true; last_sig = nil end
+
+-- Save the showing tab as the project's settings, and every tab.
+local function save_all(proj)
+  core.save_settings(S, proj)
+  core.save_tabs(tabs, proj)
+end
 
 local function current_destination()
   if S.use_wwise_selection then return wwise_sel_path or "" end
@@ -245,7 +254,7 @@ local function refresh_preview(force)
   if not force and not poll and now - last_check < 0.3 then return end
   last_check = now
   local sig = signature()
-  if dirty_settings then core.save_settings(S); dirty_settings = false end
+  if dirty_settings then save_all(); dirty_settings = false end
   if sig == last_sig and not force and not poll then return end
   if poll and sig == last_sig and not force then
     -- Only the Wwise selection might have changed: check it, rebuild only if it did.
@@ -1193,7 +1202,7 @@ local function section_preview()
 end
 
 local function do_transfer()
-  core.save_settings(S)
+  save_all()
   status_line = "Transferring..."
   local s2 = core.json.decode(core.json.encode(S))
   local t0 = r.time_precise()
@@ -1521,6 +1530,166 @@ local function settings_popup()
 end
 
 ----------------------------------------------------------------------
+-- Tabs: each one is a whole setup (structure and settings). Click a tab to switch,
+-- "+" adds a copy of the showing tab, double-click renames, right-click for more.
+----------------------------------------------------------------------
+local tab_select_pending = true -- ImGui still has to show tabs.active (first frame, after a switch)
+local tab_rename = nil          -- { i =, text = } while the Rename popup is open
+local tab_close = nil           -- index of the tab waiting for "Close tab?"
+local open_tab_rename, open_tab_close = false, false
+
+-- Forget everything the preview worked out for the setup that was showing.
+local function setup_switched()
+  plan = { entries = {}, errors = {} }
+  forget_existing()
+  if not connecting then bg_task = nil end -- a half-done preview of the old setup
+  pk_col, pk_sel, pk_anchor = nil, {}, nil
+  selected_row = 0
+  sel_poll_at = 0
+  last_sig = nil
+end
+
+local function show_tab(i)
+  local port = S.http_port -- the connection is the same in every tab
+  tabs.active = i
+  S = tabs.list[i].s
+  S.http_port = port
+  tab_select_pending = true
+  setup_switched()
+  settings_changed()
+end
+
+local function new_tab_name(base)
+  local used = {}
+  for _, t in ipairs(tabs.list) do used[t.name:lower()] = true end
+  if base and not used[base:lower()] then return base end
+  local n = base and 2 or #tabs.list + 1
+  local function name(k) return base and (base .. " " .. k) or ("Tab " .. k) end
+  while used[name(n):lower()] do n = n + 1 end
+  return name(n)
+end
+
+-- Add a copy of tab `from` at position `at` and show it.
+local function add_tab(from, at, name)
+  local tab = { id = tabs.next_id, name = name, s = core.copy_settings(tabs.list[from].s) }
+  tabs.next_id = tabs.next_id + 1
+  table.insert(tabs.list, at, tab)
+  if at <= tabs.active then tabs.active = tabs.active + 1 end
+  show_tab(at)
+end
+
+local function close_tab(i)
+  if #tabs.list < 2 or not tabs.list[i] then return end
+  table.remove(tabs.list, i)
+  if i == tabs.active then
+    show_tab(math.min(i, #tabs.list))
+  else
+    if i < tabs.active then tabs.active = tabs.active - 1 end
+    tab_select_pending = true
+    settings_changed()
+  end
+end
+
+local function move_tab(i, d)
+  local j = i + d
+  if not tabs.list[i] or not tabs.list[j] then return end
+  tabs.list[i], tabs.list[j] = tabs.list[j], tabs.list[i]
+  if tabs.active == i then tabs.active = j elseif tabs.active == j then tabs.active = i end
+  -- ImGui keeps a tab bar's order once tabs exist; new ids make it lay them out again in our order.
+  for _, k in ipairs({ i, j }) do tabs.list[k].id = tabs.next_id; tabs.next_id = tabs.next_id + 1 end
+  tab_select_pending = true
+  settings_changed()
+end
+
+local function section_tabs()
+  local action
+  if ImGui.BeginTabBar(ctx, "setups", ImGui.TabBarFlags_FittingPolicyScroll) then
+    local can_close = #tabs.list > 1
+    for i, tab in ipairs(tabs.list) do
+      local flags = (tab_select_pending and i == tabs.active) and ImGui.TabItemFlags_SetSelected or ImGui.TabItemFlags_None
+      local label = tab.name .. "###tab" .. tab.id
+      local sel, keep
+      if can_close then sel, keep = ImGui.BeginTabItem(ctx, label, true, flags)
+      else sel = ImGui.BeginTabItem(ctx, label, nil, flags) end
+      if can_close and keep == false then action = { "close", i } end
+      if ImGui.IsItemHovered(ctx) then
+        if ImGui.IsMouseDoubleClicked(ctx, ImGui.MouseButton_Left) then action = { "rename", i }
+        elseif can_close and ImGui.IsMouseClicked(ctx, ImGui.MouseButton_Middle) then action = { "close", i } end
+      end
+      if ImGui.BeginPopupContextItem(ctx, "tabmenu" .. tab.id) then
+        if ImGui.MenuItem(ctx, "Rename...") then action = { "rename", i } end
+        if ImGui.MenuItem(ctx, "Duplicate") then action = { "duplicate", i } end
+        ImGui.Separator(ctx)
+        if ImGui.MenuItem(ctx, "Move left", nil, false, i > 1) then action = { "move", i, -1 } end
+        if ImGui.MenuItem(ctx, "Move right", nil, false, i < #tabs.list) then action = { "move", i, 1 } end
+        ImGui.Separator(ctx)
+        if ImGui.MenuItem(ctx, "Close tab", nil, false, can_close) then action = { "close", i } end
+        ImGui.EndPopup(ctx)
+      end
+      if sel then
+        -- While a switch is pending ImGui may still report the old tab for a frame: ignore it.
+        if i == tabs.active then tab_select_pending = false
+        elseif not tab_select_pending then action = action or { "show", i } end
+        ImGui.EndTabItem(ctx)
+      end
+    end
+    if ImGui.TabItemButton(ctx, "+", ImGui.TabItemFlags_Trailing | ImGui.TabItemFlags_NoTooltip) then action = { "add" } end
+    if ImGui.IsItemHovered(ctx) then
+      ImGui.SetTooltip(ctx, "New tab, starting as a copy of this one.\n" ..
+        "Each tab keeps its own Wwise structure and settings.\nDouble-click a tab to rename it, right-click for more.")
+    end
+    ImGui.EndTabBar(ctx)
+  end
+
+  if action then
+    local a, i = action[1], action[2]
+    if a == "show" then show_tab(i)
+    elseif a == "add" then add_tab(tabs.active, #tabs.list + 1, new_tab_name())
+    elseif a == "duplicate" then add_tab(i, i + 1, new_tab_name(tabs.list[i].name .. " copy"))
+    elseif a == "move" then move_tab(i, action[3])
+    elseif a == "rename" then tab_rename = { i = i, text = tabs.list[i].name }; open_tab_rename = true
+    elseif a == "close" then tab_close = i; open_tab_close = true end
+  end
+
+  if open_tab_rename then ImGui.OpenPopup(ctx, "Rename tab"); open_tab_rename = false end
+  if ImGui.BeginPopup(ctx, "Rename tab") then
+    if not tab_rename or not tabs.list[tab_rename.i] then ImGui.CloseCurrentPopup(ctx)
+    else
+      if ImGui.IsWindowAppearing(ctx) then ImGui.SetKeyboardFocusHere(ctx) end
+      ImGui.SetNextItemWidth(ctx, 220)
+      local enter
+      enter, tab_rename.text = ImGui.InputText(ctx, "##tabname", tab_rename.text, ImGui.InputTextFlags_EnterReturnsTrue)
+      ImGui.SameLine(ctx)
+      if (ImGui.Button(ctx, "OK") or enter) then
+        local name = tab_rename.text:match("^%s*(.-)%s*$")
+        if name ~= "" then tabs.list[tab_rename.i].name = name; settings_changed() end
+        tab_rename = nil
+        ImGui.CloseCurrentPopup(ctx)
+      end
+    end
+    ImGui.EndPopup(ctx)
+  end
+
+  if open_tab_close then ImGui.OpenPopup(ctx, "Close tab?"); open_tab_close = false end
+  if ImGui.BeginPopupModal(ctx, "Close tab?", nil, ImGui.WindowFlags_AlwaysAutoResize) then
+    local tab = tab_close and tabs.list[tab_close]
+    if not tab then ImGui.CloseCurrentPopup(ctx)
+    else
+      ImGui.Text(ctx, "Close \"" .. tab.name .. "\"?")
+      ImGui.TextColored(ctx, COLOR_DIM, "Its structure and settings go with it. Save them as presets first to keep them.")
+      if ImGui.Button(ctx, "Close tab", 120) or ImGui.IsKeyPressed(ctx, ImGui.Key_Enter) then
+        close_tab(tab_close); tab_close = nil; ImGui.CloseCurrentPopup(ctx)
+      end
+      ImGui.SameLine(ctx)
+      if ImGui.Button(ctx, "Cancel", 120) or ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then
+        tab_close = nil; ImGui.CloseCurrentPopup(ctx)
+      end
+    end
+    ImGui.EndPopup(ctx)
+  end
+end
+
+----------------------------------------------------------------------
 -- Main loop
 ----------------------------------------------------------------------
 local function log_frame(t0, gap)
@@ -1547,7 +1716,7 @@ local function loop()
   if open then
     r.defer(loop)
   else
-    core.save_settings(S)
+    save_all()
   end
 end
 
@@ -1557,15 +1726,14 @@ local cur_proj = r.EnumProjects(-1)
 local function follow_project_tab()
   local proj = r.EnumProjects(-1)
   if proj == cur_proj then return end
-  if dirty_settings and cur_proj and r.ValidatePtr(cur_proj, "ReaProject*") then core.save_settings(S, cur_proj) end
+  if dirty_settings and cur_proj and r.ValidatePtr(cur_proj, "ReaProject*") then save_all(cur_proj) end
   dirty_settings = false
   cur_proj = proj
-  S = core.load_settings()
+  tabs = core.load_tabs()
+  S = tabs.list[tabs.active].s
   core.http_port = S.http_port
-  plan = { entries = {}, errors = {} }
-  forget_existing()
-  sel_poll_at = 0
-  last_sig = nil
+  tab_select_pending = true
+  setup_switched()
 end
 
 -- 1.12.0/1.12.1 could leave the window screen-sized: put it back to the standard size once.
@@ -1608,6 +1776,7 @@ loop_body = function()
     was_focused = focused
     section_connection()
     ImGui.Spacing(ctx)
+    section_tabs()
     -- Layout: setup on the left, preview + transfer on the right.
     local avail_w = ImGui.GetContentRegionAvail(ctx)
     local left_w = math.floor(math.max(340, math.min(440, avail_w * 0.42)))
