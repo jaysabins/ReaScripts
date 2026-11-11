@@ -1,10 +1,9 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.16.6
+-- @version 1.16.7
 -- @changelog
---   The big close X is back up in the window's top-right corner, where the old X was,
---   at the same big size (the title bar is a little taller to fit it). The top line is back
---   to how it was. When the window is docked, its tab has the normal X.
+--   Fixed: 1.16.6 stopped with an ImGui_End error ("Code uses SetCursorPos()/SetCursorScreenPos()
+--   to extend window/parent boundaries") because of the new corner close button.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -409,13 +408,13 @@ local function title_close_button()
   local size = title_bar_size()
   local wx, wy = ImGui.GetWindowPos(ctx)
   local ww = ImGui.GetWindowSize(ctx)
-  local cx, cy = ImGui.GetCursorScreenPos(ctx)
   ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + size, false)
   ImGui.SetCursorScreenPos(ctx, wx + ww - size, wy)
   if close_button("##closewin", size) then close_clicked = true end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Close Wwise Tool") end
   ImGui.PopClipRect(ctx)
-  ImGui.SetCursorScreenPos(ctx, cx, cy)
+  -- Don't move the cursor back afterwards: ImGui errors in End() when the cursor is moved
+  -- past the content without an item after it. Nothing is drawn after this button.
 end
 
 local function section_connection()
