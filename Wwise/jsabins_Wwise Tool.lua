@@ -1,12 +1,9 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.14.1
+-- @version 1.14.2
 -- @changelog
---   Originals subfolder: Browse now lets you pick any folder in Originals\SFX or
---   Originals\Voices\<language>, not only the one for the current Sound type. Picking a
---   Voices folder switches the Sound to Sound Voice in that language (and the import uses
---   that language); picking an SFX folder switches it back to Sound SFX. Typing a path that
---   starts with SFX\ or Voices\<language>\ does the same.
+--   Wwise structure: the Add level and Remove level buttons are now small + and -
+--   buttons, with "Add level" / "Remove level" tooltips, so they take less room.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -747,25 +744,26 @@ local function section_hierarchy()
 
   -- Level buttons. Remove / Move act on the selected level (click its type or name to select it),
   -- or the bottom level when none is selected.
-  if ImGui.Button(ctx, "+ Add level") then
+  local sq = ImGui.GetFrameHeight(ctx)
+  if ImGui.Button(ctx, "+##addlvl", sq, sq) then
     S.rows[#S.rows + 1] = { type = #S.rows == 0 and "Actor-Mixer" or "Random Container", name = "", template = "" }
     selected_row = #S.rows
     settings_changed()
   end
-  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Add a level at the bottom, just above the Sound") end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Add level\nAdds one at the bottom, just above the Sound.") end
   local n = #S.rows
   local target = (selected_row >= 1 and selected_row <= n) and selected_row or n
   local tname = n > 0 and ((S.rows[target].name or "") ~= "" and S.rows[target].name or S.rows[target].type) or nil
   ImGui.SameLine(ctx)
   if n == 0 then ImGui.BeginDisabled(ctx) end
-  if ImGui.Button(ctx, "- Remove level") and n > 0 then
+  if ImGui.Button(ctx, "-##remlvl", sq, sq) and n > 0 then
     table.remove(S.rows, target)
     selected_row = math.min(target, #S.rows)
     settings_changed()
   end
   if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then
-    ImGui.SetTooltip(ctx, n > 0 and ("Remove level " .. target .. ": " .. tname ..
-      "\nClick a level's type or name to pick which one.") or "No levels to remove")
+    ImGui.SetTooltip(ctx, n > 0 and ("Remove level\nRemoves level " .. target .. ": " .. tname ..
+      "\nClick a level's type or name to pick which one.") or "Remove level\nNo levels to remove.")
   end
   ImGui.SameLine(ctx)
   if n < 2 or target <= 1 then ImGui.BeginDisabled(ctx) end
