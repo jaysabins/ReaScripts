@@ -1,12 +1,10 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.16.4
+-- @version 1.16.5
 -- @changelog
---   Wwise structure: every level row now has its own + and - buttons at the right.
---   + adds a new level right below that row, - removes that row. The Sound row's +
---   adds a level just above the Sound. The buttons stay on their rows, so nothing
---   shifts under the mouse. To reorder levels, drag the handle at the left of a row
---   onto another row. The old buttons under the list are gone.
+--   Bigger close button: a large X at the right end of the top line (next to Settings),
+--   about four times the size of the old title-bar X. It turns red on hover. The small
+--   title-bar X is gone.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -381,17 +379,42 @@ local function gear_button(id, size)
   return pressed
 end
 
+-- Big close button (an X drawn with the draw list), replacing ImGui's small title-bar X.
+-- Gray X, turns red on hover. Returns true when clicked.
+local function close_button(id, size)
+  local pressed = ImGui.InvisibleButton(ctx, id, size, size)
+  local hovered, held = ImGui.IsItemHovered(ctx), ImGui.IsItemActive(ctx)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  if hovered then
+    ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, held and 0xA02828FF or 0xC83C3CFF, size * 0.15)
+  end
+  local col = hovered and 0xFFFFFFFF or ImGui.GetColor(ctx, ImGui.Col_Text)
+  local m, th = size * 0.28, math.max(2, size * 0.09)
+  ImGui.DrawList_AddLine(dl, x1 + m, y1 + m, x1 + size - m, y1 + size - m, col, th)
+  ImGui.DrawList_AddLine(dl, x1 + size - m, y1 + m, x1 + m, y1 + size - m, col, th)
+  return pressed
+end
+local close_clicked = false
+
 local function section_connection()
-  -- Left: status dot, Wwise project and Wwise version. Right: "?" (opens the guide) and Settings (which also has Reconnect).
-  -- A connection problem shows as a banner underneath.
+  -- Left: status dot, Wwise project and Wwise version. Right: "?" (opens the guide), Settings
+  -- (which also has Reconnect) and a big close X. A connection problem shows as a banner underneath.
+  -- The close X is twice the font size each way (about 4x the area of ImGui's title-bar X);
+  -- the other items are centered on its height.
+  local close_size = math.floor(ImGui.GetFontSize(ctx) * 2 + 0.5)
+  local base_y = ImGui.GetCursorPosY(ctx)
   local big = push_header_font()
   local lh = ImGui.GetFrameHeight(ctx)
+  local row_h = math.max(lh, close_size)
+  local mid = math.floor((row_h - lh) / 2)
   local dot = big and 10 or 8
   local dl = ImGui.GetWindowDrawList(ctx)
   local x, y = ImGui.GetCursorScreenPos(ctx)
-  ImGui.DrawList_AddCircleFilled(dl, x + dot / 2, y + lh / 2, dot / 2, conn and COLOR_OK or COLOR_BAD)
-  ImGui.Dummy(ctx, dot, lh)
+  ImGui.DrawList_AddCircleFilled(dl, x + dot / 2, y + row_h / 2, dot / 2, conn and COLOR_OK or COLOR_BAD)
+  ImGui.Dummy(ctx, dot, row_h)
   ImGui.SameLine(ctx)
+  ImGui.SetCursorPosY(ctx, base_y + mid)
   ImGui.AlignTextToFramePadding(ctx)
   if conn then
     ImGui.Text(ctx, conn.project or "Wwise")
@@ -408,15 +431,22 @@ local function section_connection()
   local spacing = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
   local qw = ImGui.CalcTextSize(ctx, "?") + pad_x * 2
   local fh = ImGui.GetFrameHeight(ctx)
-  local bw = qw + spacing + fh
+  local bw = qw + spacing + fh + spacing * 2 + close_size
+  local bmid = math.floor((row_h - fh) / 2)
   ImGui.SameLine(ctx)
   local avail = ImGui.GetContentRegionAvail(ctx)
   if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
+  ImGui.SetCursorPosY(ctx, base_y + bmid)
   if ImGui.Button(ctx, "?") then open_url(GUIDE_URL) end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Open the Wwise Tool guide on GitHub") end
   ImGui.SameLine(ctx)
+  ImGui.SetCursorPosY(ctx, base_y + bmid)
   if gear_button("##settings", fh) then open_settings = true end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Settings: connection (Reconnect), rendering, transfer and window") end
+  ImGui.SameLine(ctx, 0, spacing * 2)
+  ImGui.SetCursorPosY(ctx, base_y)
+  if close_button("##closewin", close_size) then close_clicked = true end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Close Wwise Tool") end
 
   if not conn and conn_err then
     ImGui.PushStyleColor(ctx, ImGui.Col_ChildBg, 0x2A2213FF)
@@ -1936,7 +1966,9 @@ loop_body = function()
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
-  local visible, open = ImGui.Begin(ctx, "Wwise Tool", true, ImGui.WindowFlags_NoCollapse)
+  -- No p_open: ImGui's small title-bar X is replaced by the big close button in the header line.
+  local visible = ImGui.Begin(ctx, "Wwise Tool", nil, ImGui.WindowFlags_NoCollapse)
+  local open = true
   if visible then
     main_win_pos[1], main_win_pos[2] = ImGui.GetWindowPos(ctx)
     main_win_docked = ImGui.IsWindowDocked(ctx)
@@ -1975,6 +2007,7 @@ loop_body = function()
     ImGui.End(ctx)
   end
   ImGui.PopStyleColor(ctx, 4)
+  if close_clicked then open = false end
   return open
 end
 

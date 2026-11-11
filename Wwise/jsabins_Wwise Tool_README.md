@@ -77,7 +77,7 @@ That's it. The rest of this guide covers the options.
 
 ## The window
 
-The window opens at a standard size. Resize it by dragging its edges, and drag it from anywhere on it to move it. Double-clicking the title bar does nothing.
+The window opens at a standard size. Resize it by dragging its edges, and drag it from anywhere on it to move it. Double-clicking the title bar does nothing. To close the tool, click the big **X** at the right end of the top line, next to Settings (it turns red when you hover over it).
 
 ### Toolbar
 
