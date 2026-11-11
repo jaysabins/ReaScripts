@@ -236,6 +236,7 @@ function M.default_settings()
     mono_to_mono = true,             -- Auto channels: a sound whose left and right match becomes mono
     channels = {},                   -- channel overrides: { [lowercase path below the destination] = "mono"|"stereo" }
     streaming = {},                  -- streaming overrides: { [lowercase path below the destination] = "on"|"off" }
+    loops = {},                      -- loop overrides: { [lowercase path below the destination] = "on"|"off" }
     stream_auto = false,             -- Auto streaming: stream Sounds at least stream_min_sec long
     stream_min_sec = 10,
     stream_zero_latency = false,     -- with streaming on, also turn on Zero latency
@@ -264,6 +265,7 @@ local function merge_defaults(s)
   if type(s.rows) ~= "table" then s.rows = {} end
   if type(s.channels) ~= "table" then s.channels = {} end
   if type(s.streaming) ~= "table" then s.streaming = {} end
+  if type(s.loops) ~= "table" then s.loops = {} end
   if type(s.stream_min_sec) ~= "number" or s.stream_min_sec < 0 then s.stream_min_sec = 10 end
   if s.port and s.http_port == 8090 then s.http_port = s.port end -- settings from 1.0.x
   s.port = nil
@@ -1221,7 +1223,8 @@ end
 
 -- Overrides set in the preview's columns (Channels, Streaming). Each kind lives in its own
 -- settings table and allows a fixed set of values.
-local OVERRIDES = { channels = { mono = true, stereo = true }, streaming = { on = true, off = true } }
+local OVERRIDES = { channels = { mono = true, stereo = true }, streaming = { on = true, off = true },
+                    loops = { on = true, off = true } }
 
 -- The value for a Wwise path (set on it or on a container above it) or nil (Auto), plus the
 -- name of the object the override was set on.
@@ -1264,6 +1267,32 @@ function M.stream_override(s, plan, path) return get_override("streaming", s, pl
 function M.own_stream_override(s, plan, path) return own_override("streaming", s, plan, path) end
 function M.set_stream_override(s, plan, path, mode) set_override("streaming", s, plan, path, mode) end
 function M.count_stream_overrides(s) return count_overrides("streaming", s) end
+
+-- "on", "off" or nil (leave as Wwise or the template has it) for a Wwise path, plus where it was set.
+function M.loop_override(s, plan, path) return get_override("loops", s, plan, path) end
+function M.own_loop_override(s, plan, path) return own_override("loops", s, plan, path) end
+function M.set_loop_override(s, plan, path, mode) set_override("loops", s, plan, path, mode) end
+function M.count_loop_overrides(s) return count_overrides("loops", s) end
+
+-- Turn looping on (infinite) or off on the imported Sounds. Returns how many were turned on and off, plus an error.
+function M.apply_loops(s, plan, timeout)
+  local objs, on, off = json.array(), 0, 0
+  for _, e in ipairs(plan.entries or {}) do
+    if e.plain and e.file and not e.unresolved then
+      local m = M.loop_override(s, plan, e.plain)
+      if m == "on" then
+        objs[#objs + 1] = { object = e.plain, ["@IsLoopingEnabled"] = true, ["@IsLoopingInfinite"] = true }
+        on = on + 1
+      elseif m == "off" then
+        objs[#objs + 1] = { object = e.plain, ["@IsLoopingEnabled"] = false }
+        off = off + 1
+      end
+    end
+  end
+  local n, err = M.set_props(objs, timeout)
+  if n == 0 and err then return 0, 0, err end
+  return on, off, err
+end
 
 -- What a Sound gets: true (stream), false (don't stream) or nil (leave it as Wwise or the
 -- template has it), plus why: "set" (override), "auto" (long enough), "short" (Auto streaming
@@ -1865,6 +1894,15 @@ function M.transfer(s, conn, on_status)
     summary.streaming_on, summary.streaming_off = on, off
     if serr then summary.errors[#summary.errors + 1] = "Streaming: " .. tostring(serr) end
     lap("Streaming")
+  end
+
+  -- Looping (after templates, so a template can't overwrite it).
+  if M.count_loop_overrides(s) > 0 then
+    status("Setting loops...")
+    local on, off, lerr = M.apply_loops(s, plan)
+    summary.loop_on, summary.loop_off = on, off
+    if lerr then summary.errors[#summary.errors + 1] = "Loop: " .. tostring(lerr) end
+    lap("Loop")
   end
 
   -- Initial delay from layer timing (after templates, so a template can't overwrite it).
