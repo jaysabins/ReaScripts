@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="300f8644b68b762fd02c24fd52b0af3b0086ab7f">
+<index version="1" name="Jay Sabins Scripts" commit="ec3b2b6ab9e2bcaf20f55932a7dc09a1354ee25d">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -77,6 +77,24 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
       <version name="1.0.0" author="Jay Sabins (based on a script by bfieser)" time="2026-11-06T23:58:03Z">
         <changelog><![CDATA[Initial release]]></changelog>
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/0d4a6366da4891f3d3f01e97cc10e9dec3e5c2e0/Items/jsabins_Measure%20timing%20between%20selected%20layers.lua</source>
+      </version>
+    </reapack>
+    <reapack name="jsabins_Split rapid-fire into single shots.lua" type="script" desc="Split rapid-fire gunshots into single shots and spread them out">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Select one or more items that each hold a rapid-fire burst (machine gun, SMG, auto rifle...) and run the script. It finds every shot's transient, splits the item just before each one, and spreads the shots out along the timeline with a gap between them, so every shot ends up as its own item.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Each shot runs from just before its transient up to the next shot (the last shot keeps the full tail). You can cap the shot length, set fades, number the shots in their take names and add a region per shot, ready for rendering.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The window shows a live preview of the selected item's waveform with every detected shot marked, so you can tune the detection before you split. Later items on the same track are moved out of the way (optional). Fully undoable.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Requires ReaImGui (install it from ReaPack).\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Jay Sabins" time="2026-11-11T20:07:43Z">
+        <changelog><![CDATA[Initial release]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/ec3b2b6ab9e2bcaf20f55932a7dc09a1354ee25d/Items/jsabins_Split%20rapid-fire%20into%20single%20shots.lua</source>
       </version>
     </reapack>
   </category>
