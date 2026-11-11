@@ -18,7 +18,7 @@ Wwise Tool is a free REAPER script by Jay Sabins, written in Lua with a ReaImGui
 - **Live preview.** See every object that will be created, marked New, Exists or Duplicate, before anything is sent.
 - **Conflict handling.** Choose to reuse, replace or rename objects that already exist.
 - **SFX and Voice.** Import as Sound SFX or as Sound Voice in a chosen language.
-- **Originals subfolders** with wildcards, and a folder picker that opens in your Wwise project's Originals folder.
+- **Originals subfolders** with wildcards, and a folder picker for your Wwise project's Originals folder (SFX or any Voices language).
 - **Tabs.** Each tab along the top holds a whole setup (structure and settings), so you can flick between, say, a weapons setup and a footsteps setup with one click.
 - **Two kinds of presets.** Structure presets hold just the Wwise structure; settings presets hold everything else. Load one without touching the other.
 - **One undo step.** Each transfer is a single undo in Wwise.
@@ -127,7 +127,7 @@ The Sound's name comes from the item's take name (or the rendered file's name in
 
 - **Always use the object selected in Wwise** (on by default) sends the Sounds into whatever is selected in Wwise when you click Transfer. If a Sound is selected, its parent is used.
 - Untick it to use a fixed path instead. Type the path, or select the object in Wwise and click **From Wwise**.
-- **Originals subfolder** sets where Wwise stores the WAV files inside its Originals folder. It accepts wildcards, for example `Weapons\$region`. **Browse** opens a folder picker inside the Wwise project's Originals folder (`Originals\SFX`, or `Originals\Voices\<language>` for Sound Voice), so you can pick or create a folder instead of typing.
+- **Originals subfolder** sets where Wwise stores the WAV files inside its Originals folder. It accepts wildcards, for example `Weapons\$region`. **Browse** opens a folder picker inside the Wwise project's Originals folder, so you can pick or create a folder instead of typing. Pick anything inside `Originals\SFX` for sound effects or `Originals\Voices\<language>` for voice-over. Picking a Voices folder switches the Sound to **Sound Voice** in that language, so the files import as voice in that language; picking an SFX folder switches it back to **Sound SFX**. Typing a path that starts with `SFX\` or `Voices\<language>\` works the same way.
 - **If a Sound or container already exists**:
   - **Use existing** keeps the object and replaces its audio. Good for iterating on a sound.
   - **Replace** deletes the object and creates it again.
@@ -297,7 +297,7 @@ Result: `Pistol` holds three Random Containers (`Muzzle`, `Mech`, `Tail`), each 
 - Level 1: Random Container named `$region`.
 - Originals subfolder: `Footsteps\$region`.
 
-**Voice-over.** Choose **Sound Voice** and the language, and set the Sound's name to `$region` or leave it as the item name. The files go to `Originals\Voices\<language>`.
+**Voice-over.** Choose **Sound Voice** and the language (or just Browse to a folder in `Originals\Voices\<language>`, which does both), and set the Sound's name to `$region` or leave it as the item name. The files go to `Originals\Voices\<language>`.
 
 ## Troubleshooting
 

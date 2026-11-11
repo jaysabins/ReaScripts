@@ -9,7 +9,7 @@ M.EXT = "jsabins_WwiseTool"
 -- are copied over once; per-project settings are read from it when a project has
 -- none under the new key yet.
 M.OLD_EXT = "JS_WwiseTransfer"
-M.VERSION = "1.14.0"
+M.VERSION = "1.14.1"
 
 for _, key in ipairs({ "last_settings", "presets", "view" }) do
   if r.GetExtState(M.EXT, key) == "" then
@@ -170,6 +170,33 @@ end
 function M.originals_root(s)
   if s.leaf.voice then return "Voices\\" .. ((s.leaf.language or "") ~= "" and s.leaf.language or "<language>") end
   return "SFX"
+end
+
+-- Splits a path relative to the Originals folder into where Wwise keeps it:
+--   "SFX\Weapons"                   -> "sfx", nil, "Weapons"
+--   "Voices\English(US)\Dialogue"   -> "voice", "English(US)", "Dialogue"
+-- `languages` (optional) are the project's voice languages; a matching folder name is
+-- returned with the project's spelling. Returns nil and a message when the path isn't
+-- inside Originals\SFX or Originals\Voices\<language>.
+function M.split_originals_path(rel, languages)
+  rel = (rel or ""):gsub("/", "\\"):gsub("^\\+", ""):gsub("\\+$", "")
+  local first, rest = rel:match("^([^\\]+)\\?(.*)$")
+  if not first then return nil, "Pick a folder inside Originals\\SFX or Originals\\Voices\\<language>." end
+  if first:lower() == "sfx" then return "sfx", nil, rest end
+  if first:lower() == "voices" then
+    local lang, sub = rest:match("^([^\\]+)\\?(.*)$")
+    if not lang then return nil, "Pick a language folder inside Originals\\Voices (or a folder inside one)." end
+    if languages and #languages > 0 then
+      local found
+      for _, l in ipairs(languages) do if l:lower() == lang:lower() then found = l end end
+      if not found then
+        return nil, "\"" .. lang .. "\" isn't a language in this Wwise project (" .. table.concat(languages, ", ") .. ")."
+      end
+      lang = found
+    end
+    return "voice", lang, sub
+  end
+  return nil, "Pick a folder inside Originals\\SFX or Originals\\Voices\\<language>. Wwise only imports there."
 end
 
 -- Folder of the current project file (or REAPER's project path for an unsaved project).

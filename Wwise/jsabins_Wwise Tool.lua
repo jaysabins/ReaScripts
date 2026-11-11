@@ -1,13 +1,12 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.14.0
+-- @version 1.14.1
 -- @changelog
---   Tabs: a row of tabs under the toolbar, each holding a whole setup (Wwise structure
---   and every setting), so you can flick between setups with one click.
---   "+" adds a tab that starts as a copy of the one showing; double-click a tab to rename it;
---   right-click for Rename, Duplicate, Move left/right and Close. Closing asks first.
---   Tabs are saved with the project (and carry over to new projects). Structure and
---   settings presets load into the tab that's showing. Quick send uses the showing tab.
+--   Originals subfolder: Browse now lets you pick any folder in Originals\SFX or
+--   Originals\Voices\<language>, not only the one for the current Sound type. Picking a
+--   Voices folder switches the Sound to Sound Voice in that language (and the import uses
+--   that language); picking an SFX folder switches it back to Sound SFX. Typing a path that
+--   starts with SFX\ or Voices\<language>\ does the same.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -483,24 +482,50 @@ local function section_source()
   ImGui.Dummy(ctx, 0, 4)
 end
 
--- Pick the Originals subfolder in a folder dialog that opens in the Wwise project's
--- Originals\SFX (or Voices\<language>) folder.
+-- Point the Originals subfolder at a path relative to the Originals folder. A path in
+-- Originals\Voices\<language> switches the Sound to Sound Voice in that language, one in
+-- Originals\SFX switches it to Sound SFX, so the import lands where the folder is.
+local function set_originals_from(rel)
+  local kind, lang_or_err, sub = core.split_originals_path(rel, conn and conn.languages)
+  if not kind then status_line = lang_or_err; return false end
+  local was_voice, was_lang = S.leaf.voice, S.leaf.language
+  if kind == "voice" then
+    S.leaf.voice = true
+    S.leaf.language = lang_or_err
+  else
+    S.leaf.voice = false
+  end
+  S.originals_subfolder = sub or ""
+  if S.leaf.voice ~= was_voice or S.leaf.language ~= was_lang then
+    status_line = S.leaf.voice and ("Sounds will import as Sound Voice (" .. S.leaf.language .. ").")
+      or "Sounds will import as Sound SFX."
+  else
+    status_line = ""
+  end
+  settings_changed()
+  return true
+end
+
+-- Pick the Originals subfolder in a folder dialog. It opens in the current Originals\SFX
+-- (or Voices\<language>) folder, but any folder in Originals\SFX or Originals\Voices\<language>
+-- can be picked.
 local function browse_originals()
   if not conn then status_line = "Connect to Wwise first, so its Originals folder can be found."; return end
-  if S.leaf.voice and (S.leaf.language or "") == "" then status_line = "Pick a voice language first."; return end
   local orig = core.wwise_originals_dir(conn)
   if not orig then status_line = "Couldn't find the Wwise project's Originals folder."; return end
-  local root = orig .. "\\" .. core.originals_root(S)
-  local starts = { root, orig }
-  local cur = S.originals_subfolder or ""
-  if cur ~= "" and not cur:find("$", 1, true) then table.insert(starts, 1, root .. "\\" .. cur:gsub("/", "\\")) end
-  local f, err = core.browse_folder("Choose the Originals subfolder. It must be inside " .. root, starts)
+  local starts = { orig }
+  if not (S.leaf.voice and (S.leaf.language or "") == "") then
+    local root = orig .. "\\" .. core.originals_root(S)
+    table.insert(starts, 1, root)
+    local cur = S.originals_subfolder or ""
+    if cur ~= "" and not cur:find("$", 1, true) then table.insert(starts, 1, root .. "\\" .. cur:gsub("/", "\\")) end
+  end
+  local f, err = core.browse_folder("Choose the Originals subfolder, inside " .. orig ..
+    "\\SFX (sound effects) or " .. orig .. "\\Voices\\<language> (voice-over)", starts)
   if not f then if err then status_line = err end return end
-  local rel = core.relative_to(f, root)
-  if not rel then status_line = "Pick a folder inside " .. root .. ". Wwise keeps imported audio there."; return end
-  S.originals_subfolder = rel
-  status_line = ""
-  settings_changed()
+  local rel = core.relative_to(f, orig)
+  if not rel then status_line = "Pick a folder inside " .. orig .. ". Wwise keeps imported audio there."; return end
+  set_originals_from(rel)
 end
 
 local function section_destination()
@@ -521,10 +546,15 @@ local function section_destination()
   ImGui.Dummy(ctx, 0, 2)
   dim_label("Originals subfolder")
   S.originals_subfolder = input("##orig", S.originals_subfolder, "optional, e.g. Weapons\\$region", -96)
+  -- A typed "SFX\..." or "Voices\<language>\..." path is taken from the Originals folder.
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then
+    local first = (S.originals_subfolder or ""):gsub("/", "\\"):match("^\\?([^\\]+)")
+    if first and (first:lower() == "sfx" or first:lower() == "voices") then set_originals_from(S.originals_subfolder) end
+  end
   wildcard_menu("orig", function(w) S.originals_subfolder = S.originals_subfolder .. w end)
   ImGui.SameLine(ctx)
   if ImGui.Button(ctx, "Browse##orig") then browse_originals() end
-  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Pick a folder inside the Wwise project's Originals folder") end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Pick a folder inside the Wwise project's Originals folder:\nOriginals\\SFX for sound effects, Originals\\Voices\\<language> for voice-over.\nPicking a Voices folder switches the Sound to Sound Voice in that language.") end
   dim_label("If a Sound or container already exists")
   c, S.conflict = combo("##conflict", core.CONFLICT_OPS, S.conflict, -1)
   if c then settings_changed() end
