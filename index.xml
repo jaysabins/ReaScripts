@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="a057ddea4ee63fc0b0a7c032985e1ee3a82f7d8b">
+<index version="1" name="Jay Sabins Scripts" commit="608d714b20de8ff67642ff07bf0a9ba94202355b">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -181,9 +181,10 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Import destination: type a Wwise path or grab the Wwise selection.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Hierarchy mapping: build Wwise containers above each Sound (Actor-Mixers, Random/Sequence/Switch/Blend Containers, Virtual Folders, Work Units) named with REAPER wildcards like $region, $track, $item.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Property templates per level, Sound SFX or Sound Voice (with language), Originals subfolder (wildcards allowed).\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Conflict handling, structure and settings presets, live preview (new vs existing objects), transfer summary. One Wwise undo step per transfer.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Tabs, each a whole setup you can flick between. Conflict handling, structure and settings presets, live preview (new vs existing objects), transfer summary. One Wwise undo step per transfer.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Auto mono/stereo: a Sound whose left and right match is made mono (also for folder items). Click the preview's Channels column to force Mono or Stereo for a Sound or a whole container, or drag/Shift/Ctrl+click to set many rows at once.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Streaming: turn on Stream per Sound or container from the preview's Streaming column, or automatically for Sounds longer than a set length.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Loop: set Sounds to loop (infinite) from the preview's Loop column.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Fast: untouched WAV items import without rendering; edited items render in one pass; everything is imported in one Wwise call.\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 "Wwise Tool - Quick send" sends the selected items with the window's last settings, without opening the window. Give it a shortcut.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Needs ReaImGui (ReaPack > ReaTeam Extensions) and Wwise with WAAPI on: Wwise > Project > User Preferences > Enable Wwise Authoring API (HTTP port 8090).\par}
@@ -311,6 +312,44 @@ template. It turns amber when a template is set, and the popup has a Clear butto
         <source main="main">https://github.com/jaysabins/reascripts/raw/a057ddea4ee63fc0b0a7c032985e1ee3a82f7d8b/Wwise/jsabins_Wwise%20Tool.lua</source>
         <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/a057ddea4ee63fc0b0a7c032985e1ee3a82f7d8b/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
         <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/a057ddea4ee63fc0b0a7c032985e1ee3a82f7d8b/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.13.4" author="Jay Sabins" time="2026-11-11T00:39:36Z">
+        <changelog><![CDATA[New Loop column in the preview, like Streaming: click a Sound or container (or
+pick many rows with drag, Shift+click or Ctrl+click) and choose Loop (infinite),
+No loop or Auto (leave it as Wwise or the template has it). Written after
+property templates. Settings tab "Streaming" is now "Stream & loop" and has
+Clear loop overrides.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/0864f2f52b080f9d44e056c01a99b713e7ac4d5e/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/0864f2f52b080f9d44e056c01a99b713e7ac4d5e/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/0864f2f52b080f9d44e056c01a99b713e7ac4d5e/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.14.0" author="Jay Sabins" time="2026-11-11T00:40:30Z">
+        <changelog><![CDATA[Tabs: a row of tabs under the toolbar, each holding a whole setup (Wwise structure
+and every setting), so you can flick between setups with one click.
+"+" adds a tab that starts as a copy of the one showing; double-click a tab to rename it;
+right-click for Rename, Duplicate, Move left/right and Close. Closing asks first.
+Tabs are saved with the project (and carry over to new projects). Structure and
+settings presets load into the tab that's showing. Quick send uses the showing tab.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/ee4fde5d2c53b3e26738817257ada7f614e8ec16/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/ee4fde5d2c53b3e26738817257ada7f614e8ec16/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/ee4fde5d2c53b3e26738817257ada7f614e8ec16/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.14.1" author="Jay Sabins" time="2026-11-11T00:42:00Z">
+        <changelog><![CDATA[Originals subfolder: Browse now lets you pick any folder in Originals\SFX or
+Originals\Voices\<language>, not only the one for the current Sound type. Picking a
+Voices folder switches the Sound to Sound Voice in that language (and the import uses
+that language); picking an SFX folder switches it back to Sound SFX. Typing a path that
+starts with SFX\ or Voices\<language>\ does the same.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/2de07a904687f968dc380a3694156f3e7fb300f1/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/2de07a904687f968dc380a3694156f3e7fb300f1/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/2de07a904687f968dc380a3694156f3e7fb300f1/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.14.2" author="Jay Sabins" time="2026-11-11T00:42:43Z">
+        <changelog><![CDATA[Wwise structure: the Add level and Remove level buttons are now small + and -
+buttons, with "Add level" / "Remove level" tooltips, so they take less room.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/608d714b20de8ff67642ff07bf0a9ba94202355b/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/608d714b20de8ff67642ff07bf0a9ba94202355b/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/608d714b20de8ff67642ff07bf0a9ba94202355b/Wwise/jsabins_WwiseTool_core.lua</source>
       </version>
     </reapack>
   </category>
