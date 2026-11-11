@@ -125,8 +125,9 @@ This sets the containers that are created above each Sound, from the top down:
 - Click **+ Add level** and choose its type: Actor-Mixer, Random Container, Sequence Container, Switch Container, Blend Container, Virtual Folder, Work Unit or Physical Folder.
 - Name each level. Names can use REAPER wildcards, and the **$** button inserts one. Every item gets its own name from the wildcard, so `$region` puts each item in a container named after its region.
 - The last row is the **Sound** itself. Choose **Sound SFX** or **Sound Voice** (pick a language for Voice). In Wwise 2025.1 and later both are simply called Sound. Leave its name empty to use the item's name.
-- Each row (type dropdown, name, **$** and **...** buttons) is colored by its type, the same color its tag uses in the preview: orange for Random Containers, purple for Blend Containers, blue for Sounds, and so on. You can pick your own colors in **Settings > Interface > Type colors**.
-- Each level's **...** button holds its property template plus **Move up**, **Move down** and **Remove level**. The button shows **T** when a template is set.
+- Each row (type dropdown, name, **$** and template buttons) is colored by its type, the same color its tag uses in the preview: orange for Random Containers, purple for Blend Containers, blue for Sounds, and so on. You can pick your own colors in **Settings > Interface > Type colors**.
+- Click a level's type or name to select it (the row is highlighted). **- Remove level** and the up/down arrows next to **+ Add level** remove or move the selected level, or the bottom level when none is selected. Hover them to see which level they'll act on.
+- Each row's clipboard button holds its property template. The clipboard is dim when no template is set and turns amber when one is. See [Property templates](#property-templates).
 - **Structure presets...** saves just the structure (the levels with their names and templates, and the Sound row with its type, name, template and language) under a name, and loads or deletes saved ones. Loading one changes only the structure. See [Presets](#presets).
 
 If a level can't hold the level below it (for example a Random Container can't hold an Actor-Mixer), the problem is shown and Transfer stays greyed out until you fix it.
@@ -155,7 +156,7 @@ These are REAPER's own render wildcards, worked out by REAPER itself, so any oth
 
 A template is an ordinary object in your Wwise project that's set up the way you like, often kept in a `\Templates\` folder: volume, output bus, attenuation, randomizers, and so on.
 
-- Open a level's **...** popup and type the template's path, or select the template in Wwise and click **From Wwise**.
+- Click a level's clipboard button and type the template's path, or select the template in Wwise and click **From Wwise**. **Clear** removes it.
 - After the audio is imported, the template's settings are pasted onto every object at that level with Wwise's Paste Properties.
 - In **Settings** you choose whether templates go onto all objects, or only onto objects the transfer just created (so tweaks you made in Wwise aren't overwritten).
 

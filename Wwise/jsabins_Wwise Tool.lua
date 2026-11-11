@@ -1,10 +1,12 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.13.2
+-- @version 1.13.3
 -- @changelog
---   Settings is now split into tabs: Connection, Rendering, Channels, Transfer,
---   Streaming, Interface (window and type colors) and Diagnostics. The window keeps
---   its size when you switch tabs, and you can resize it; long tabs scroll.
+--   Wwise structure: + Add level now has - Remove level and move up/down arrow
+--   buttons next to it. They act on the selected level (click its type or name; it's
+--   highlighted), or the bottom level when none is selected.
+--   Each row's "..." button is now a clipboard icon that only holds the property
+--   template. It turns amber when a template is set, and the popup has a Clear button.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -92,7 +94,7 @@ local plan = { entries = {}, errors = {} }
 -- Two kinds of presets: the Wwise structure only, and the rest of the settings.
 local presets = { structure = core.load_presets("structure"), settings = core.load_presets("settings") }
 local preset_name = { structure = "", settings = "" }
-local selected_row = 0           -- 0 = leaf
+local selected_row = 0           -- the Wwise structure level that Remove / Move act on (0 = none)
 local summary = nil
 local status_line = ""
 local last_sig, last_check, sel_poll_at = nil, 0, 0
@@ -580,14 +582,47 @@ local function pop_row_colors()
   row_tint.type, row_tint.n = nil, 0
 end
 
--- Per-level options popup: property template, move, remove.
-local function level_options(id, get_t, set_t, row_index)
-  local has = (get_t() or "") ~= ""
-  if ImGui.Button(ctx, (has and "T" or "...") .. "##opt" .. id, -1) then ImGui.OpenPopup(ctx, "lvlopt" .. id) end
-  if ImGui.IsItemHovered(ctx) then
-    ImGui.SetTooltip(ctx, has and ("Property template: " .. get_t()) or "Property template, move, remove")
+-- Clipboard icon (Wwise's "paste properties" look) drawn over a button, no icon font needed.
+-- Dim outline when the level has no property template, amber and filled in when it has one.
+local COLOR_TEMPLATE = 0xF5C542FF
+local function template_button(id, has)
+  local h = ImGui.GetFrameHeight(ctx)
+  local w = ImGui.GetContentRegionAvail(ctx)
+  local pressed = ImGui.Button(ctx, id, w > 0 and w or h, h)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  local x2, y2 = ImGui.GetItemRectMax(ctx)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local col = has and COLOR_TEMPLATE or ImGui.GetColor(ctx, ImGui.Col_TextDisabled)
+  local s = math.min(x2 - x1, y2 - y1)
+  local cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+  local bw, bh = s * 0.46, s * 0.58
+  local bx1, by1 = cx - bw / 2, cy - bh / 2 + s * 0.04
+  local bx2, by2 = bx1 + bw, by1 + bh
+  local th = math.max(1, s * 0.07)
+  if has then
+    ImGui.DrawList_AddRectFilled(dl, bx1, by1, bx2, by2, with_alpha(col, 0x40), s * 0.06)
   end
-  local action
+  ImGui.DrawList_AddRect(dl, bx1, by1, bx2, by2, col, s * 0.06, 0, th)
+  -- the clip at the top
+  local cw = bw * 0.5
+  ImGui.DrawList_AddRectFilled(dl, cx - cw / 2, by1 - s * 0.07, cx + cw / 2, by1 + s * 0.07, col, s * 0.03)
+  -- property lines
+  for k = 1, 3 do
+    local ly = by1 + bh * (0.22 + k * 0.19)
+    local lx2 = bx2 - bw * (k == 3 and 0.42 or 0.22)
+    ImGui.DrawList_AddLine(dl, bx1 + bw * 0.22, ly, lx2, ly, col, th)
+  end
+  return pressed
+end
+
+-- Per-level property template: the clipboard button opens a popup to set it.
+local function level_options(id, get_t, set_t)
+  local has = (get_t() or "") ~= ""
+  if template_button("##opt" .. id, has) then ImGui.OpenPopup(ctx, "lvlopt" .. id) end
+  if ImGui.IsItemHovered(ctx) then
+    ImGui.SetTooltip(ctx, has and ("Property template: " .. get_t() .. "\nClick to change it.")
+      or "Property template (none). Click to set one.")
+  end
   local tinted = row_tint.type
   pop_row_colors() -- the popup keeps the normal colors
   if ImGui.BeginPopup(ctx, "lvlopt" .. id) then
@@ -600,18 +635,13 @@ local function level_options(id, get_t, set_t, row_index)
       local _, err, o = core.wwise_selection_path()
       if o then set_t(o.path); settings_changed() else status_line = err or "" end
     end
-    if row_index then
-      ImGui.Separator(ctx)
-      if ImGui.Button(ctx, "Move up") then action = "up"; ImGui.CloseCurrentPopup(ctx) end
+    if has then
       ImGui.SameLine(ctx)
-      if ImGui.Button(ctx, "Move down") then action = "down"; ImGui.CloseCurrentPopup(ctx) end
-      ImGui.SameLine(ctx)
-      if ImGui.Button(ctx, "Remove level") then action = "remove"; ImGui.CloseCurrentPopup(ctx) end
+      if ImGui.Button(ctx, "Clear##t") then set_t(""); settings_changed() end
     end
     ImGui.EndPopup(ctx)
   end
   if tinted then push_row_colors(tinted) end
-  return action
 end
 
 local function section_hierarchy()
@@ -627,15 +657,19 @@ local function section_hierarchy()
     ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, 30)
     ImGui.TableHeadersRow(ctx)
 
-    local remove, move = nil, nil
+    if selected_row > #S.rows then selected_row = #S.rows end
     for i, row in ipairs(S.rows) do
       ImGui.PushID(ctx, tostring(i))
       ImGui.TableNextRow(ctx)
+      if i == selected_row then
+        ImGui.TableSetBgColor(ctx, ImGui.TableBgTarget_RowBg1, 0x4A90E255)
+      end
       ImGui.TableNextColumn(ctx)
       local c
       push_row_colors(row.type)
       c, row.type = combo("##type", core.CONTAINER_TYPES, row.type, -1)
-      if c then settings_changed(); pop_row_colors(); push_row_colors(row.type) end
+      if ImGui.IsItemActivated(ctx) then selected_row = i end
+      if c then settings_changed(); selected_row = i; pop_row_colors(); push_row_colors(row.type) end
       ImGui.TableNextColumn(ctx)
       ImGui.SetNextItemWidth(ctx, -28)
       local ch, v = ImGui.InputTextWithHint(ctx, "##name", "e.g. $region", row.name or "")
@@ -643,10 +677,7 @@ local function section_hierarchy()
       if ImGui.IsItemActive(ctx) then selected_row = i end
       wildcard_menu("r" .. i, function(w) row.name = (row.name or "") .. w end)
       ImGui.TableNextColumn(ctx)
-      local act = level_options("r" .. i, function() return row.template end, function(t) row.template = t end, i)
-      if act == "up" and i > 1 then move = { i, i - 1 }
-      elseif act == "down" and i < #S.rows then move = { i, i + 1 }
-      elseif act == "remove" then remove = i end
+      level_options("r" .. i, function() return row.template end, function(t) row.template = t end)
       pop_row_colors()
       ImGui.PopID(ctx)
     end
@@ -668,19 +699,57 @@ local function section_hierarchy()
     if ch then S.leaf.name = v; settings_changed() end
     wildcard_menu("leaf", function(w) S.leaf.name = S.leaf.name .. w end)
     ImGui.TableNextColumn(ctx)
-    level_options("leaf", function() return S.leaf.template end, function(t) S.leaf.template = t end, nil)
+    level_options("leaf", function() return S.leaf.template end, function(t) S.leaf.template = t end)
     pop_row_colors()
     ImGui.PopID(ctx)
     ImGui.EndTable(ctx)
-
-    if remove then table.remove(S.rows, remove); settings_changed() end
-    if move then S.rows[move[1]], S.rows[move[2]] = S.rows[move[2]], S.rows[move[1]]; settings_changed() end
   end
 
+  -- Level buttons. Remove / Move act on the selected level (click its type or name to select it),
+  -- or the bottom level when none is selected.
   if ImGui.Button(ctx, "+ Add level") then
     S.rows[#S.rows + 1] = { type = #S.rows == 0 and "Actor-Mixer" or "Random Container", name = "", template = "" }
+    selected_row = #S.rows
     settings_changed()
   end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Add a level at the bottom, just above the Sound") end
+  local n = #S.rows
+  local target = (selected_row >= 1 and selected_row <= n) and selected_row or n
+  local tname = n > 0 and ((S.rows[target].name or "") ~= "" and S.rows[target].name or S.rows[target].type) or nil
+  ImGui.SameLine(ctx)
+  if n == 0 then ImGui.BeginDisabled(ctx) end
+  if ImGui.Button(ctx, "- Remove level") and n > 0 then
+    table.remove(S.rows, target)
+    selected_row = math.min(target, #S.rows)
+    settings_changed()
+  end
+  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then
+    ImGui.SetTooltip(ctx, n > 0 and ("Remove level " .. target .. ": " .. tname ..
+      "\nClick a level's type or name to pick which one.") or "No levels to remove")
+  end
+  ImGui.SameLine(ctx)
+  if n < 2 or target <= 1 then ImGui.BeginDisabled(ctx) end
+  if ImGui.ArrowButton(ctx, "##lvlup", ImGui.Dir_Up) and target > 1 then
+    S.rows[target], S.rows[target - 1] = S.rows[target - 1], S.rows[target]
+    selected_row = target - 1
+    settings_changed()
+  end
+  if n < 2 or target <= 1 then ImGui.EndDisabled(ctx) end
+  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) and n > 0 then
+    ImGui.SetTooltip(ctx, "Move level " .. target .. " (" .. tname .. ") up")
+  end
+  ImGui.SameLine(ctx)
+  if n < 2 or target >= n then ImGui.BeginDisabled(ctx) end
+  if ImGui.ArrowButton(ctx, "##lvldown", ImGui.Dir_Down) and target < n then
+    S.rows[target], S.rows[target + 1] = S.rows[target + 1], S.rows[target]
+    selected_row = target + 1
+    settings_changed()
+  end
+  if n < 2 or target >= n then ImGui.EndDisabled(ctx) end
+  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) and n > 0 then
+    ImGui.SetTooltip(ctx, "Move level " .. target .. " (" .. tname .. ") down")
+  end
+  if n == 0 then ImGui.EndDisabled(ctx) end
   if S.leaf.voice then
     ImGui.SameLine(ctx)
     local langs = (conn and #conn.languages > 0) and conn.languages or { S.leaf.language ~= "" and S.leaf.language or "English(US)" }
