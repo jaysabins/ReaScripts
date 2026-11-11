@@ -1,11 +1,14 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.12.3
+-- @version 1.13.0
 -- @changelog
---   The window opens right away again. Connecting to Wwise now happens after the
---   window is up, a step per frame, and each call gives up after 3 seconds, so a busy
---   or stuck Wwise can no longer freeze REAPER (it used to wait up to 2 minutes).
---   If Wwise is busy, it tries again on its own every few seconds.
+--   New Streaming column in the preview: click a Sound or container (or pick many rows
+--   with drag, Shift+click or Ctrl+click) and choose Stream, No stream or Auto.
+--   Settings > Streaming adds Auto streaming for every Sound at least N seconds long,
+--   and can turn on Zero latency and Non-cachable along with streaming.
+--   Streaming is written after property templates, so a template can't undo it.
+--   Preview columns can now be dragged into any order (Name stays first); the order
+--   is remembered, and right-click a header > Reset order brings back the original.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -28,6 +31,8 @@
 --     (also for folder items). Click the preview's Channels column to force
 --     Mono or Stereo for a Sound or a whole container, or drag/Shift/Ctrl+click
 --     to set many rows at once.
+--   - Streaming: turn on Stream per Sound or container from the preview's
+--     Streaming column, or automatically for Sounds longer than a set length.
 --   - Fast: untouched WAV items import without rendering; edited items render
 --     in one pass; everything is imported in one Wwise call.
 --
@@ -705,45 +710,107 @@ end
 
 
 local CH_LABEL = { mono = "Mono", stereo = "Stereo" }
-local CH_OPTIONS = { { nil, "Auto" }, { "mono", "Mono" }, { "stereo", "Stereo" } }
+local ST_LABEL = { on = "Stream", off = "No stream" }
 
--- Channels column multi-select. Rows are picked by click, click-drag, Shift+click (range)
--- or Ctrl+click (add/remove); the menu then sets every picked row at once.
--- Rows are keyed by Wwise path. Ranges use the row order of the previous frame.
-local ch_sel = {}        -- path -> true
-local ch_anchor = nil    -- path a Shift range or drag starts from
-local ch_dragging = false   -- left button went down on a row; the menu opens when it's let go
-local ch_drag_range = false -- plain click: dragging over rows picks the range
-local ch_rows, ch_rows_prev, ch_index = {}, {}, {} -- this frame's / last frame's rows in order
-local ch_names = {}      -- path -> { name, is_sound } for the menu header
-local open_ch_menu = false
+-- Preview columns you can click to set something on a Sound or a whole container
+-- (a container's choice counts for every Sound inside it). Each one keeps its choices
+-- in its own settings table through core's get/set functions.
+local PICK_COLS = {
+  ch = {
+    what = "Channels",
+    options = { { nil, "Auto" }, { "mono", "Mono" }, { "stereo", "Stereo" } },
+    labels = CH_LABEL,
+    own = function(path) return core.own_channel_override(S, plan, path) end,
+    get = function(path) return core.channel_override(S, plan, path) end,
+    set = function(path, v) core.set_channel_override(S, plan, path, v) end,
+  },
+  st = {
+    what = "Streaming",
+    options = { { nil, "Auto" }, { "on", "Stream" }, { "off", "No stream" } },
+    labels = ST_LABEL,
+    own = function(path) return core.own_stream_override(S, plan, path) end,
+    get = function(path) return core.stream_override(S, plan, path) end,
+    set = function(path, v) core.set_stream_override(S, plan, path, v) end,
+  },
+}
+
+-- Multi-select for those columns. Rows are picked by click, click-drag, Shift+click (range)
+-- or Ctrl+click (add/remove); the menu then sets every picked row at once. Picking in one
+-- column clears what was picked in the other. Rows are keyed by Wwise path. Ranges use the
+-- row order of the previous frame.
+local pk_col = nil       -- "ch" or "st": the column the picked rows belong to
+local pk_sel = {}        -- path -> true
+local pk_anchor = nil    -- path a Shift range or drag starts from
+local pk_dragging = false   -- left button went down on a row; the menu opens when it's let go
+local pk_drag_range = false -- plain click: dragging over rows picks the range
+local pk_rows, pk_rows_prev, pk_index = {}, {}, {} -- this frame's / last frame's rows in order
+local pk_names = {}      -- path -> { name, is_sound } for the menu header
+local open_pk_menu = false
 -- Main window position, kept up to date each frame. While picking rows with the mouse the
 -- window is held in place there, so a drag that starts while the menu is open (ImGui
 -- would treat it as dragging the window) only picks rows.
 local main_win_pos = { 0, 0 }
 local main_win_docked = false
-local ch_pin = nil
+local pk_pin = nil
 
-local function ch_count()
+local function pk_count()
   local n = 0
-  for p in pairs(ch_sel) do if ch_names[p] then n = n + 1 end end
+  for p in pairs(pk_sel) do if pk_names[p] then n = n + 1 end end
   return n
 end
 
-local function ch_select_range(a, b)
-  local ia, ib = ch_index[a], ch_index[b]
-  ch_sel = {}
-  if not ia or not ib then ch_sel[b] = true; return end
+local function pk_select_range(a, b)
+  local ia, ib = pk_index[a], pk_index[b]
+  pk_sel = {}
+  if not ia or not ib then pk_sel[b] = true; return end
   if ia > ib then ia, ib = ib, ia end
-  for i = ia, ib do ch_sel[ch_rows_prev[i]] = true end
+  for i = ia, ib do pk_sel[pk_rows_prev[i]] = true end
 end
 
--- Channels column: shows Auto / Mono / Stereo; click to set an override on this Sound or
--- container (a container's override counts for every Sound inside it).
+-- Called once per preview row (below the destination), whatever columns are shown.
+local function pick_row(node)
+  pk_rows[#pk_rows + 1] = node.path
+  pk_names[node.path] = { node.name, node.entry ~= nil }
+end
+
+-- One clickable cell in a pick column.
+local function pick_cell(col, path, text, color, tip)
+  local selected = pk_col == col and pk_sel[path] == true
+  ImGui.PushStyleColor(ctx, ImGui.Col_Text, color)
+  ImGui.Selectable(ctx, text .. "##" .. col, selected)
+  ImGui.PopStyleColor(ctx)
+  -- AllowWhenBlockedByPopup: with the menu open, the next click on a row still counts
+  -- (it closes the menu and picks the row) instead of needing a second click.
+  local hov_flags = ImGui.HoveredFlags_AllowWhenBlockedByPopup
+  if ImGui.IsMouseClicked(ctx, ImGui.MouseButton_Left) and ImGui.IsItemHovered(ctx, hov_flags) then
+    if pk_col ~= col then pk_col, pk_sel, pk_anchor = col, {}, nil end
+    local mods = ImGui.GetKeyMods(ctx)
+    if mods & ImGui.Mod_Shift ~= 0 and pk_anchor then
+      pk_select_range(pk_anchor, path)
+    elseif mods & ImGui.Mod_Ctrl ~= 0 then
+      pk_sel[path] = (not pk_sel[path]) or nil
+      pk_anchor = path
+    else
+      pk_sel = { [path] = true }
+      pk_anchor = path
+      pk_drag_range = true
+    end
+    pk_dragging = true
+    if not main_win_docked then pk_pin = { main_win_pos[1], main_win_pos[2] } end
+  elseif ImGui.IsMouseClicked(ctx, ImGui.MouseButton_Right) and ImGui.IsItemHovered(ctx, hov_flags) then
+    if pk_col ~= col or not pk_sel[path] then pk_col, pk_sel, pk_anchor = col, { [path] = true }, path end
+    open_pk_menu = true
+  elseif pk_drag_range and pk_col == col and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenBlockedByActiveItem) then
+    pk_select_range(pk_anchor, path)
+  end
+  if not pk_dragging and ImGui.IsItemHovered(ctx) then
+    ImGui.SetTooltip(ctx, tip .. "\nClick to change. Drag, Shift+click or Ctrl+click to pick\nseveral rows, then right-click to change them all.")
+  end
+end
+
+-- Channels column: shows Auto / Mono / Stereo.
 local function channels_cell(node)
   local path = node.path
-  ch_rows[#ch_rows + 1] = path
-  ch_names[path] = { node.name, node.entry ~= nil }
   local own = core.own_channel_override(S, plan, path)
   local eff, from = core.channel_override(S, plan, path)
   local text, col, tip
@@ -764,81 +831,95 @@ local function channels_cell(node)
   else
     text, col, tip = "Auto", COLOR_DIM, "No override: each Sound inside decides for itself."
   end
-  ImGui.PushStyleColor(ctx, ImGui.Col_Text, col)
-  ImGui.Selectable(ctx, text .. "##ch", ch_sel[path] == true)
-  ImGui.PopStyleColor(ctx)
-  -- AllowWhenBlockedByPopup: with the menu open, the next click on a row still counts
-  -- (it closes the menu and picks the row) instead of needing a second click.
-  local hov_flags = ImGui.HoveredFlags_AllowWhenBlockedByPopup
-  if ImGui.IsMouseClicked(ctx, ImGui.MouseButton_Left) and ImGui.IsItemHovered(ctx, hov_flags) then
-    local mods = ImGui.GetKeyMods(ctx)
-    if mods & ImGui.Mod_Shift ~= 0 and ch_anchor then
-      ch_select_range(ch_anchor, path)
-    elseif mods & ImGui.Mod_Ctrl ~= 0 then
-      ch_sel[path] = (not ch_sel[path]) or nil
-      ch_anchor = path
-    else
-      ch_sel = { [path] = true }
-      ch_anchor = path
-      ch_drag_range = true
-    end
-    ch_dragging = true
-    if not main_win_docked then ch_pin = { main_win_pos[1], main_win_pos[2] } end
-  elseif ImGui.IsMouseClicked(ctx, ImGui.MouseButton_Right) and ImGui.IsItemHovered(ctx, hov_flags) then
-    if not ch_sel[path] then ch_sel = { [path] = true }; ch_anchor = path end
-    open_ch_menu = true
-  elseif ch_drag_range and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenBlockedByActiveItem) then
-    ch_select_range(ch_anchor, path)
-  end
-  if not ch_dragging and ImGui.IsItemHovered(ctx) then
-    ImGui.SetTooltip(ctx, tip .. "\nClick to change. Drag, Shift+click or Ctrl+click to pick\nseveral rows, then right-click to change them all.")
-  end
+  pick_cell("ch", path, text, col, tip)
 end
 
--- Called after the preview table: finishes a drag and draws the shared Channels menu.
-local function channels_menu()
-  if ch_dragging and not ImGui.IsMouseDown(ctx, ImGui.MouseButton_Left) then
-    ch_dragging, ch_drag_range, ch_pin = false, false, nil
-    open_ch_menu = true -- letting go of a click or a drag opens the menu for what's picked
-  end
-  ch_rows_prev, ch_rows = ch_rows, {}
-  ch_index = {}
-  for i, p in ipairs(ch_rows_prev) do ch_index[p] = i end
-  if open_ch_menu then
-    open_ch_menu = false
-    if ch_count() > 0 then ImGui.OpenPopup(ctx, "chpop") end
-  end
-  if ImGui.BeginPopup(ctx, "chpop") then
-    local paths = {}
-    for p in pairs(ch_sel) do if ch_index[p] then paths[#paths + 1] = p end end
-    table.sort(paths, function(a, b) return ch_index[a] < ch_index[b] end)
-    if #paths == 1 then
-      local nm = ch_names[paths[1]]
-      dim_label(nm[2] and ("Channels for " .. nm[1]) or ("Channels for every Sound in " .. nm[1]))
+local function len_text(sec)
+  if sec >= 60 then return string.format("%d:%04.1f", math.floor(sec / 60), sec % 60) end
+  return string.format("%.1f s", sec)
+end
+
+-- Streaming column: shows Stream / No stream, or what Auto streaming will do.
+local function streaming_cell(node)
+  local path = node.path
+  local own = core.own_stream_override(S, plan, path)
+  local eff, from = core.stream_override(S, plan, path)
+  local e = node.entry
+  local text, col, tip
+  if own then
+    text, col = ST_LABEL[own], 0xFFFFFFFF
+    tip = (own == "on" and "Streaming turned on" or "Streaming turned off") ..
+      (e and " for this Sound." or (" for every Sound in " .. node.name .. "."))
+  elseif eff then
+    text, col = ST_LABEL[eff], 0xCFCFCFFF
+    tip = (eff == "on" and "Streaming turned on" or "Streaming turned off") .. ", set on " .. from .. "."
+  elseif e then
+    local want, why = core.wanted_streaming(S, plan, e)
+    local min = len_text(S.stream_min_sec or 10)
+    if want then
+      text, col = "Auto: stream", 0xCFCFCFFF
+      tip = "Auto streaming: " .. len_text(e.len) .. " long, at least " .. min .. "."
+    elseif why == "short" then
+      text, col = "-", COLOR_DIM
+      tip = "Auto streaming: " .. len_text(e.len) .. " long, shorter than " .. min .. ".\nLeft as Wwise or the template has it."
+    elseif why == "unknown" then
+      text, col = "Auto", COLOR_DIM
+      tip = "Auto streaming: streams if the rendered file is at least " .. min .. " long."
     else
-      dim_label(string.format("Channels for %d selected rows", #paths))
+      text, col = "-", COLOR_DIM
+      tip = "Left as Wwise or the template has it." .. (e.len and ("\nLength: " .. len_text(e.len)) or "")
+    end
+  else
+    text, col, tip = "-", COLOR_DIM, "No override: each Sound inside decides for itself."
+  end
+  pick_cell("st", path, text, col, tip)
+end
+
+-- Called after the preview table: finishes a drag and draws the shared menu.
+local function pick_menu()
+  if pk_dragging and not ImGui.IsMouseDown(ctx, ImGui.MouseButton_Left) then
+    pk_dragging, pk_drag_range, pk_pin = false, false, nil
+    open_pk_menu = true -- letting go of a click or a drag opens the menu for what's picked
+  end
+  pk_rows_prev, pk_rows = pk_rows, {}
+  pk_index = {}
+  for i, p in ipairs(pk_rows_prev) do pk_index[p] = i end
+  if open_pk_menu then
+    open_pk_menu = false
+    if pk_count() > 0 and PICK_COLS[pk_col] then ImGui.OpenPopup(ctx, "pickpop") end
+  end
+  if ImGui.BeginPopup(ctx, "pickpop") then
+    local pc = PICK_COLS[pk_col] or PICK_COLS.ch
+    local paths = {}
+    for p in pairs(pk_sel) do if pk_index[p] then paths[#paths + 1] = p end end
+    table.sort(paths, function(a, b) return pk_index[a] < pk_index[b] end)
+    if #paths == 1 then
+      local nm = pk_names[paths[1]]
+      dim_label(nm[2] and (pc.what .. " for " .. nm[1]) or (pc.what .. " for every Sound in " .. nm[1]))
+    else
+      dim_label(string.format("%s for %d selected rows", pc.what, #paths))
     end
     -- Tick the option only when every picked row already has it.
     local common, mixed = nil, false
     for i, p in ipairs(paths) do
-      local o = core.own_channel_override(S, plan, p) or "auto"
+      local o = pc.own(p) or "auto"
       if i == 1 then common = o elseif o ~= common then mixed = true end
     end
-    for _, o in ipairs(CH_OPTIONS) do
+    for _, o in ipairs(pc.options) do
       if ImGui.Selectable(ctx, o[2], not mixed and common == (o[1] or "auto")) then
-        for _, p in ipairs(paths) do core.set_channel_override(S, plan, p, o[1]) end
+        for _, p in ipairs(paths) do pc.set(p, o[1]) end
         settings_changed()
-        ch_sel = {}
+        pk_sel = {}
       end
     end
     if #paths == 1 then
-      local own = core.own_channel_override(S, plan, paths[1])
-      local eff, from = core.channel_override(S, plan, paths[1])
-      if not own and eff then dim_label("Now " .. CH_LABEL[eff] .. ", from " .. from .. ".") end
+      local own = pc.own(paths[1])
+      local eff, from = pc.get(paths[1])
+      if not own and eff then dim_label("Now " .. pc.labels[eff] .. ", from " .. from .. ".") end
     end
     ImGui.EndPopup(ctx)
-  elseif not ch_dragging and next(ch_sel) and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then
-    ch_sel = {}
+  elseif not pk_dragging and next(pk_sel) and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then
+    pk_sel = {}
   end
 end
 
@@ -890,8 +971,11 @@ local function draw_node(node, depth)
   if depth > 0 then status_cell(node.status) end
   ImGui.TableNextColumn(ctx)
   if node.entry then ImGui.TextDisabled(ctx, KIND_LABEL[node.entry.kind] or "") end
+  if depth > 0 and node.path then pick_row(node) end
   ImGui.TableNextColumn(ctx)
   if depth > 0 and node.path then channels_cell(node) end
+  ImGui.TableNextColumn(ctx)
+  if depth > 0 and node.path then streaming_cell(node) end
   ImGui.TableNextColumn(ctx)
   if node.entry then
     local o = core.originals_name(node.entry)
@@ -917,12 +1001,16 @@ local function draw_node(node, depth)
 end
 
 -- Preview columns. Right-clicking a header (TableFlags_Hideable) shows a tick box per column;
--- the choice is kept in `view` so it comes back next time.
+-- the choice is kept in `view` so it comes back next time. Columns can be dragged by their
+-- header into another order (TableFlags_Reorderable, Name stays first); ImGui remembers the
+-- order, and the header's right-click menu has "Reset order".
+-- Cells are always drawn in this list's order; only where they show changes.
 local PREVIEW_COLS = {
   { id = "Name", stretch = true, w = 4, nohide = true },
   { id = "Status", w = 70 },
   { id = "Audio", w = 120 },
   { id = "Channels", w = 80 },
+  { id = "Streaming", w = 90 },
   { id = "Originals file", stretch = true, w = 3 },
   { id = "Initial delay", w = 80 },
 }
@@ -974,17 +1062,18 @@ local function section_preview()
     ImGui.SameLine(ctx)
     if ImGui.SmallButton(ctx, "Collapse all") then tree_open_all = false end
     ImGui.SameLine(ctx)
-    ImGui.TextDisabled(ctx, "  Right-click a column header to choose columns.")
+    ImGui.TextDisabled(ctx, "  Right-click a column header to choose columns; drag a header to move it.")
   end
 
   local flags = ImGui.TableFlags_BordersV | ImGui.TableFlags_BordersOuterH | ImGui.TableFlags_RowBg |
-                ImGui.TableFlags_ScrollY | ImGui.TableFlags_Resizable | ImGui.TableFlags_Hideable
+                ImGui.TableFlags_ScrollY | ImGui.TableFlags_Resizable | ImGui.TableFlags_Hideable |
+                ImGui.TableFlags_Reorderable
   local h = math.max(160, select(2, ImGui.GetContentRegionAvail(ctx)) - 52)
   if ImGui.BeginTable(ctx, "previewtree", #PREVIEW_COLS, flags, 0, h) then
     ImGui.TableSetupScrollFreeze(ctx, 0, 1)
     for _, c in ipairs(PREVIEW_COLS) do
       local cf = c.stretch and ImGui.TableColumnFlags_WidthStretch or ImGui.TableColumnFlags_WidthFixed
-      if c.nohide then cf = cf | ImGui.TableColumnFlags_NoHide end
+      if c.nohide then cf = cf | ImGui.TableColumnFlags_NoHide | ImGui.TableColumnFlags_NoReorder end
       if view.hidden[c.id] then cf = cf | ImGui.TableColumnFlags_DefaultHide end
       ImGui.TableSetupColumn(ctx, c.id, cf, c.w)
     end
@@ -993,7 +1082,7 @@ local function section_preview()
     if tree and #tree.children > 0 then draw_node(tree, 0) end
     ImGui.EndTable(ctx)
   end
-  channels_menu()
+  pick_menu()
   if open_delay_menu then ImGui.OpenPopup(ctx, "delayunit"); open_delay_menu = false end
   if ImGui.BeginPopup(ctx, "delayunit") then
     ImGui.TextDisabled(ctx, "Show Initial delay in")
@@ -1078,6 +1167,8 @@ local function summary_popup()
     ImGui.Text(ctx, string.format("Audio files imported: %d", s.imported or 0))
     ImGui.Text(ctx, string.format("Objects created: %d", s.created or 0))
     if (s.templates or 0) > 0 then ImGui.Text(ctx, string.format("Templates applied: %d", s.templates)) end
+    if (s.streaming_on or 0) > 0 then ImGui.Text(ctx, string.format("Sounds set to stream: %d", s.streaming_on)) end
+    if (s.streaming_off or 0) > 0 then ImGui.Text(ctx, string.format("Streaming turned off: %d", s.streaming_off)) end
     if (s.delays or 0) > 0 then ImGui.Text(ctx, string.format("Initial delays set: %d", s.delays)) end
     if s.notes and #s.notes > 0 then
       ImGui.PushTextWrapPos(ctx, 500)
@@ -1170,6 +1261,35 @@ local function settings_popup()
     "\"New objects only\" leaves objects that already existed in Wwise as they are.")
   c, S.select_in_wwise = ImGui.Checkbox(ctx, "Select imported Sounds in Wwise afterwards", S.select_in_wwise)
   if c then settings_changed() end
+  ImGui.Dummy(ctx, 0, 6)
+
+  ImGui.SeparatorText(ctx, "Streaming")
+  c, S.stream_auto = ImGui.Checkbox(ctx, "Auto streaming: stream Sounds at least", S.stream_auto)
+  if c then settings_changed() end
+  ImGui.SameLine(ctx)
+  ImGui.SetNextItemWidth(ctx, 90)
+  c, v = ImGui.InputDouble(ctx, "seconds long", S.stream_min_sec, 1, 5, "%.1f")
+  if c then S.stream_min_sec = math.max(0, v); settings_changed() end
+  help("Turns on Stream in Wwise for every Sound that long or longer. Shorter Sounds are left\n" ..
+    "as Wwise or their template has them. Selected items use the item length; files from\n" ..
+    "REAPER's render settings are measured after rendering.\n" ..
+    "Click a Sound or container in the preview's Streaming column to force Stream or No stream.")
+  dim_label("When a Sound is set to stream, also turn on:")
+  c, S.stream_zero_latency = ImGui.Checkbox(ctx, "Zero latency", S.stream_zero_latency)
+  if c then settings_changed() end
+  ImGui.SameLine(ctx)
+  c, S.stream_non_cachable = ImGui.Checkbox(ctx, "Non-cachable", S.stream_non_cachable)
+  if c then settings_changed() end
+  help("Zero latency loads the start of the file (Prefetch length, set in Wwise) into memory so\n" ..
+    "it plays without delay. Non-cachable keeps it out of the stream cache.\n" ..
+    "Streaming and these flags are written after the property templates, so they win.")
+  do
+    local n = core.count_stream_overrides(S)
+    if n > 0 then
+      if ImGui.SmallButton(ctx, string.format("Clear streaming overrides (%d)", n)) then S.streaming = {}; settings_changed() end
+      help("Removes every Stream/No stream choice made in the preview's Streaming column (this project).")
+    end
+  end
   ImGui.Dummy(ctx, 0, 6)
 
   ImGui.SeparatorText(ctx, "Window")
@@ -1295,8 +1415,8 @@ loop_body = function()
     ImGui.SetNextWindowSize(ctx, 1180, 760, ImGui.Cond_Always)
     size_reset = false
     view.size_v = 2; save_view()
-  elseif ch_pin then
-    ImGui.SetNextWindowPos(ctx, ch_pin[1], ch_pin[2], ImGui.Cond_Always)
+  elseif pk_pin then
+    ImGui.SetNextWindowPos(ctx, pk_pin[1], pk_pin[2], ImGui.Cond_Always)
   end
   -- No collapsing (WindowFlags_NoCollapse), so double-clicking the title bar does nothing.
   -- Older versions could leave the window collapsed (saved by ImGui); always open it.
