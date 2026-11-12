@@ -1,15 +1,12 @@
 -- @description Gun Builder: single shots, bursts and full-auto sequences from gunshot recordings
 -- @author Jay Sabins
--- @version 1.0.0
+-- @version 1.1.0
 -- @changelog
---   First version. One window for building gun sounds, combining Rapid-Fire Builder
---   and Spread Rapid-Fire Shots:
---   - Single shots: space stacked layer shots out along the timeline (semi-auto).
---   - Burst: build bursts (e.g. 3 rounds) from a sausage file, repeated with a pause.
---   - Full auto: build a full-auto sequence from a sausage file, with an optional
---     spin-up/down ramp, or re-time shots already on the timeline in place.
---   Preset tabs (each tab a whole setup), named presets, rounded window and a big
---   close button.
+--   Stacked sausages: select one sausage per layer track (stacked so they play together)
+--   and Burst / Full auto find the shots across all layers at once. Every shot is then
+--   built from all the layers, each layer on its own track named after its source, so the
+--   layers stay locked together. "Keep stacked layers together" turns it off to use every
+--   shot of every item as a separate building block, like before.
 -- @about
 --   # Gun Builder
 --
@@ -19,7 +16,8 @@
 --     shot is one item per layer track, stacked so the layers start together. Gun Builder
 --     groups them into shots and spaces the shots out along the timeline with a gap,
 --     keeping each shot's layer offsets. Optional region per shot for rendering.
---   - **Burst**: select a sausage item (a row of single shots). Gun Builder finds every
+--   - **Burst**: select a sausage item (a row of single shots), or one sausage per layer
+--     track stacked so they play together (each shot then keeps all its layers). Gun Builder finds every
 --     shot's transient and builds bursts from them at the edit cursor: rounds per burst,
 --     rate of fire, how many bursts and the pause between them, gain per round.
 --   - **Full auto**: the same from a sausage file, for any number of shots, with an
@@ -136,6 +134,7 @@ local DEFAULTS = {
   jit_ms = 0, jit_db = 0, jit_cents = 0,
   region = false,
   live = true,
+  stack = true,       -- stacked sausages (one per layer track): each shot uses every layer
 }
 -- Settings that are how you like the window, not part of a setup.
 local UI_KEYS = { live = true, use_ms = true }
@@ -796,7 +795,15 @@ local function plan_burst(pool, o, gains)
   -- tracks: a shot may share a track with the one before it if it only overlaps that
   -- shot's fade-out
   local lanes = 1
-  if o.lanes == 3 then
+  if pool[1].stacked then
+    -- stacked: one track per layer, like the source
+    local nl = 1
+    for _, s in ipairs(out) do
+      s.lane = 1
+      for _, sl in ipairs(s.src.slices) do nl = math.max(nl, sl.layer) end
+    end
+    return out, total, nl
+  elseif o.lanes == 3 then
     for k, s in ipairs(out) do s.lane = k end
     lanes = #out
   elseif o.lanes == 2 then
@@ -1068,8 +1075,31 @@ local function build(pool, o, gains, b, src_track, name)
     local _, pname = r.GetSetMediaTrackInfo_String(parent, "P_NAME", "", false)
     local lanes = ensure_lanes(parent, n_lanes, pname ~= "" and pname or (b.name .. " burst"))
     local chunk_cache = {}
+    local stacked = plan[1].src.stacked
+    if stacked and #lanes > 1 then
+      -- name each layer track after the source track it comes from
+      for _, sl in ipairs(plan[1].src.slices) do
+        local tr = lanes[sl.layer]
+        local src_tr = valid_item(sl.item) and r.GetMediaItem_Track(sl.item)
+        if tr and src_tr then
+          local _, ln = r.GetSetMediaTrackInfo_String(src_tr, "P_NAME", "", false)
+          if ln ~= "" then r.GetSetMediaTrackInfo_String(tr, "P_NAME", ln .. " (built)", true) end
+        end
+      end
+    end
     for _, s in ipairs(plan) do
-      place_shot(lanes[s.lane] or lanes[#lanes], chunk_cache, s, b.pos, o, b.id)
+      if stacked then
+        for _, sl in ipairs(s.src.slices) do
+          local len = math.min(sl.len, s.len - sl.off)
+          if len > 0.002 then
+            place_shot(lanes[sl.layer] or lanes[#lanes], chunk_cache,
+              { src = { item = sl.item, start = sl.start }, t = s.t + sl.off, len = len,
+                gain = s.gain, cents = s.cents }, b.pos, o, b.id)
+          end
+        end
+      else
+        place_shot(lanes[s.lane] or lanes[#lanes], chunk_cache, s, b.pos, o, b.id)
+      end
     end
 
     local num = find_region(b)
@@ -1593,8 +1623,81 @@ end
 
 local function shot_key(e, k) return (e.guid or tostring(e.item)) .. ":" .. k end
 
+-- Stacked sausages: two or more source items on different tracks that play at the same
+-- time (one sausage per layer). Their shots are found together and each shot keeps all layers.
+local function is_stacked(list)
+  if #list < 2 then return false end
+  local tracks, a, b = {}, -math.huge, math.huge
+  for _, e in ipairs(list) do
+    if tracks[e.track] then return false end
+    tracks[e.track] = true
+    a, b = math.max(a, e.pos), math.min(b, e.pos + e.len)
+  end
+  return a < b
+end
+
+local STACK_STEP = 0.001 -- grid of the combined envelope (s)
+
+local function analyse_stacked()
+  local per, pool, layers = {}, {}, {}
+  local t0, t1 = math.huge, -math.huge
+  for i, e in ipairs(items) do
+    local env, err = get_env(e.item)
+    per[i] = { env = env, err = err, shots = {} }
+    if env then
+      layers[#layers + 1] = { e = e, env = env, i = i }
+      t0, t1 = math.min(t0, e.pos), math.max(t1, e.pos + e.len)
+    end
+  end
+  if #layers == 0 or t1 <= t0 then return { per = per, pool = pool, stacked = true, n_layers = #items } end
+
+  -- Combined envelope in project time: the loudest layer at each moment, every layer
+  -- measured against its own peak so a quiet layer counts as much as a loud one.
+  local n = math.max(1, math.ceil((t1 - t0) / STACK_STEP))
+  local db = {}
+  for j = 1, n do db[j] = SILENCE_DB end
+  for _, L in ipairs(layers) do
+    local env, pos = L.env, L.e.pos
+    if env.peak > SILENCE_DB then
+      for w = 1, env.n do
+        local j = math.floor((pos + (w - 1) * env.hop - t0) / STACK_STEP) + 1
+        if j >= 1 and j <= n then
+          local v = env.db[w] - env.peak
+          if v > db[j] then db[j] = v end
+        end
+      end
+    end
+  end
+  local cenv = { db = db, n = n, hop = STACK_STEP, peak = 0, len = t1 - t0 }
+  local shots = plan_shots(cenv, detect(cenv, opt), opt)
+
+  for k, sh in ipairs(shots) do
+    local gs, ge = t0 + sh.start, t0 + sh.start + sh.len
+    -- the same shot, as each layer sees it (times from that item's start)
+    for _, L in ipairs(layers) do
+      local e = L.e
+      local list = per[L.i].shots
+      list[#list + 1] = { start = gs - e.pos, len = sh.len, onset = t0 + sh.onset - e.pos }
+    end
+    if not excluded["stack:" .. k] then
+      local slices = {}
+      for li, e in ipairs(items) do
+        local a, b = math.max(gs, e.pos), math.min(ge, e.pos + e.len)
+        if b - a > 0.002 and per[li].env then
+          slices[#slices + 1] = { item = e.item, start = a - e.pos, len = b - a, off = a - gs, layer = li }
+        end
+      end
+      if #slices > 0 then
+        pool[#pool + 1] = { stacked = true, slices = slices, len = sh.len, label = tostring(k) }
+      end
+    end
+  end
+  return { per = per, pool = pool, stacked = true, n_layers = #items, n_found = #shots }
+end
+
 -- Detection on every source item; builds the shot pool.
 local function analyse()
+  if opt.stack and is_stacked(items) then return analyse_stacked() end
   local per, pool = {}, {}
   for i, e in ipairs(items) do
     local env, err = get_env(e.item)
@@ -1617,8 +1720,9 @@ local function analyse()
 end
 
 -- Waveform of a source item with the shots found in it.
-local function draw_source(e, a)
+local function draw_source(e, a, stacked)
   local env, shots = a.env, a.shots
+  local function key_of(k) return stacked and ("stack:" .. k) or shot_key(e, k) end
   local dl = ImGui.GetWindowDrawList(ctx)
   local x0, y0 = ImGui.GetCursorScreenPos(ctx)
   local H = 100
@@ -1653,7 +1757,7 @@ local function draw_source(e, a)
     local x = tx(s.onset)
     ImGui.DrawList_AddLine(dl, x, y0, x, y0 + H, C.COL_ONSET, 1)
     ImGui.DrawList_AddText(dl, x + 2, y0 + 2, C.COL_TEXT, tostring(k))
-    if excluded[shot_key(e, k)] then
+    if excluded[key_of(k)] then
       ImGui.DrawList_AddRectFilled(dl, tx(s.start), y0, tx(s.start + s.len), y0 + H, C.COL_OFF)
     end
   end
@@ -1667,14 +1771,14 @@ local function draw_source(e, a)
       if t >= s.start and t < s.start + s.len then hit = k end
     end
     if hit and ImGui.IsItemClicked(ctx, ImGui.MouseButton_Left) then
-      local key = shot_key(e, hit)
+      local key = key_of(hit)
       excluded[key] = not excluded[key] or nil
       memo_sig = nil
     end
     ImGui.SetTooltip(ctx, hit
       and ("Shot %d%s\nClick to %s it"):format(hit,
-        excluded[shot_key(e, hit)] and " (left out)" or "",
-        excluded[shot_key(e, hit)] and "use" or "leave out")
+        excluded[key_of(hit)] and " (left out)" or "",
+        excluded[key_of(hit)] and "use" or "leave out")
       or "Red = shots found\nYellow = detection floor")
   end
 end
@@ -2099,7 +2203,8 @@ end
 ----------------------------------------------------------------------
 local function draw_build()
   local is_burst = opt.mode == 2
-  local sig = table.concat({ tostring(last_state), #items, opt.rise_db, opt.floor_db, opt.min_ms, opt.preroll_ms }, "|")
+  local sig = table.concat({ tostring(last_state), #items, tostring(opt.stack), opt.rise_db, opt.floor_db,
+    opt.min_ms, opt.preroll_ms }, "|")
   if sig ~= memo_sig then
     memo_sig = sig
     analysis = analyse()
@@ -2117,9 +2222,23 @@ local function draw_build()
         "to re-time them in place."))
   else
     local total_found = 0
-    for _, a in ipairs(analysis.per) do total_found = total_found + #a.shots end
-    ImGui.Text(ctx, ("%d shots found, %d used%s"):format(total_found, #pool,
-      #pool < total_found and " (click a shot to use it again)" or ""))
+    if analysis.stacked then
+      total_found = analysis.n_found or 0
+      ImGui.Text(ctx, ("%d shots found across %d stacked layers, %d used%s"):format(total_found,
+        analysis.n_layers or #items, #pool, #pool < total_found and " (click a shot to use it again)" or ""))
+      tooltip("The selected items play at the same time on different tracks, so they're treated as\n" ..
+        "layers of one sausage: shots are found across all of them together, and every shot\n" ..
+        "is built from all the layers, each on its own track.")
+    else
+      for _, a in ipairs(analysis.per) do total_found = total_found + #a.shots end
+      ImGui.Text(ctx, ("%d shots found, %d used%s"):format(total_found, #pool,
+        #pool < total_found and " (click a shot to use it again)" or ""))
+    end
+    if is_stacked(items) then
+      if checkbox("Keep stacked layers together", "stack") then memo_sig = nil end
+      tooltip("On: each shot uses every layer (the selected items stacked across tracks).\n" ..
+        "Off: every shot in every item is a separate building block.")
+    end
     if show_switch then draw_view_switch() end
     if #items > 1 then
       local function item_text(i)
@@ -2139,7 +2258,7 @@ local function draw_build()
     end
     local a = analysis.per[preview_idx]
     if a and a.env and items[preview_idx] then
-      draw_source(items[preview_idx], a)
+      draw_source(items[preview_idx], a, analysis.stacked)
     else
       ImGui.Text(ctx, a and a.err and ("Can't analyse this item (" .. a.err .. ")") or "")
       ImGui.Dummy(ctx, W, 100)
@@ -2230,7 +2349,19 @@ local function draw_build()
   -- Preview ----------------------------------------------------------------------
   ImGui.Text(ctx, #plan > 0 and ("Result: %d shots, %.2f s%s"):format(#plan, total,
     n_lanes > 1 and (", on %d tracks"):format(n_lanes) or "") or "Result")
-  draw_plan(plan, total, n_lanes)
+  if analysis.stacked then
+    -- one row per layer
+    local rows = {}
+    for _, sp in ipairs(plan) do
+      for _, sl in ipairs(sp.src.slices) do
+        rows[#rows + 1] = { t = sp.t + sl.off, len = math.max(0.001, math.min(sl.len, sp.len - sl.off)),
+          gain = sp.gain, idx = sp.idx, lane = sl.layer, src = sp.src }
+      end
+    end
+    draw_plan(rows, total, n_lanes)
+  else
+    draw_plan(plan, total, n_lanes)
+  end
 
   -- Tails, tracks, humanize ---------------------------------------------------------
   if ImGui.CollapsingHeader(ctx, "Tails, tracks and humanize", ImGui.TreeNodeFlags_DefaultOpen) then
@@ -2242,7 +2373,10 @@ local function draw_build()
     tooltip("Each shot fades out as the next one starts (the last shot rings out).")
 
     label("Tracks")
+    ImGui.BeginDisabled(ctx, analysis.stacked == true)
     combo("##lanes", "lanes", LANES)
+    ImGui.EndDisabled(ctx)
+    if analysis.stacked then tooltip("Stacked layers: each layer goes on its own track, like the source.") end
     tooltip("Where the shots go. Spread over several tracks (in a folder under the\n" ..
       "build track) so overlapping tails don't hide each other.\n" ..
       "Auto uses just enough tracks that no two shots overlap.")
