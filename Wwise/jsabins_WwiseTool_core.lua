@@ -1824,6 +1824,18 @@ end
 -- Render folder items in one pass: park the project's own region render matrix, add one
 -- temporary region per folder item with only its track ticked, run `render`, then remove the
 -- temporary regions and put the matrix back. Returns true when the render ran.
+-- What the last transfer's render did, for Settings > Diagnostics > Copy last render log.
+M.render_log = {}
+local function rlog(fmt, ...) M.render_log[#M.render_log + 1] = string.format(fmt, ...) end
+
+local function track_label(tr)
+  if not tr then return "(none)" end
+  if tr == r.GetMasterTrack(0) then return "MASTER" end
+  local _, n = r.GetTrackName(tr)
+  return string.format("#%d %s (depth %d, fx %d)", r.GetMediaTrackInfo_Value(tr, "IP_TRACKNUMBER"), n,
+    r.GetMediaTrackInfo_Value(tr, "I_FOLDERDEPTH"), r.TrackFX_GetCount(tr))
+end
+
 local function render_folders_batched(list, render)
   local saved = {}
   local i = 0
@@ -1852,7 +1864,16 @@ local function render_folders_batched(list, render)
       if idx < 0 then error("couldn't add a temporary region") end
       temp[#temp + 1] = idx
       r.SetRegionRenderMatrix(0, idx, e.track, 1)
+      local got, j = {}, 0
+      while true do
+        local tr = r.EnumRegionRenderMatrix(0, idx, j)
+        if not tr then break end
+        got[#got + 1] = track_label(tr); j = j + 1
+      end
+      rlog("region %d %s %.3f-%.3f track %s -> matrix: %s", idx, e.token, e.pos, e.pos + e.len,
+        track_label(e.track), #got > 0 and table.concat(got, "; ") or "(nothing ticked)")
     end
+    rlog("parked %d region(s) of your own matrix", #saved)
     render()
   end)
   for _, idx in ipairs(temp) do r.DeleteProjectMarker(0, idx, true) end
@@ -1873,6 +1894,10 @@ local function do_render(s, plan)
   if s.source ~= "render" and #renders == 0 then return true end
 
   local outdir = TMP .. SEP .. os.time() .. "_" .. math.random(1000, 9999)
+  M.render_log = {}
+  rlog("source=%s folders_via_master=%s items_via_master=%s renders=%d", tostring(s.source),
+    tostring(s.folders_via_master), tostring(s.items_via_master), #renders)
+  for _, e in ipairs(renders) do rlog("entry %s kind=%s name=%s track=%s", e.token or "?", e.kind, e.name or "", track_label(e.track)) end
   local keep_base, prefix = M.render_folder_parts(s)
   if keep_base then outdir = keep_base else plan.outdir = outdir end
   prefix = (prefix and prefix ~= "") and (prefix .. "/") or ""
@@ -1938,7 +1963,10 @@ local function do_render(s, plan)
         set_n("RENDER_SETTINGS", s.folders_via_master and 136 or 8) -- region render matrix (via master)
         set_n("RENDER_BOUNDSFLAG", 3)  -- all project regions (only matrix-ticked ones render)
         note_targets(prefix .. "$region")
+        rlog("batched render: RENDER_SETTINGS=%d BOUNDS=%d", get_n("RENDER_SETTINGS"), get_n("RENDER_BOUNDSFLAG"))
+        for k, v in pairs(where) do rlog("  target %s = %s", k, v) end
         M.render_command()
+        rlog("render stats: %s", get_s("RENDER_STATS"):sub(1, 600))
       end)
     end
     for _, e in ipairs(renders) do
@@ -1952,6 +1980,7 @@ local function do_render(s, plan)
         M.render_command()
       end
       local p = where[e.token] or (outdir .. SEP .. e.token .. ".wav")
+      rlog("%s file %s (%s)", e.token or "?", p, file_exists(p) and "found" or "MISSING")
       if file_exists(p) then
         -- Wwise names the file in Originals after the file, so give it the Sound's name.
         local dir = p:match("^(.*)[\\/][^\\/]*$") or outdir
