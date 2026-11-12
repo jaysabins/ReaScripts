@@ -1,12 +1,10 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.18.0
+-- @version 1.18.1
 -- @changelog
---   Dark grey look: buttons, dropdowns, fields, checkboxes, list highlights, tabs and
---   the other spots that used ImGui's default blue are now dark grey.
---   Includes 1.17.1: Folder items mode now finds NVK folder items (they can have a take,
---   so 1.17.0 missed them). In that mode any item on a folder track counts as a folder item.
---   Selected items mode also treats an empty-take item on a folder track as a folder item.
+--   Several folder items now render in one pass (through a temporary region render
+--   matrix) instead of opening the render window once per folder item. "Render folder
+--   items through master" still renders them one at a time.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
