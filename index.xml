@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="5d28d12d45081fa2f880ba5348d7e94d7a82e254">
+<index version="1" name="Jay Sabins Scripts" commit="2b4c109bfb2bd53a8f0359a6045448e572cc0289">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -475,6 +475,16 @@ Selected items mode also treats an empty-take item on a folder track as a folder
         <source main="main">https://github.com/jaysabins/reascripts/raw/5d28d12d45081fa2f880ba5348d7e94d7a82e254/Wwise/jsabins_Wwise%20Tool.lua</source>
         <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/5d28d12d45081fa2f880ba5348d7e94d7a82e254/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
         <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/5d28d12d45081fa2f880ba5348d7e94d7a82e254/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.18.0" author="Jay Sabins" time="2026-11-12T21:10:34Z">
+        <changelog><![CDATA[Dark grey look: buttons, dropdowns, fields, checkboxes, list highlights, tabs and
+the other spots that used ImGui's default blue are now dark grey.
+Includes 1.17.1: Folder items mode now finds NVK folder items (they can have a take,
+so 1.17.0 missed them). In that mode any item on a folder track counts as a folder item.
+Selected items mode also treats an empty-take item on a folder track as a folder item.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/2b4c109bfb2bd53a8f0359a6045448e572cc0289/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/2b4c109bfb2bd53a8f0359a6045448e572cc0289/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/2b4c109bfb2bd53a8f0359a6045448e572cc0289/Wwise/jsabins_WwiseTool_core.lua</source>
       </version>
     </reapack>
   </category>
