@@ -2,6 +2,8 @@
 -- @author Jay Sabins
 -- @version 1.18.2
 -- @changelog
+--   Folder items render in one pass with "Render folder items through master" on too
+--   (region render matrix via master).
 --   The version shown in the window (and the diagnostics log) now matches the package
 --   version. 1.17.x and 1.18.1 still showed an older number there.
 -- @provides

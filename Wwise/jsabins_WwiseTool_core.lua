@@ -1929,13 +1929,13 @@ local function do_render(s, plan)
     end
     -- Several folder items render in one pass through the region render matrix: a temporary
     -- region per folder item (named after its token), with only its folder track ticked.
-    -- "Through master" has no matrix equivalent we can rely on, so it renders one at a time.
+    -- "Through master" uses "Region render matrix via master" (matrix flag 8 + via-master 128).
     local folder_list = {}
     for _, e in ipairs(renders) do if e.kind == "folder" then folder_list[#folder_list + 1] = e end end
     local batched = false
-    if #folder_list > 1 and not s.folders_via_master then
+    if #folder_list > 1 then
       batched = render_folders_batched(folder_list, function()
-        set_n("RENDER_SETTINGS", 8)    -- region render matrix
+        set_n("RENDER_SETTINGS", s.folders_via_master and 136 or 8) -- region render matrix (via master)
         set_n("RENDER_BOUNDSFLAG", 3)  -- all project regions (only matrix-ticked ones render)
         note_targets(prefix .. "$region")
         M.render_command()
