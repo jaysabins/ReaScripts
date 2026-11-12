@@ -10,6 +10,12 @@
 --   New "Tracks" option: put each overlapping shot on its own track (in a folder)
 --   so you can see every shot in full when the tails ring out. Auto uses just
 --   enough tracks that no shots overlap; you can also use one track per shot.
+--   New sequence mode: select shots that are already laid out on the timeline
+--   (one item per shot, one track per layer, like a burst you built by hand) and
+--   re-time them in place: rate of fire, ramp, gain per shot, and per layer a
+--   shuffle of the shot order plus humanize timing, gain and pitch and a delay.
+--   The items remember where they started, so you can reselect the sequence (one
+--   item is enough) and keep editing it later.
 -- @about
 --   Select a "sausage" item holding a row of single shots (or several items, or
 --   shots you already split) and run the script. It finds every shot's transient
@@ -34,6 +40,13 @@
 --   rate and gain. Each change is one undo step. Bursts remember their source
 --   and settings in the project: click any burst item to edit that burst again,
 --   even after closing the script.
+--
+--   Sequence mode: select shots that are already on the timeline, one item per
+--   shot and one track per layer (several items on a track switch to this mode on
+--   their own). The n-th item on every track is shot n. Change the rate of fire
+--   and gain per shot for the whole sequence, and per layer shuffle the shot order
+--   and humanize timing, gain and pitch. The items are moved in place and remember
+--   their original positions, so select any one of them later to keep editing.
 --
 --   Requires ReaImGui (install it from ReaPack).
 
@@ -302,8 +315,16 @@ end
 
 -- Selected source items (bursts left out), plus the id of the selected burst if
 -- the selection holds items of exactly one burst.
+local SEQ_KEY = "P_EXT:jsabins_rf_seq"
+
+local function seq_tag(it)
+  local ok, v = r.GetSetMediaItemInfo_String(it, SEQ_KEY, "", false)
+  if ok and v ~= "" then return v end
+end
+
 local function collect_selection()
   local items, ids, n_ids, last = {}, {}, 0, nil
+  local sids, n_sids, slast = {}, 0, nil
   for i = 0, r.CountSelectedMediaItems(0) - 1 do
     local it = r.GetSelectedMediaItem(0, i)
     local id = burst_id_of(it)
@@ -311,9 +332,12 @@ local function collect_selection()
       if not ids[id] then ids[id], n_ids, last = true, n_ids + 1, id end
     else
       items[#items + 1] = item_entry(it)
+      local tag = seq_tag(it)
+      local sid = tag and tag:match("^([^|]+)")
+      if sid and not sids[sid] then sids[sid], n_sids, slast = true, n_sids + 1, sid end
     end
   end
-  return sort_items(items), n_ids == 1 and last or nil
+  return sort_items(items), n_ids == 1 and last or nil, n_sids == 1 and slast or nil
 end
 
 -- Items by GUID (the sources a burst remembers), skipping any that are gone.
@@ -749,6 +773,285 @@ local function build(pool, o, gains, b, src_track, name)
 end
 
 ----------------------------------------------------------------------
+-- SEQUENCE MODE (re-time shots that are already on the timeline, one item per
+-- shot, one track per layer)
+----------------------------------------------------------------------
+local SEQ_ORDERS = { "In order", "Shuffle, last stays last", "Shuffle all" }
+local SEQ_DEFAULTS = { rpm = 600, ramp = false, rpm_end = 900, seed = 1, choke = false, fadeout_ms = 15 }
+local SEQ_OPT_KEYS = { "rpm", "ramp", "rpm_end", "seed", "choke", "fadeout_ms" }
+local LAYER_DEFAULTS = { order = 1, jit_ms = 0, jit_db = 0, jit_cents = 0, delay_ms = 0 }
+local LAYER_KEYS = { "order", "jit_ms", "jit_db", "jit_cents", "delay_ms" }
+
+local function new_layer_opt()
+  local t = {}
+  for k, v in pairs(LAYER_DEFAULTS) do t[k] = v end
+  return t
+end
+
+local function take_pitch(it)
+  local tk = r.GetActiveTake(it)
+  return tk and r.GetMediaItemTakeInfo_Value(tk, "D_PITCH") or 0
+end
+
+-- Layers (one per track, in track order) from a list of item entries.
+local function group_layers(list)
+  local by, layers = {}, {}
+  for _, e in ipairs(list) do
+    local L = by[e.track]
+    if not L then
+      local _, nm = r.GetSetMediaTrackInfo_String(e.track, "P_NAME", "", false)
+      L = { track = e.track, guid = r.GetTrackGUID(e.track), tidx = e.tidx,
+            name = nm ~= "" and nm or ("Track " .. math.floor(e.tidx)), entries = {}, shots = {} }
+      by[e.track] = L
+      layers[#layers + 1] = L
+    end
+    L.entries[#L.entries + 1] = e
+  end
+  table.sort(layers, function(a, b) return a.tidx < b.tidx end)
+  return layers
+end
+
+local function finish_sequence(sq)
+  sq.N = 0
+  for _, L in ipairs(sq.layers) do
+    sq.N = math.max(sq.N, #L.shots)
+    if not sq.lopt[L.guid] then sq.lopt[L.guid] = new_layer_opt() end
+  end
+  if #sq.gains ~= sq.N then sq.gains = resample(sq.gains, sq.N) end
+  return sq
+end
+
+-- New sequence from selected items: the n-th item (left to right) on every track is shot n.
+local function capture_sequence(list)
+  local layers = group_layers(list)
+  local anchor = {}
+  for _, L in ipairs(layers) do
+    table.sort(L.entries, function(a, b) return a.pos < b.pos end)
+    for k, e in ipairs(L.entries) do
+      if not anchor[k] or e.pos < anchor[k] then anchor[k] = e.pos end
+    end
+  end
+  for _, L in ipairs(layers) do
+    for k, e in ipairs(L.entries) do
+      local it = e.item
+      L.shots[k] = {
+        item = it, slot = k, off = e.pos - anchor[k], len = len_of(it),
+        vol = r.GetMediaItemInfo_Value(it, "D_VOL"),
+        fout = r.GetMediaItemInfo_Value(it, "D_FADEOUTLEN"),
+        pitch = take_pitch(it),
+      }
+    end
+  end
+  -- start from the sequence's own rate (the middle gap between shots)
+  local gaps = {}
+  for k = 2, #anchor do gaps[#gaps + 1] = anchor[k] - anchor[k - 1] end
+  table.sort(gaps)
+  local gap = gaps[math.floor((#gaps + 1) / 2)]
+  local so = {}
+  for k, v in pairs(SEQ_DEFAULTS) do so[k] = v end
+  if gap and gap > 0.005 then
+    so.rpm = clamp(60 / gap, 30, 3000)
+    so.rpm_end = so.rpm
+  end
+  return finish_sequence({ id = new_id(), start = anchor[1] or 0, layers = layers,
+    opt = so, lopt = {}, gains = {} })
+end
+
+local function store_sequence(sq)
+  local lines = { ("start=%.10f"):format(sq.start) }
+  for _, k in ipairs(SEQ_OPT_KEYS) do
+    local v = sq.opt[k]
+    if type(v) == "boolean" then v = v and "1" or "0" end
+    lines[#lines + 1] = "o_" .. k .. "=" .. tostring(v)
+  end
+  local g = {}
+  for i, v in ipairs(sq.gains) do g[i] = ("%.2f"):format(v) end
+  lines[#lines + 1] = "gains=" .. table.concat(g, ",")
+  for guid, lo in pairs(sq.lopt) do
+    local p = {}
+    for i, k in ipairs(LAYER_KEYS) do p[i] = tostring(lo[k]) end
+    lines[#lines + 1] = "layer_" .. guid .. "=" .. table.concat(p, ",")
+  end
+  r.SetProjExtState(0, SECTION, "seq_" .. sq.id, table.concat(lines, "\n"))
+end
+
+-- A sequence from its tagged items. keep = the same sequence already in memory, whose
+-- settings win over the saved ones (they may not be applied yet).
+local function load_sequence(id, keep)
+  local list = {}
+  for i = 0, r.CountMediaItems(0) - 1 do
+    local it = r.GetMediaItem(0, i)
+    local tag = seq_tag(it)
+    if tag then
+      local f = {}
+      for v in (tag .. "|"):gmatch("([^|]*)|") do f[#f + 1] = v end
+      if f[1] == id and #f >= 7 then
+        local e = item_entry(it)
+        e.shot = { item = it, slot = tonumber(f[2]) or 1, off = tonumber(f[3]) or 0,
+          len = tonumber(f[4]) or len_of(it), vol = tonumber(f[5]) or 1,
+          pitch = tonumber(f[6]) or 0, fout = tonumber(f[7]) or 0 }
+        list[#list + 1] = e
+      end
+    end
+  end
+  if #list == 0 then return nil end
+  local layers = group_layers(list)
+  for _, L in ipairs(layers) do
+    table.sort(L.entries, function(a, b) return a.shot.slot < b.shot.slot end)
+    for k, e in ipairs(L.entries) do L.shots[k] = e.shot end
+  end
+  if keep then
+    keep.layers = layers
+    return finish_sequence(keep)
+  end
+
+  local sq = { id = id, layers = layers, opt = {}, lopt = {}, gains = {} }
+  for k, v in pairs(SEQ_DEFAULTS) do sq.opt[k] = v end
+  local rv, rec = r.GetProjExtState(0, SECTION, "seq_" .. id)
+  local f = {}
+  if rv ~= 0 then
+    for line in rec:gmatch("[^\n]+") do
+      local k, v = line:match("^([^=]+)=(.*)$")
+      if k then f[k] = v end
+    end
+  end
+  sq.start = tonumber(f.start)
+  if not sq.start then
+    sq.start = math.huge
+    for _, e in ipairs(list) do sq.start = math.min(sq.start, e.pos) end
+  end
+  for _, k in ipairs(SEQ_OPT_KEYS) do
+    local v, def = f["o_" .. k], SEQ_DEFAULTS[k]
+    if v ~= nil then
+      if type(def) == "boolean" then sq.opt[k] = v == "1" else sq.opt[k] = tonumber(v) or def end
+    end
+  end
+  for i, v in ipairs(list_csv(f.gains)) do sq.gains[i] = clamp(tonumber(v) or 0, GAIN_MIN, GAIN_MAX) end
+  for _, L in ipairs(layers) do
+    local vals = list_csv(f["layer_" .. L.guid])
+    if #vals > 0 then
+      local lo = new_layer_opt()
+      for i, k in ipairs(LAYER_KEYS) do lo[k] = tonumber(vals[i]) or LAYER_DEFAULTS[k] end
+      lo.order = clamp(math.floor(lo.order), 1, #SEQ_ORDERS)
+      sq.lopt[L.guid] = lo
+    end
+  end
+  return finish_sequence(sq)
+end
+
+-- Where every shot of every layer goes: list of { shot, t, len, gain, cents, lane, idx, choked }
+-- (t from the sequence start). Also returns the length, layer count and earliest t.
+local function plan_sequence(sq)
+  local o, N = sq.opt, sq.N
+  local T = { 0 }
+  for p = 2, N do T[p] = T[p - 1] + interval_at(o, p - 1, N) end
+  local fout = o.fadeout_ms / 1000
+  local out = {}
+  for li, L in ipairs(sq.layers) do
+    local lo = sq.lopt[L.guid] or LAYER_DEFAULTS
+    local n = #L.shots
+    local perm = {}
+    for i = 1, n do perm[i] = i end
+    if lo.order ~= 1 then
+      local rnd = make_rng(o.seed + li * 977)
+      local last = lo.order == 2 and n - 1 or n
+      for i = last, 2, -1 do
+        local j = math.floor(rnd() * i) + 1
+        perm[i], perm[j] = perm[j], perm[i]
+      end
+    end
+    local base = o.seed + li * 977
+    local jt, jg, jp = make_rng(base + 101), make_rng(base + 202), make_rng(base + 303)
+    local function jit(rng, amount) return (rng() * 2 - 1) * amount end
+
+    local row, prev = {}, -math.huge
+    for pi = 1, n do
+      local sh = L.shots[perm[pi]]
+      local t = T[pi] + sh.off + lo.delay_ms / 1000
+      if pi > 1 then t = t + jit(jt, lo.jit_ms / 1000) end
+      if t < prev + 0.001 then t = prev + 0.001 end
+      prev = t
+      row[pi] = { shot = sh, t = t, lane = li, idx = sh.slot,
+        gain = (sq.gains[pi] or 0) + jit(jg, lo.jit_db), cents = jit(jp, lo.jit_cents),
+        src = { label = tostring(sh.slot) } }
+    end
+    for pi, sp in ipairs(row) do
+      local l = sp.shot.len
+      sp.choked = false
+      if o.choke and row[pi + 1] then
+        local c = row[pi + 1].t - sp.t + fout
+        if c < l then l, sp.choked = c, true end
+      end
+      sp.len = math.max(0.005, l)
+      out[#out + 1] = sp
+    end
+  end
+  local t0, total = math.huge, 0
+  for _, sp in ipairs(out) do t0 = math.min(t0, sp.t) end
+  if t0 == math.huge then t0 = 0 end
+  for _, sp in ipairs(out) do total = math.max(total, sp.t + sp.len - t0) end
+  return out, total, #sq.layers, t0
+end
+
+local function tag_shot(sq, sh)
+  r.GetSetMediaItemInfo_String(sh.item, SEQ_KEY, ("%s|%d|%.10f|%.10f|%.10f|%.6f|%.10f"):format(
+    sq.id, sh.slot, sh.off, sh.len, sh.vol, sh.pitch, sh.fout), true)
+end
+
+local function apply_sequence(sq)
+  local plan = plan_sequence(sq)
+  local fout = sq.opt.fadeout_ms / 1000
+  r.Undo_BeginBlock()
+  r.PreventUIRefresh(1)
+  for _, sp in ipairs(plan) do
+    local sh, it = sp.shot, sp.shot.item
+    if r.ValidatePtr2(0, it, "MediaItem*") then
+      r.SetMediaItemInfo_Value(it, "D_POSITION", sq.start + sp.t)
+      r.SetMediaItemInfo_Value(it, "D_LENGTH", sp.len)
+      r.SetMediaItemInfo_Value(it, "D_VOL", sh.vol * 10 ^ (sp.gain / 20))
+      r.SetMediaItemInfo_Value(it, "D_FADEOUTLEN",
+        sp.choked and math.min(fout, sp.len / 2) or math.min(sh.fout, sp.len))
+      local tk = r.GetActiveTake(it)
+      if tk then r.SetMediaItemTakeInfo_Value(tk, "D_PITCH", sh.pitch + sp.cents / 100) end
+      tag_shot(sq, sh)
+    end
+  end
+  store_sequence(sq)
+  r.PreventUIRefresh(-1)
+  r.UpdateArrange()
+  r.Undo_EndBlock("Re-time rapid-fire sequence", -1)
+end
+
+-- Take the items as they are now as the sequence's new starting point.
+local function recapture_sequence(sq)
+  local list = {}
+  for _, L in ipairs(sq.layers) do
+    for _, sh in ipairs(L.shots) do
+      if r.ValidatePtr2(0, sh.item, "MediaItem*") then list[#list + 1] = item_entry(sh.item) end
+    end
+  end
+  local nsq = capture_sequence(list)
+  r.Undo_BeginBlock()
+  for _, L in ipairs(nsq.layers) do
+    for _, sh in ipairs(L.shots) do tag_shot(nsq, sh) end
+  end
+  store_sequence(nsq)
+  r.Undo_EndBlock("Rapid-fire sequence: take current positions as the original", -1)
+  return nsq
+end
+
+local function seq_sig(sq)
+  local p = {}
+  for _, k in ipairs(SEQ_OPT_KEYS) do p[#p + 1] = tostring(sq.opt[k]) end
+  for _, g in ipairs(sq.gains) do p[#p + 1] = ("%.2f"):format(g) end
+  for _, L in ipairs(sq.layers) do
+    local lo = sq.lopt[L.guid]
+    for _, k in ipairs(LAYER_KEYS) do p[#p + 1] = tostring(lo[k]) end
+  end
+  return table.concat(p, "|")
+end
+
+----------------------------------------------------------------------
 -- GUI
 ----------------------------------------------------------------------
 local ctx = r.ImGui_CreateContext(TITLE)
@@ -760,6 +1063,11 @@ local excluded = {}   -- "guid:k" -> true for shots left out of the burst
 local burst = nil     -- the last burst built (for live update)
 local built_sig = nil
 local status = ""
+local mode = "burst"     -- "burst" (build from a sausage) or "seq" (re-time shots in place)
+local seq = nil          -- the sequence being edited in sequence mode
+local force_mode = nil   -- the user's choice for an untagged selection
+local last_sel_key = nil
+local show_switch = false
 
 local W = 520
 local LABEL_X = 170
@@ -824,7 +1132,45 @@ local function refresh_items()
   last_state = state
   if burst and not burst_exists(burst) then burst = nil end
 
-  local sel, sel_burst = collect_selection()
+  local sel, sel_burst, sel_seq = collect_selection()
+  local keys = {}
+  for i, e in ipairs(sel) do keys[i] = e.guid end
+  local key = table.concat(keys, ",") .. "|" .. tostring(sel_burst)
+  if key ~= last_sel_key then last_sel_key, force_mode = key, nil end
+  show_switch = #sel > 0 and not sel_seq
+
+  -- a sequence this script has re-timed before
+  if sel_seq then
+    local sq = load_sequence(sel_seq, seq and seq.id == sel_seq and seq or nil)
+    if sq then
+      if not (seq and seq.id == sq.id) then sq.applied_sig = seq_sig(sq) end
+      seq, mode, items = sq, "seq", {}
+      return
+    end
+  end
+  -- several items on one track: most likely shots laid out in a row
+  local auto = "burst"
+  local per_track = {}
+  for _, e in ipairs(sel) do
+    per_track[e.track] = (per_track[e.track] or 0) + 1
+    if per_track[e.track] > 1 then auto = "seq" end
+  end
+  if #sel > 0 and (force_mode or auto) == "seq" then
+    local sq = capture_sequence(sel)
+    if seq and seq.fresh and seq.key == key then
+      -- same selection, nothing applied yet: keep what the user has dialled in
+      sq.id, sq.opt, sq.applied_sig = seq.id, seq.opt, seq.applied_sig
+      for g, lo in pairs(seq.lopt) do sq.lopt[g] = lo end
+      sq.gains = resample(seq.gains, sq.N)
+    else
+      sq.applied_sig = seq_sig(sq)
+    end
+    sq.fresh, sq.key = true, key
+    seq, mode, items = sq, "seq", {}
+    return
+  end
+  mode = "burst"
+
   if #sel == 0 and sel_burst and not (burst and burst.id == sel_burst) then attach(sel_burst) end
   if #sel > 0 then
     if burst and not same_sources(sel, burst.sources) then
@@ -943,7 +1289,7 @@ end
 -- Gain editor: one bar per shot of the burst, drawn with the mouse.
 local drag_last = nil
 
-local function draw_gains(plan)
+local function draw_gains(gains, labels)
   local N = #gains
   local dl = r.ImGui_GetWindowDrawList(ctx)
   local x0, y0 = r.ImGui_GetCursorScreenPos(ctx)
@@ -985,26 +1331,48 @@ local function draw_gains(plan)
     local y = ty(gains[k])
     r.ImGui_DrawList_AddRectFilled(dl, xa, math.min(y, zy), xb, math.max(y, zy) + 1,
       k == hot and COL_BAR_HOT or COL_BAR)
-    if bw >= 16 and plan[k] then
-      r.ImGui_DrawList_AddText(dl, xa + 2, y0 + H - 15, COL_TEXT, plan[k].src.label)
+    if bw >= 16 and labels[k] then
+      r.ImGui_DrawList_AddText(dl, xa + 2, y0 + H - 15, COL_TEXT, labels[k])
     end
   end
 
   if hovered and hot then
     r.ImGui_SetTooltip(ctx, ("Shot %d%s: %+.1f dB\nDrag to draw the gain, right-click to reset a shot"):format(
-      hot, plan[hot] and (" (source shot " .. plan[hot].src.label .. ")") or "", gains[hot]))
+      hot, labels[hot] and (" (source shot " .. labels[hot] .. ")") or "", gains[hot]))
   end
 end
 
+-- Preset gain shapes, written into the given gain list.
+local function gain_shapes(gains)
+  r.ImGui_Text(ctx, "Gain per shot")
+  r.ImGui_SameLine(ctx, LABEL_X)
+  local function shape(name, f)
+    if r.ImGui_SmallButton(ctx, name) then
+      local N = #gains
+      for k = 1, N do
+        gains[k] = clamp(f(N > 1 and (k - 1) / (N - 1) or 0, k), GAIN_MIN, GAIN_MAX)
+      end
+    end
+    r.ImGui_SameLine(ctx)
+  end
+  shape("Flat", function() return 0 end)
+  shape("Fade out", function(x) return -12 * x end)
+  shape("Fade in", function(x) return -12 * (1 - x) end)
+  shape("Accent 1st", function(_, k) return k == 1 and 3 or -2 end)
+  shape("Random", function() return -math.random() * 4 end)
+  r.ImGui_NewLine(ctx)
+end
+
 -- Timeline view of the burst that will be built.
-local function draw_burst(plan, total, n_lanes)
+local function draw_burst(plan, total, n_lanes, t0)
+  t0 = t0 or 0
   local dl = r.ImGui_GetWindowDrawList(ctx)
   local x0, y0 = r.ImGui_GetCursorScreenPos(ctx)
   local H = clamp(n_lanes * 14, 60, 180)
   local LH = H / n_lanes
   r.ImGui_DrawList_AddRectFilled(dl, x0, y0, x0 + W, y0 + H, COL_BG)
   if total > 0 then
-    local function tx(t) return x0 + t / total * W end
+    local function tx(t) return x0 + (t - t0) / total * W end
     for k, s in ipairs(plan) do
       local lane = math.min(s.lane or 1, n_lanes)
       local yb = y0 + lane * LH
@@ -1026,23 +1394,168 @@ local function draw_burst(plan, total, n_lanes)
   end
 end
 
-local function rate_slider(id, key)
+local function rate_slider(id, key, t)
+  t = t or opt
   r.ImGui_SetNextItemWidth(ctx, 240)
   local rv, v
   if opt.use_ms then
-    local ms = 60000 / opt[key]
+    local ms = 60000 / t[key]
     rv, v = r.ImGui_SliderDouble(ctx, id, ms, 20, 500, "%.1f ms between shots")
-    if rv then opt[key] = 60000 / clamp(v, 20, 2000) end
+    if rv then t[key] = 60000 / clamp(v, 20, 2000) end
   else
-    rv, v = r.ImGui_SliderDouble(ctx, id, opt[key], 120, 3000, "%.0f RPM")
-    if rv then opt[key] = clamp(v, 30, 3000) end
+    rv, v = r.ImGui_SliderDouble(ctx, id, t[key], 120, 3000, "%.0f RPM")
+    if rv then t[key] = clamp(v, 30, 3000) end
   end
   tooltip(("%.0f RPM = %.1f ms between shots = %.1f shots per second"):format(
-    opt[key], 60000 / opt[key], opt[key] / 60))
+    t[key], 60000 / t[key], t[key] / 60))
+end
+
+local function draw_mode_switch()
+  label("Selection is")
+  if r.ImGui_RadioButton(ctx, "A sausage to build from", mode == "burst") and mode ~= "burst" then
+    force_mode, last_state = "burst", nil
+  end
+  tooltip("Find the shots inside the selected item(s) and build a new burst from them.")
+  r.ImGui_SameLine(ctx)
+  if r.ImGui_RadioButton(ctx, "Shots to re-time", mode == "seq") and mode ~= "seq" then
+    force_mode, last_state = "seq", nil
+  end
+  tooltip("Each selected item is one shot and each track one layer:\n" ..
+    "move them in place to a new rate, with gain and humanize per layer.")
+end
+
+local function draw_seq()
+  local sq = seq
+  local so = sq.opt
+  local rv
+  local plan, total, n_layers, t0 = plan_sequence(sq)
+
+  r.ImGui_Text(ctx, ("Sequence: %d layer%s, %d shots"):format(n_layers, n_layers == 1 and "" or "s", sq.N))
+  if show_switch then draw_mode_switch() end
+  r.ImGui_Separator(ctx)
+
+  label("Rate of fire")
+  rate_slider("##srpm", "rpm", so)
+  r.ImGui_SameLine(ctx)
+  rv, opt.use_ms = r.ImGui_Checkbox(ctx, "ms", opt.use_ms)
+  label("")
+  rv, so.ramp = r.ImGui_Checkbox(ctx, "Ramp to##sramp", so.ramp)
+  tooltip("Change the rate across the sequence, e.g. a minigun spinning up.")
+  r.ImGui_SameLine(ctx)
+  r.ImGui_BeginDisabled(ctx, not so.ramp)
+  rate_slider("##srpm_end", "rpm_end", so)
+  r.ImGui_EndDisabled(ctx)
+
+  label("Shot tails")
+  if r.ImGui_RadioButton(ctx, "Keep full length##s", not so.choke) then so.choke = false end
+  r.ImGui_SameLine(ctx)
+  if r.ImGui_RadioButton(ctx, "Cut at next shot##s", so.choke) then so.choke = true end
+  tooltip("Shorten each item so it ends (with a fade) where the next shot on its layer starts.\n" ..
+    "The original lengths come back when you switch back.")
+  if so.choke then
+    label("  Fade out")
+    r.ImGui_SetNextItemWidth(ctx, 115)
+    rv, so.fadeout_ms = r.ImGui_InputDouble(ctx, "##sfout", so.fadeout_ms, 0, 0, "%.1f ms")
+    so.fadeout_ms = math.max(0, so.fadeout_ms)
+  end
+
+  r.ImGui_Separator(ctx)
+  gain_shapes(sq.gains)
+  local labels = {}
+  for k = 1, sq.N do labels[k] = tostring(k) end
+  draw_gains(sq.gains, labels)
+
+  r.ImGui_Text(ctx, ("Result: %.2f s"):format(total))
+  draw_burst(plan, total, n_layers, t0)
+
+  r.ImGui_Separator(ctx)
+  -- per layer ---------------------------------------------------------------------
+  local COLS = { 150, 270, 335, 400, 465 }
+  r.ImGui_Text(ctx, "Layer")
+  r.ImGui_SameLine(ctx, COLS[1]); r.ImGui_Text(ctx, "Order")
+  r.ImGui_SameLine(ctx, COLS[2]); r.ImGui_Text(ctx, "Time +/-")
+  r.ImGui_SameLine(ctx, COLS[3]); r.ImGui_Text(ctx, "Gain +/-")
+  r.ImGui_SameLine(ctx, COLS[4]); r.ImGui_Text(ctx, "Pitch +/-")
+  r.ImGui_SameLine(ctx, COLS[5]); r.ImGui_Text(ctx, "Delay")
+  for li, L in ipairs(sq.layers) do
+    local lo = sq.lopt[L.guid]
+    r.ImGui_PushID(ctx, "layer" .. li)
+    r.ImGui_AlignTextToFramePadding(ctx)
+    local nm = L.name
+    if #nm > 20 then nm = nm:sub(1, 19) .. "~" end
+    r.ImGui_Text(ctx, ("%s (%d)"):format(nm, #L.shots))
+    if r.ImGui_IsItemHovered(ctx) then r.ImGui_SetTooltip(ctx, L.name) end
+    r.ImGui_SameLine(ctx, COLS[1])
+    r.ImGui_SetNextItemWidth(ctx, 115)
+    if r.ImGui_BeginCombo(ctx, "##order", SEQ_ORDERS[lo.order]) then
+      for i, name in ipairs(SEQ_ORDERS) do
+        if r.ImGui_Selectable(ctx, name, i == lo.order) then lo.order = i end
+      end
+      r.ImGui_EndCombo(ctx)
+    end
+    tooltip("Which shot sound plays where on this layer.\n" ..
+      "Shuffle mixes the shots up; \"last stays last\" keeps the tail shot at the end.")
+    r.ImGui_SameLine(ctx, COLS[2])
+    r.ImGui_SetNextItemWidth(ctx, 60)
+    rv, lo.jit_ms = r.ImGui_SliderDouble(ctx, "##jms", lo.jit_ms, 0, 20, "%.1fms")
+    r.ImGui_SameLine(ctx, COLS[3])
+    r.ImGui_SetNextItemWidth(ctx, 60)
+    rv, lo.jit_db = r.ImGui_SliderDouble(ctx, "##jdb", lo.jit_db, 0, 6, "%.1fdB")
+    r.ImGui_SameLine(ctx, COLS[4])
+    r.ImGui_SetNextItemWidth(ctx, 60)
+    rv, lo.jit_cents = r.ImGui_SliderDouble(ctx, "##jct", lo.jit_cents, 0, 200, "%.0fc")
+    r.ImGui_SameLine(ctx, COLS[5])
+    r.ImGui_SetNextItemWidth(ctx, 60)
+    rv, lo.delay_ms = r.ImGui_SliderDouble(ctx, "##dly", lo.delay_ms, -20, 20, "%.1fms")
+    tooltip("Shift this whole layer earlier or later.")
+    r.ImGui_PopID(ctx)
+  end
+  if r.ImGui_SmallButton(ctx, "Copy first layer to all") then
+    local first = sq.lopt[sq.layers[1].guid]
+    for _, L in ipairs(sq.layers) do
+      local lo = sq.lopt[L.guid]
+      for _, k in ipairs(LAYER_KEYS) do lo[k] = first[k] end
+    end
+  end
+  r.ImGui_SameLine(ctx)
+  if r.ImGui_SmallButton(ctx, "Reroll##seq") then so.seed = (so.seed % 99999) + 1 end
+  tooltip("New shuffle order and humanize values for every layer.")
+
+  r.ImGui_Separator(ctx)
+  local busy = r.ImGui_IsAnyItemActive(ctx) or r.ImGui_IsMouseDown(ctx, 0)
+  local cur = seq_sig(sq)
+  if opt.live and not busy and cur ~= sq.applied_sig then
+    apply_sequence(sq)
+    sq.applied_sig, sq.fresh = cur, false
+    status = "Sequence updated. Ctrl+Z to undo."
+    last_state = nil
+  end
+  r.ImGui_BeginDisabled(ctx, opt.live and cur == sq.applied_sig)
+  if r.ImGui_Button(ctx, "Apply", 150, 0) then
+    apply_sequence(sq)
+    sq.applied_sig, sq.fresh = cur, false
+    status = "Sequence updated. Ctrl+Z to undo."
+    last_state = nil
+  end
+  r.ImGui_EndDisabled(ctx)
+  r.ImGui_SameLine(ctx)
+  rv, opt.live = r.ImGui_Checkbox(ctx, "Live update", opt.live)
+  tooltip("Move the items every time you change a setting.")
+  r.ImGui_SameLine(ctx)
+  if r.ImGui_SmallButton(ctx, "Use current positions") then
+    seq = recapture_sequence(sq)
+    seq.applied_sig = seq_sig(seq)
+    status = "The items as they are now are the new starting point."
+    last_state = nil
+  end
+  tooltip("If you moved, trimmed or changed items by hand, take them as they are now\n" ..
+    "as the starting point (otherwise the next change puts them back).")
+  r.ImGui_TextWrapped(ctx, status)
 end
 
 local function draw()
   refresh_items()
+  if mode == "seq" and seq then return draw_seq() end
   local rv
 
   local sig = table.concat({ last_state, opt.rise_db, opt.floor_db, opt.min_ms, opt.preroll_ms }, "|")
@@ -1065,6 +1578,7 @@ local function draw()
     for _, a in ipairs(analysis.per) do total_found = total_found + #a.shots end
     r.ImGui_Text(ctx, ("%d shots found, %d used%s"):format(total_found, #pool,
       #pool < total_found and " (click a shot to use it again)" or ""))
+    if show_switch then draw_mode_switch() end
     if #items > 1 then
       local function item_text(i)
         local a = analysis.per[i]
@@ -1148,24 +1662,10 @@ local function draw()
   r.ImGui_Separator(ctx)
 
   -- Gain ------------------------------------------------------------------------
-  r.ImGui_Text(ctx, "Gain per shot")
-  r.ImGui_SameLine(ctx, LABEL_X)
-  local function shape(name, f)
-    if r.ImGui_SmallButton(ctx, name) then
-      local N = #gains
-      for k = 1, N do
-        gains[k] = clamp(f(N > 1 and (k - 1) / (N - 1) or 0, k), GAIN_MIN, GAIN_MAX)
-      end
-    end
-    r.ImGui_SameLine(ctx)
-  end
-  shape("Flat", function() return 0 end)
-  shape("Fade out", function(x) return -12 * x end)
-  shape("Fade in", function(x) return -12 * (1 - x) end)
-  shape("Accent 1st", function(_, k) return k == 1 and 3 or -2 end)
-  shape("Random", function() return -math.random() * 4 end)
-  r.ImGui_NewLine(ctx)
-  draw_gains(plan)
+  gain_shapes(gains)
+  local labels = {}
+  for k, sp in ipairs(plan) do labels[k] = sp.src.label end
+  draw_gains(gains, labels)
 
   -- Burst preview ----------------------------------------------------------------
   r.ImGui_Text(ctx, #plan > 0 and ("Burst: %d shots, %.2f s%s"):format(#plan, total,
