@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="037c3f7387f4d409504fe2a3e2ca9f53e6ea4e7c">
+<index version="1" name="Jay Sabins Scripts" commit="f78a597a9d6aa5b30c433bd35c88c69f6ac8f26e">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -59,85 +59,6 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/c856c6b670dd44e90ed324b442270fdbb0bbb0da/Items/jsabins_Build%20layer%20variations.lua</source>
       </version>
     </reapack>
-    <reapack name="jsabins_Build rapid-fire burst from shots.lua" type="script" desc="Build a rapid-fire burst from single shots (sausage file)">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 Select a "sausage" item holding a row of single shots (or several items, or shots you already split) and run the script. It finds every shot's transient and builds a rapid-fire burst out of them on a new track below, starting at the edit cursor.\par}
-{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Rate of fire in RPM or in ms between shots, with an optional ramp (spin-up / spin-down) to a second rate.\par}
-{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Number of shots and the order they're used in: in order, ping-pong, random (no shot twice in a row) or shuffled rounds.\par}
-{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Gain per shot: draw the gain of every shot with the mouse, or start from a preset shape (fade out, fade in, accent first, random) and tweak it.\par}
-{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Humanize timing, gain and pitch.\par}
-{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Shots can ring out over each other or be cut off by the next one.\par}
-{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Click a shot in the waveform to leave it out of the burst.\par}
-{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Shots can go on one track, or be spread over a folder of tracks so no two shots overlap and you can see each one in full.\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 With "Live update" on, the last burst you built is rebuilt every time you change a setting, so you can loop playback over it while you dial in the rate and gain. Each change is one undo step. Bursts remember their source and settings in the project: click any burst item to edit that burst again, even after closing the script.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Sequence mode: select shots that are already on the timeline, one item per shot and one track per layer (several items on a track switch to this mode on their own). The n-th item on every track is shot n. Change the rate of fire and gain per shot for the whole sequence, and per layer shuffle the shot order and humanize timing, gain and pitch. The items are moved in place and remember their original positions, so select any one of them later to keep editing.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Requires ReaImGui (install it from ReaPack).\par}
-}
-]]></description>
-      </metadata>
-      <version name="1.0.0" author="Jay Sabins" time="2026-11-11T20:50:08Z">
-        <changelog><![CDATA[First version.]]></changelog>
-        <source main="main">https://github.com/jaysabins/reascripts/raw/add57e8f12616c9d451d09b46c70e3900cd136a9/Items/jsabins_Build%20rapid-fire%20burst%20from%20shots.lua</source>
-      </version>
-      <version name="1.1.0" author="Jay Sabins" time="2026-11-12T00:46:04Z">
-        <changelog><![CDATA[Live update now survives closing and reopening the script, and clicking
-elsewhere in REAPER. Each burst remembers its source items and settings
-(saved in the project), so the last burst is picked up again when the script
-opens, and clicking any burst item makes that burst the one you're editing,
-with its settings loaded back into the window.
-New "Tracks" option: put each overlapping shot on its own track (in a folder)
-so you can see every shot in full when the tails ring out. Auto uses just
-enough tracks that no shots overlap; you can also use one track per shot.
-New sequence mode: select shots that are already laid out on the timeline
-(one item per shot, one track per layer, like a burst you built by hand) and
-re-time them in place: rate of fire, ramp, gain per shot, and per layer a
-shuffle of the shot order plus humanize timing, gain and pitch and a delay.
-The items remember where they started, so you can reselect the sequence (one
-item is enough) and keep editing it later.]]></changelog>
-        <source main="main">https://github.com/jaysabins/reascripts/raw/aa2cd358cb28ab24f0cf0ac051daf76922d2a97f/Items/jsabins_Build%20rapid-fire%20burst%20from%20shots.lua</source>
-      </version>
-    </reapack>
-    <reapack name="jsabins_Gun Builder.lua" type="script" desc="Gun Builder: single shots, bursts and full-auto sequences from gunshot recordings">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Gun Builder\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 A one-stop window for building gun sounds in REAPER. Pick a mode at the top:\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Single shots} (semi-auto): select every item of a rapid-fire session where each shot is one item per layer track, stacked so the layers start together. Gun Builder groups them into shots and spaces the shots out along the timeline with a gap, keeping each shot's layer offsets. Optional region per shot for rendering.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Burst}: select a sausage item (a row of single shots), or one sausage per layer track stacked so they play together (each shot then keeps all its layers). Gun Builder finds every shot's transient and builds bursts from them at the edit cursor: rounds per burst, rate of fire, how many bursts and the pause between them, gain per round.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Full auto}: the same from a sausage file, for any number of shots, with an optional ramp (spin-up / spin-down). Or select shots already laid out on the timeline (one item per shot, one track per layer) to re-time them in place.\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Tabs along the top each hold a whole setup (mode and every setting), saved with the project: + adds one, double-click renames, right-click for color, name, order and close. "Presets..." saves and loads named setups for any project.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 With Live update on, the burst you built rebuilds whenever you change a setting, so you can loop playback over it while you dial it in. Each change is one undo step.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Requires ReaImGui 0.9 or newer (install it from ReaPack).\par}
-}
-]]></description>
-      </metadata>
-      <version name="1.0.0" author="Jay Sabins" time="2026-11-12T17:46:16Z">
-        <changelog><![CDATA[First version. One window for building gun sounds, combining Rapid-Fire Builder
-and Spread Rapid-Fire Shots:
-- Single shots: space stacked layer shots out along the timeline (semi-auto).
-- Burst: build bursts (e.g. 3 rounds) from a sausage file, repeated with a pause.
-- Full auto: build a full-auto sequence from a sausage file, with an optional
-  spin-up/down ramp, or re-time shots already on the timeline in place.
-Preset tabs (each tab a whole setup), named presets, rounded window and a big
-close button.]]></changelog>
-        <source main="main">https://github.com/jaysabins/reascripts/raw/5c7894d02c1fab1da49e4f5440302b40bee69c01/Items/jsabins_Gun%20Builder.lua</source>
-      </version>
-      <version name="1.1.0" author="Jay Sabins" time="2026-11-12T18:47:05Z">
-        <changelog><![CDATA[Stacked sausages: select one sausage per layer track (stacked so they play together)
-and Burst / Full auto find the shots across all layers at once. Every shot is then
-built from all the layers, each layer on its own track named after its source, so the
-layers stay locked together. "Keep stacked layers together" turns it off to use every
-shot of every item as a separate building block, like before.]]></changelog>
-        <source main="main">https://github.com/jaysabins/reascripts/raw/037c3f7387f4d409504fe2a3e2ca9f53e6ea4e7c/Items/jsabins_Gun%20Builder.lua</source>
-      </version>
-    </reapack>
     <reapack name="jsabins_Measure timing between selected layers.lua" type="script" desc="Measure timing between selected layers (for Wwise initial delay)">
       <metadata>
         <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
@@ -156,44 +77,6 @@ shot of every item as a separate building block, like before.]]></changelog>
       <version name="1.0.0" author="Jay Sabins (based on a script by bfieser)" time="2026-11-06T23:58:03Z">
         <changelog><![CDATA[Initial release]]></changelog>
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/0d4a6366da4891f3d3f01e97cc10e9dec3e5c2e0/Items/jsabins_Measure%20timing%20between%20selected%20layers.lua</source>
-      </version>
-    </reapack>
-    <reapack name="jsabins_Split rapid-fire into single shots.lua" type="script" desc="Spread rapid-fire shots out along the timeline (groups stacked layers into shots)">
-      <metadata>
-        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
-{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
-\widowctrl\hyphauto
-
-{\pard \ql \f0 \sa180 \li0 \fi0 Select every item of a rapid-fire sequence (all layers, all shots) and run the script.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Items that start at (nearly) the same time are treated as one shot: those are the layers stacked vertically on the different tracks. The script finds each shot, then moves the shots apart so each one has its own spot on the timeline, with a gap you choose between the end of one shot and the start of the next. The layers inside a shot keep their exact offsets, and nothing is split, trimmed or faded.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 "Same shot" tolerance: how far apart two items can start and still count as the same shot. The window shows the shots it found, colored, before and after, so you can see the grouping is right before you apply it.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Options: create a region per shot (ready for rendering), move later items on the involved tracks out of the way. Fully undoable.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Requires ReaImGui (install it from ReaPack).\par}
-}
-]]></description>
-      </metadata>
-      <version name="1.0.0" author="Jay Sabins" time="2026-11-11T20:07:43Z">
-        <changelog><![CDATA[Initial release]]></changelog>
-        <source main="main">https://github.com/jaysabins/reascripts/raw/ec3b2b6ab9e2bcaf20f55932a7dc09a1354ee25d/Items/jsabins_Split%20rapid-fire%20into%20single%20shots.lua</source>
-      </version>
-      <version name="1.1.0" author="Jay Sabins" time="2026-11-11T20:20:45Z">
-        <changelog><![CDATA[New "Lock layers together" mode (on by default): when a burst is built from
-several layer tracks, the shot times are found once on a guide layer and every
-layer is cut at those same times, so shot 1 of every layer stays stacked,
-then shot 2, and so on. The guide is picked automatically (the layer with the
-sharpest attacks) or you can choose it. The preview shows the shared cut lines
-on whichever layer you're looking at.]]></changelog>
-        <source main="main">https://github.com/jaysabins/reascripts/raw/717395e642c5185b82fbd7d1824d5e98a50e2383/Items/jsabins_Split%20rapid-fire%20into%20single%20shots.lua</source>
-      </version>
-      <version name="2.0.0" author="Jay Sabins" time="2026-11-12T00:03:12Z">
-        <changelog><![CDATA[Reworked to match how rapid-fire sessions are actually built: no more splitting.
-Each shot is already its own set of files stacked across the layer tracks, so the
-script now groups the selected items into shots by start time (items that start
-together are one shot) and spaces those shots out along the timeline with a gap,
-keeping the timing between layers inside each shot exactly as it was.
-Before/after preview in the window, optional region per shot, later items on the
-tracks move out of the way.]]></changelog>
-        <source main="main">https://github.com/jaysabins/reascripts/raw/5db3251e226153eda4402c1ce0a8ce0f97b2de15/Items/jsabins_Split%20rapid-fire%20into%20single%20shots.lua</source>
       </version>
     </reapack>
   </category>
