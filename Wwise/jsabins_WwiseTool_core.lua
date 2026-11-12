@@ -694,9 +694,24 @@ local function source_channels(item)
   return r.GetMediaSourceNumChannels(r.GetMediaItemTake_Source(take))
 end
 
-local function is_folder_item(item)
+-- A folder item is an item on a folder track that plays nothing itself: no take, a take
+-- with an empty source, or an empty MIDI take (NVK Folder Items can give them takes for
+-- the name). With `any` set (Source: Folder items), every item on a folder track counts.
+local function is_folder_item(item, any)
   local tr = r.GetMediaItem_Track(item)
-  return r.GetMediaTrackInfo_Value(tr, "I_FOLDERDEPTH") == 1 and r.GetActiveTake(item) == nil
+  if r.GetMediaTrackInfo_Value(tr, "I_FOLDERDEPTH") ~= 1 then return false end
+  if any then return true end
+  local take = r.GetActiveTake(item)
+  if not take then return true end
+  local src = r.GetMediaItemTake_Source(take)
+  if not src then return true end
+  local typ = (r.GetMediaSourceType(src, "") or ""):upper()
+  if typ == "" or typ == "EMPTY" then return true end
+  if typ == "MIDI" and r.TakeIsMIDI(take) then
+    local _, notes, ccs, sysex = r.MIDI_CountEvts(take)
+    return (notes or 0) + (ccs or 0) + (sysex or 0) == 0
+  end
+  return false
 end
 
 -- Whole, unedited WAV with nothing applied: safe to import straight from disk.
@@ -861,7 +876,8 @@ local function track_is_under(tr, parent)
   return false
 end
 
--- Source "Folder items": keep only the selected folder items. A selected item (normal or
+-- Source "Folder items": keep only the selected folder items (any item on a folder track,
+-- whatever it holds, so NVK folder items with takes count). A selected item (normal or
 -- a nested folder item) on a track under a selected folder item's track, overlapping its
 -- time range, is part of that folder item's render, so it's dropped. That's what NVK Folder
 -- Items' auto-select adds when you click a folder item. Loose items not covered by a
@@ -869,7 +885,7 @@ end
 function M.folder_items_only(items)
   local folders = {}
   for _, it in ipairs(items) do
-    if is_folder_item(it) then
+    if is_folder_item(it, true) then
       local pos = r.GetMediaItemInfo_Value(it, "D_POSITION")
       folders[#folders + 1] = { item = it, track = r.GetMediaItem_Track(it), s = pos,
                                 e = pos + r.GetMediaItemInfo_Value(it, "D_LENGTH") }
@@ -897,7 +913,7 @@ local function plan_selected_items(s, snap)
   local entries, errors = {}, {}
   local normal, folders = {}, {}
   for _, it in ipairs(snap.items) do
-    if is_folder_item(it) then folders[#folders + 1] = it else normal[#normal + 1] = it end
+    if is_folder_item(it, s.source == "folders") then folders[#folders + 1] = it else normal[#normal + 1] = it end
   end
   local pattern = mapping_pattern(s)
   local need_resolve = pattern ~= nil or (s.originals_subfolder or "") ~= ""
@@ -1047,7 +1063,7 @@ function M.build_plan(s, conn)
     if #snap.items == 0 then return { {}, { "Select one or more items in REAPER." } } end
     if s.source == "folders" then
       local kept, _, nfolders = M.folder_items_only(snap.items)
-      if nfolders == 0 then return { {}, { "Source is Folder items: select one or more folder items in REAPER." } } end
+      if nfolders == 0 then return { {}, { "Source is Folder items: select one or more items on folder tracks in REAPER." } } end
       snap = setmetatable({ items = kept }, { __index = snap })
     end
     return { plan_selected_items(s, snap) }
