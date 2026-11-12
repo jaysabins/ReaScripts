@@ -1,8 +1,15 @@
 -- @description Build a rapid-fire burst from single shots (sausage file)
 -- @author Jay Sabins
--- @version 1.0.0
+-- @version 1.1.0
 -- @changelog
---   First version.
+--   Live update now survives closing and reopening the script, and clicking
+--   elsewhere in REAPER. Each burst remembers its source items and settings
+--   (saved in the project), so the last burst is picked up again when the script
+--   opens, and clicking any burst item makes that burst the one you're editing,
+--   with its settings loaded back into the window.
+--   New "Tracks" option: put each overlapping shot on its own track (in a folder)
+--   so you can see every shot in full when the tails ring out. Auto uses just
+--   enough tracks that no shots overlap; you can also use one track per shot.
 -- @about
 --   Select a "sausage" item holding a row of single shots (or several items, or
 --   shots you already split) and run the script. It finds every shot's transient
@@ -19,9 +26,14 @@
 --   - Shots can ring out over each other or be cut off by the next one.
 --   - Click a shot in the waveform to leave it out of the burst.
 --
+--   - Shots can go on one track, or be spread over a folder of tracks so no two
+--     shots overlap and you can see each one in full.
+--
 --   With "Live update" on, the last burst you built is rebuilt every time you
 --   change a setting, so you can loop playback over it while you dial in the
---   rate and gain. Each change is one undo step.
+--   rate and gain. Each change is one undo step. Bursts remember their source
+--   and settings in the project: click any burst item to edit that burst again,
+--   even after closing the script.
 --
 --   Requires ReaImGui (install it from ReaPack).
 
@@ -59,6 +71,12 @@ local function clamp(v, lo, hi) if v < lo then return lo elseif v > hi then retu
 ----------------------------------------------------------------------
 -- SETTINGS (remembered between runs)
 ----------------------------------------------------------------------
+local LANES = {
+  "One track",
+  "Auto (no overlaps)",
+  "One track per shot",
+}
+
 local ORDERS = {
   "In order (loops)",
   "Ping-pong",
@@ -81,6 +99,7 @@ local DEFAULTS = {
   order = 1,          -- index into ORDERS
   seed = 1,
   choke = false,      -- cut each shot off when the next one starts
+  lanes = 2,          -- 1 = one track, 2 = auto (no overlaps), 3 = one track per shot
   fadein_ms = 1,
   fadeout_ms = 15,
   jit_ms = 0,         -- humanize: timing
@@ -102,6 +121,7 @@ local function load_settings()
   end
   s.order = clamp(math.floor(s.order), 1, #ORDERS)
   s.count = clamp(math.floor(s.count), 1, MAX_COUNT)
+  s.lanes = clamp(math.floor(s.lanes), 1, 3)
   return s
 end
 
@@ -254,34 +274,68 @@ local function take_label(item)
   return name
 end
 
-local function is_burst_item(it)
-  local ok, v = r.GetSetMediaItemInfo_String(it, EXT_KEY, "", false)
-  return ok and v ~= ""
+local function item_guid(it)
+  return select(2, r.GetSetMediaItemInfo_String(it, "GUID", "", false))
 end
 
--- Selected items (bursts this script built are left out), by track then position.
-local function collect_items()
-  local items = {}
-  for i = 0, r.CountSelectedMediaItems(0) - 1 do
-    local it = r.GetSelectedMediaItem(0, i)
-    if not is_burst_item(it) then
-      local tr = r.GetMediaItem_Track(it)
-      items[#items + 1] = {
-        item = it, track = tr,
-        tidx = r.GetMediaTrackInfo_Value(tr, "IP_TRACKNUMBER"),
-        pos = pos_of(it), name = take_label(it),
-        guid = select(2, r.GetSetMediaItemInfo_String(it, "GUID", "", false)),
-      }
-    end
-  end
+local function burst_id_of(it)
+  local ok, v = r.GetSetMediaItemInfo_String(it, EXT_KEY, "", false)
+  if ok and v ~= "" then return v end
+end
+
+local function item_entry(it)
+  local tr = r.GetMediaItem_Track(it)
+  return {
+    item = it, track = tr,
+    tidx = r.GetMediaTrackInfo_Value(tr, "IP_TRACKNUMBER"),
+    pos = pos_of(it), name = take_label(it), guid = item_guid(it),
+  }
+end
+
+local function sort_items(items)
   table.sort(items, function(a, b)
     if a.tidx ~= b.tidx then return a.tidx < b.tidx end
     return a.pos < b.pos
   end)
+  return items
+end
+
+-- Selected source items (bursts left out), plus the id of the selected burst if
+-- the selection holds items of exactly one burst.
+local function collect_selection()
+  local items, ids, n_ids, last = {}, {}, 0, nil
+  for i = 0, r.CountSelectedMediaItems(0) - 1 do
+    local it = r.GetSelectedMediaItem(0, i)
+    local id = burst_id_of(it)
+    if id then
+      if not ids[id] then ids[id], n_ids, last = true, n_ids + 1, id end
+    else
+      items[#items + 1] = item_entry(it)
+    end
+  end
+  return sort_items(items), n_ids == 1 and last or nil
+end
+
+-- Items by GUID (the sources a burst remembers), skipping any that are gone.
+local function items_by_guid(guids)
+  local want, found = {}, {}
+  for _, g in ipairs(guids) do want[g] = true end
+  for i = 0, r.CountMediaItems(0) - 1 do
+    local it = r.GetMediaItem(0, i)
+    local g = item_guid(it)
+    if want[g] then found[g] = it end
+  end
+  local items = {}
+  for _, g in ipairs(guids) do
+    if found[g] then items[#items + 1] = item_entry(found[g]) end
+  end
+  return sort_items(items)
+end
+
+local function prune_cache(items)
   local keep = {}
   for _, e in ipairs(items) do keep[e.item] = true end
   for it in pairs(cache) do if not keep[it] then cache[it] = nil end end
-  return items
 end
 
 ----------------------------------------------------------------------
@@ -366,11 +420,12 @@ local function interval_at(o, k, N)
   return 60 / math.max(1, rpm)
 end
 
--- The burst as a list of { src, t, len, gain, cents } (t from the burst start).
+-- The burst as a list of { src, t, len, gain, cents, lane } (t from the burst start).
+-- Returns the list, the burst length and the number of tracks it needs.
 local function plan_burst(pool, o, gains)
   local P, N = #pool, o.count
   local out = {}
-  if P == 0 then return out, 0 end
+  if P == 0 then return out, 0, 1 end
   local rnd = make_rng(o.seed)
   local seq = sequence(P, N, o.order, rnd)
   local jt, jg, jp = make_rng(o.seed + 101), make_rng(o.seed + 202), make_rng(o.seed + 303)
@@ -402,7 +457,29 @@ local function plan_burst(pool, o, gains)
     s.len = math.max(0.005, l)
     total = math.max(total, s.t + s.len)
   end
-  return out, total
+
+  -- tracks: a shot may share a track with the one before it if it only
+  -- overlaps that shot's fade-out
+  local lanes = 1
+  if o.lanes == 3 then
+    for k, s in ipairs(out) do s.lane = k end
+    lanes = #out
+  elseif o.lanes == 2 then
+    local ends = {}
+    for _, s in ipairs(out) do
+      local lane
+      for li = 1, #ends do
+        if ends[li] <= s.t + 1e-6 then lane = li; break end
+      end
+      lane = lane or #ends + 1
+      s.lane = lane
+      ends[lane] = s.t + s.len - math.min(fout, s.len / 2)
+    end
+    lanes = math.max(1, #ends)
+  else
+    for _, s in ipairs(out) do s.lane = 1 end
+  end
+  return out, total, lanes
 end
 
 ----------------------------------------------------------------------
@@ -416,22 +493,147 @@ local function find_track(guid)
   end
 end
 
-local function delete_burst(tr, id)
-  for i = r.CountTrackMediaItems(tr) - 1, 0, -1 do
-    local it = r.GetTrackMediaItem(tr, i)
-    local ok, v = r.GetSetMediaItemInfo_String(it, EXT_KEY, "", false)
-    if ok and v == id then r.DeleteTrackMediaItem(tr, it) end
+-- Direct child tracks of a folder track.
+local function folder_kids(parent)
+  local kids = {}
+  if r.GetMediaTrackInfo_Value(parent, "I_FOLDERDEPTH") ~= 1 then return kids end
+  local i = math.floor(r.GetMediaTrackInfo_Value(parent, "IP_TRACKNUMBER"))
+  local depth = 1
+  while depth > 0 and i < r.CountTracks(0) do
+    local t = r.GetTrack(0, i)
+    if depth == 1 then kids[#kids + 1] = t end
+    depth = depth + r.GetMediaTrackInfo_Value(t, "I_FOLDERDEPTH")
+    i = i + 1
+  end
+  return kids
+end
+
+-- The burst track plus its child tracks.
+local function burst_tracks(parent)
+  local list = { parent }
+  for _, t in ipairs(folder_kids(parent)) do list[#list + 1] = t end
+  return list
+end
+
+-- Make sure the burst track has the child tracks a burst needs (empty extra ones
+-- are removed). Returns the tracks to put shots on, by lane.
+local function ensure_lanes(parent, n, name)
+  local kids = folder_kids(parent)
+  local pd = r.GetMediaTrackInfo_Value(parent, "I_FOLDERDEPTH")
+  local closing = #kids > 0 and r.GetMediaTrackInfo_Value(kids[#kids], "I_FOLDERDEPTH") or (pd - 1)
+  local want = n > 1 and n or 0
+
+  for i = #kids, want + 1, -1 do
+    if r.CountTrackMediaItems(kids[i]) == 0 then
+      r.DeleteTrack(kids[i])
+      table.remove(kids, i)
+    else
+      break
+    end
+  end
+  local base = math.floor(r.GetMediaTrackInfo_Value(parent, "IP_TRACKNUMBER"))
+  while #kids < want do
+    local idx = base + #kids
+    r.InsertTrackAtIndex(idx, true)
+    local t = r.GetTrack(0, idx)
+    r.GetSetMediaTrackInfo_String(t, "P_NAME", ("%s %d"):format(name, #kids + 1), true)
+    kids[#kids + 1] = t
+  end
+
+  if #kids == 0 then
+    r.SetMediaTrackInfo_Value(parent, "I_FOLDERDEPTH", closing + 1)
+  else
+    r.SetMediaTrackInfo_Value(parent, "I_FOLDERDEPTH", 1)
+    for i, t in ipairs(kids) do
+      r.SetMediaTrackInfo_Value(t, "I_FOLDERDEPTH", i == #kids and closing or 0)
+    end
+  end
+  if n <= 1 then return { parent } end
+  return kids
+end
+
+local function delete_burst(parent, id)
+  for _, tr in ipairs(burst_tracks(parent)) do
+    for i = r.CountTrackMediaItems(tr) - 1, 0, -1 do
+      local it = r.GetTrackMediaItem(tr, i)
+      if burst_id_of(it) == id then r.DeleteTrackMediaItem(tr, it) end
+    end
   end
 end
 
 local function burst_exists(b)
-  local tr = find_track(b and b.track_guid)
-  if not tr then return false end
-  for i = 0, r.CountTrackMediaItems(tr) - 1 do
-    local ok, v = r.GetSetMediaItemInfo_String(r.GetTrackMediaItem(tr, i), EXT_KEY, "", false)
-    if ok and v == b.id then return true end
+  local parent = find_track(b and b.track_guid)
+  if not parent then return false end
+  for _, tr in ipairs(burst_tracks(parent)) do
+    for i = 0, r.CountTrackMediaItems(tr) - 1 do
+      if burst_id_of(r.GetTrackMediaItem(tr, i)) == b.id then return true end
+    end
   end
   return false
+end
+
+----------------------------------------------------------------------
+-- BURST MEMORY (saved in the project, so a burst can be edited again later)
+----------------------------------------------------------------------
+local function list_csv(s)
+  local t = {}
+  for v in (s or ""):gmatch("[^,]+") do t[#t + 1] = v end
+  return t
+end
+
+local function store_burst(b, o, gains, excluded, sources)
+  local lines = {
+    "track=" .. b.track_guid,
+    ("pos=%.10f"):format(b.pos),
+    "name=" .. b.name,
+    "region=" .. (b.region_name or ""),
+    "sources=" .. table.concat(sources, ","),
+  }
+  for k, def in pairs(DEFAULTS) do
+    local v = o[k]
+    if type(def) == "boolean" then v = v and "1" or "0" end
+    lines[#lines + 1] = "o_" .. k .. "=" .. tostring(v)
+  end
+  local g = {}
+  for i, v in ipairs(gains) do g[i] = ("%.2f"):format(v) end
+  lines[#lines + 1] = "gains=" .. table.concat(g, ",")
+  local ex = {}
+  for key in pairs(excluded) do ex[#ex + 1] = key end
+  lines[#lines + 1] = "excluded=" .. table.concat(ex, ",")
+  r.SetProjExtState(0, SECTION, "burst_" .. b.id, table.concat(lines, "\n"))
+  r.SetProjExtState(0, SECTION, "last", b.id)
+end
+
+-- Returns burst, settings, gains, excluded, or nil if the project has no record of it.
+local function load_burst(id)
+  local rv, s = r.GetProjExtState(0, SECTION, "burst_" .. id)
+  if rv == 0 or s == "" then return nil end
+  local f = {}
+  for line in s:gmatch("[^\n]+") do
+    local k, v = line:match("^([%w_]+)=(.*)$")
+    if k then f[k] = v end
+  end
+  if not f.track then return nil end
+  local b = {
+    id = id, track_guid = f.track, pos = tonumber(f.pos) or 0, name = f.name or "",
+    region_name = (f.region and f.region ~= "") and f.region or nil,
+    sources = list_csv(f.sources),
+  }
+  local o = {}
+  for k, def in pairs(DEFAULTS) do
+    local v = f["o_" .. k]
+    if v == nil then o[k] = def
+    elseif type(def) == "boolean" then o[k] = v == "1"
+    else o[k] = tonumber(v) or def end
+  end
+  o.order = clamp(math.floor(o.order), 1, #ORDERS)
+  o.count = clamp(math.floor(o.count), 1, MAX_COUNT)
+  o.lanes = clamp(math.floor(o.lanes), 1, 3)
+  local g = {}
+  for i, v in ipairs(list_csv(f.gains)) do g[i] = clamp(tonumber(v) or 0, GAIN_MIN, GAIN_MAX) end
+  local ex = {}
+  for _, key in ipairs(list_csv(f.excluded)) do ex[key] = true end
+  return b, o, g, ex
 end
 
 -- Copy of a source item, with fresh GUIDs and unselected.
@@ -502,37 +704,41 @@ end
 local burst_track_guid = nil
 
 local function build(pool, o, gains, b, src_track, name)
-  local plan, total = plan_burst(pool, o, gains)
+  local plan, total, n_lanes = plan_burst(pool, o, gains)
   if #plan == 0 then return b, 0 end
 
   r.Undo_BeginBlock()
   r.PreventUIRefresh(1)
 
   local fresh = not b
-  local tr = b and find_track(b.track_guid)
-  if b and not tr then fresh = true end
+  local parent = b and find_track(b.track_guid)
+  if b and not parent then fresh = true end
   if fresh then
-    tr = find_track(burst_track_guid)
-    if not tr then
+    parent = find_track(burst_track_guid)
+    if not parent then
       local idx = math.floor(r.GetMediaTrackInfo_Value(src_track, "IP_TRACKNUMBER"))
       r.InsertTrackAtIndex(idx, true)
-      tr = r.GetTrack(0, idx)
-      r.GetSetMediaTrackInfo_String(tr, "P_NAME", name .. " burst", true)
+      parent = r.GetTrack(0, idx)
+      r.GetSetMediaTrackInfo_String(parent, "P_NAME", name .. " burst", true)
     end
-    b = { track_guid = r.GetTrackGUID(tr), id = new_id(), pos = r.GetCursorPosition() }
+    b = { track_guid = r.GetTrackGUID(parent), id = new_id(), pos = r.GetCursorPosition(), name = name }
   else
-    delete_burst(tr, b.id)
+    delete_burst(parent, b.id)
   end
   burst_track_guid = b.track_guid
 
+  local _, pname = r.GetSetMediaTrackInfo_String(parent, "P_NAME", "", false)
+  local lanes = ensure_lanes(parent, n_lanes, pname ~= "" and pname or (b.name .. " burst"))
   local chunk_cache = {}
-  for _, s in ipairs(plan) do place_shot(tr, chunk_cache, s, b.pos, o, b.id) end
+  for _, s in ipairs(plan) do
+    place_shot(lanes[s.lane] or lanes[#lanes], chunk_cache, s, b.pos, o, b.id)
+  end
 
   local num = find_region(b)
   if num then r.DeleteProjectMarker(0, num, true) end
   b.region_name = nil
   if o.region then
-    b.region_name = name .. " burst"
+    b.region_name = b.name .. " burst"
     r.AddProjectMarker2(0, true, b.pos, b.pos + total, b.region_name, -1, 0)
   end
 
@@ -569,13 +775,70 @@ local COL_BAR_HOT = 0xFFD070FF
 local COL_ZERO    = 0xFFFFFF50
 local SHOT_COLS = { 0x5FB4C8FF, 0xE0A040FF, 0x8BC34AFF, 0xD07AD0FF, 0xE06060FF, 0x7090E0FF }
 
+-- Changing any setting rebuilds a live burst; changing the selection alone doesn't.
+local function burst_sig()
+  local p = {}
+  for k, v in pairs(opt) do
+    if k ~= "live" and k ~= "use_ms" then p[#p + 1] = k .. "=" .. tostring(v) end
+  end
+  table.sort(p)
+  for _, g in ipairs(gains) do p[#p + 1] = ("%.2f"):format(g) end
+  local ex = {}
+  for key in pairs(excluded) do ex[#ex + 1] = key end
+  table.sort(ex)
+  p[#p + 1] = table.concat(ex, ",")
+  return table.concat(p, "|")
+end
+
+local memo_sig = nil
+
+-- Make an existing burst the one being edited, with its own settings.
+local function attach(id)
+  local b, o, g, ex = load_burst(id)
+  if not b or not burst_exists(b) then return false end
+  o.live, o.use_ms = opt.live, opt.use_ms -- these stay as the user has them
+  burst, opt, excluded = b, o, ex
+  gains = resample(g, opt.count)
+  burst_track_guid = b.track_guid
+  built_sig = burst_sig()
+  memo_sig = nil
+  status = "Editing the selected burst. Changes update it live."
+  return true
+end
+
+local function same_sources(sel, guids)
+  if #sel ~= #guids then return false end
+  local set = {}
+  for _, g in ipairs(guids) do set[g] = true end
+  for _, e in ipairs(sel) do if not set[e.guid] then return false end end
+  return true
+end
+
+-- Works out the source items from the selection:
+--   source items selected  -> those (a different source lets go of the current burst)
+--   one burst selected     -> that burst becomes the one being edited
+--   nothing useful         -> the current burst's own source items
 local function refresh_items()
   local state = r.GetProjectStateChangeCount(0)
   if state == last_state then return end
   last_state = state
-  items = collect_items()
-  if preview_idx > #items then preview_idx = math.max(1, #items) end
   if burst and not burst_exists(burst) then burst = nil end
+
+  local sel, sel_burst = collect_selection()
+  if #sel == 0 and sel_burst and not (burst and burst.id == sel_burst) then attach(sel_burst) end
+  if #sel > 0 then
+    if burst and not same_sources(sel, burst.sources) then
+      burst = nil
+      status = "New source selected: Build makes a new burst."
+    end
+    items = sel
+  elseif burst then
+    items = items_by_guid(burst.sources)
+  else
+    items = {}
+  end
+  prune_cache(items)
+  if preview_idx > #items then preview_idx = math.max(1, #items) end
 end
 
 local function label(text)
@@ -591,7 +854,7 @@ end
 local function shot_key(e, k) return (e.guid or tostring(e.item)) .. ":" .. k end
 
 -- Detection on every selected item; builds the shot pool.
-local memo_sig, analysis = nil, { per = {}, pool = {} }
+local analysis = { per = {}, pool = {} }
 
 local function analyse()
   local per, pool = {}, {}
@@ -734,21 +997,24 @@ local function draw_gains(plan)
 end
 
 -- Timeline view of the burst that will be built.
-local function draw_burst(plan, total)
+local function draw_burst(plan, total, n_lanes)
   local dl = r.ImGui_GetWindowDrawList(ctx)
   local x0, y0 = r.ImGui_GetCursorScreenPos(ctx)
-  local H = 60
+  local H = clamp(n_lanes * 14, 60, 180)
+  local LH = H / n_lanes
   r.ImGui_DrawList_AddRectFilled(dl, x0, y0, x0 + W, y0 + H, COL_BG)
   if total > 0 then
     local function tx(t) return x0 + t / total * W end
     for k, s in ipairs(plan) do
-      local h = clamp((s.gain - GAIN_MIN) / (GAIN_MAX - GAIN_MIN), 0.05, 1) * (H - 4)
+      local lane = math.min(s.lane or 1, n_lanes)
+      local yb = y0 + lane * LH
+      local h = clamp((s.gain - GAIN_MIN) / (GAIN_MAX - GAIN_MIN), 0.05, 1) * (LH - 2)
       local col = SHOT_COLS[(s.idx - 1) % #SHOT_COLS + 1]
       local xa = tx(s.t)
-      r.ImGui_DrawList_AddRectFilled(dl, xa, y0 + H - h, math.max(xa + 1, tx(s.t + s.len)), y0 + H,
+      r.ImGui_DrawList_AddRectFilled(dl, xa, yb - h, math.max(xa + 1, tx(s.t + s.len)), yb,
         (col & 0xFFFFFF00) | 0x50)
-      r.ImGui_DrawList_AddLine(dl, xa, y0 + H - h, xa, y0 + H, col, 1)
-      if k == 1 or tx(s.t) - tx(plan[k - 1].t) > 14 then
+      r.ImGui_DrawList_AddLine(dl, xa, yb - h, xa, yb, col, 1)
+      if n_lanes == 1 and (k == 1 or tx(s.t) - tx(plan[k - 1].t) > 14) then
         r.ImGui_DrawList_AddText(dl, xa + 2, y0 + 2, COL_TEXT, s.src.label)
       end
     end
@@ -758,21 +1024,6 @@ local function draw_burst(plan, total)
     r.ImGui_SetTooltip(ctx, "The burst: each block is one shot, its height shows the gain,\n" ..
       "the number is the source shot it uses.")
   end
-end
-
--- Changing any setting rebuilds a live burst; changing the selection alone doesn't.
-local function burst_sig()
-  local p = {}
-  for k, v in pairs(opt) do
-    if k ~= "live" and k ~= "use_ms" then p[#p + 1] = k .. "=" .. tostring(v) end
-  end
-  table.sort(p)
-  for _, g in ipairs(gains) do p[#p + 1] = ("%.2f"):format(g) end
-  local ex = {}
-  for key in pairs(excluded) do ex[#ex + 1] = key end
-  table.sort(ex)
-  p[#p + 1] = table.concat(ex, ",")
-  return table.concat(p, "|")
 end
 
 local function rate_slider(id, key)
@@ -801,7 +1052,7 @@ local function draw()
   end
   local pool = analysis.pool
   if #gains ~= opt.count then gains = resample(gains, opt.count) end
-  local plan, total = plan_burst(pool, opt, gains)
+  local plan, total, n_lanes = plan_burst(pool, opt, gains)
 
   -- Source --------------------------------------------------------------------
   if #items == 0 then
@@ -917,8 +1168,9 @@ local function draw()
   draw_gains(plan)
 
   -- Burst preview ----------------------------------------------------------------
-  r.ImGui_Text(ctx, #plan > 0 and ("Burst: %d shots, %.2f s"):format(#plan, total) or "Burst")
-  draw_burst(plan, total)
+  r.ImGui_Text(ctx, #plan > 0 and ("Burst: %d shots, %.2f s%s"):format(#plan, total,
+    n_lanes > 1 and (", on %d tracks"):format(n_lanes) or "") or "Burst")
+  draw_burst(plan, total, n_lanes)
 
   r.ImGui_Separator(ctx)
 
@@ -929,6 +1181,18 @@ local function draw()
   r.ImGui_SameLine(ctx)
   if r.ImGui_RadioButton(ctx, "Cut at next shot", opt.choke) then opt.choke = true end
   tooltip("Each shot fades out as the next one starts (the last shot rings out).")
+
+  label("Tracks")
+  r.ImGui_SetNextItemWidth(ctx, 240)
+  if r.ImGui_BeginCombo(ctx, "##lanes", LANES[opt.lanes]) then
+    for i, name in ipairs(LANES) do
+      if r.ImGui_Selectable(ctx, name, i == opt.lanes) then opt.lanes = i end
+    end
+    r.ImGui_EndCombo(ctx)
+  end
+  tooltip("Where the shots go. Spread over several tracks (in a folder under the\n" ..
+    "burst track) so overlapping tails don't hide each other.\n" ..
+    "Auto uses just enough tracks that no two shots overlap.")
 
   label("Fade in / out")
   r.ImGui_SetNextItemWidth(ctx, 115)
@@ -962,6 +1226,7 @@ local function draw()
   if opt.live and burst and #plan > 0 and not busy and cur_sig ~= built_sig then
     burst = build(pool, opt, gains, burst, src_track, src_name)
     built_sig = cur_sig
+    store_burst(burst, opt, gains, excluded, burst.sources)
     save_settings(opt, gains)
     status = "Burst updated. Ctrl+Z to undo."
     last_state = nil
@@ -971,7 +1236,10 @@ local function draw()
   if r.ImGui_Button(ctx, burst and "Build new burst" or "Build burst", 150, 0) then
     local n
     burst, n = build(pool, opt, gains, nil, src_track, src_name)
+    burst.sources = {}
+    for i, e in ipairs(items) do burst.sources[i] = e.guid end
     built_sig = cur_sig
+    store_burst(burst, opt, gains, excluded, burst.sources)
     save_settings(opt, gains)
     status = ("Built %d shots at the edit cursor."):format(n)
     last_state = nil
@@ -981,7 +1249,8 @@ local function draw()
   r.ImGui_SameLine(ctx)
   rv, opt.live = r.ImGui_Checkbox(ctx, "Live update", opt.live)
   tooltip("Rebuild the last burst every time you change a setting\n" ..
-    "(loop playback over it to hear changes as you make them).")
+    "(loop playback over it to hear changes as you make them).\n" ..
+    "Click any burst item in the arrange view to edit that burst again.")
   if burst and opt.live then
     r.ImGui_SameLine(ctx)
     if r.ImGui_SmallButton(ctx, "Let go") then burst = nil; status = "Burst kept as it is." end
@@ -1004,6 +1273,12 @@ local function loop()
   else
     save_settings(opt, gains)
   end
+end
+
+-- pick up the last burst of this project, so live update carries on after reopening
+do
+  local rv, id = r.GetProjExtState(0, SECTION, "last")
+  if rv ~= 0 and id ~= "" then attach(id) end
 end
 
 r.defer(loop)
