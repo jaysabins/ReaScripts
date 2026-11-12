@@ -1,8 +1,9 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.16.10
+-- @version 1.17.0
 -- @changelog
---   The close button is dark gray and only turns red when you hover over it.
+--   New Source: "Folder items". Only the selected folder items are sent, and any
+--   selected items inside them are ignored, so NVK Folder Items' auto-select can stay on.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -11,8 +12,9 @@
 --
 --   Send audio from REAPER straight into Wwise. Built with Lua and ReaImGui.
 --
---   - Source: the selected items, or whatever REAPER's render settings produce
---     (regions, stems, region matrix...).
+--   - Source: the selected items, just the selected folder items (child items
+--     ignored, for NVK Folder Items' auto-select), or whatever REAPER's render
+--     settings produce (regions, stems, region matrix...).
 --   - Import destination: type a Wwise path or grab the Wwise selection.
 --   - Hierarchy mapping: build Wwise containers above each Sound
 --     (Actor-Mixers, Random/Sequence/Switch/Blend Containers, Virtual Folders,
@@ -529,9 +531,21 @@ end
 local function section_source()
   ImGui.SeparatorText(ctx, "Source")
   local changed
-  changed, S.source = combo("##source", { { "items", "Selected items" }, { "render", "REAPER render settings (regions, stems, matrix...)" } }, S.source, -1)
+  changed, S.source = combo("##source", { { "items", "Selected items" }, { "folders", "Folder items (ignore their child items)" },
+    { "render", "REAPER render settings (regions, stems, matrix...)" } }, S.source, -1)
   if changed then settings_changed() end
-  if S.source == "render" then
+  if ImGui.IsItemHovered(ctx) then
+    ImGui.SetTooltip(ctx, "Selected items: every selected item is sent.\n" ..
+      "Folder items: only the selected folder items are sent, each as one render of its folder.\n" ..
+      "Selected items under them (like the child items NVK Folder Items' auto-select picks)\n" ..
+      "are left out, so you can keep auto-select on.\n" ..
+      "Render settings: whatever REAPER's render dialog is set to produce.")
+  end
+  if S.source == "folders" then
+    ImGui.PushTextWrapPos(ctx, 0)
+    dim_label("Only folder items are sent. Selected items inside them are ignored, so NVK auto-select can stay on.")
+    ImGui.PopTextWrapPos(ctx)
+  elseif S.source == "render" then
     if ImGui.Button(ctx, "Render settings...") then r.Main_OnCommand(40015, 0) end
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Region matrix...") then r.Main_OnCommand(41888, 0) end
@@ -840,7 +854,7 @@ local function section_hierarchy()
     end
     ImGui.TableNextColumn(ctx)
     ImGui.SetNextItemWidth(ctx, -28)
-    local ch, v = ImGui.InputTextWithHint(ctx, "##leafname", S.source == "items" and "(item name)" or "(rendered file name)", S.leaf.name)
+    local ch, v = ImGui.InputTextWithHint(ctx, "##leafname", S.source ~= "render" and "(item name)" or "(rendered file name)", S.leaf.name)
     if ch then S.leaf.name = v; settings_changed() end
     wildcard_menu("leaf", function(w) S.leaf.name = S.leaf.name .. w end)
     ImGui.TableNextColumn(ctx)

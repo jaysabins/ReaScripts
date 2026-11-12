@@ -119,6 +119,7 @@ Choose what gets sent:
   - An item that plays a whole, untouched WAV (no trims, fades, FX, pitch, rate or volume changes) is imported straight from disk.
   - Edited items render together in one pass, with their trims, fades, take FX, pitch and rate.
   - An empty item on a folder track renders the folder's mix (the folder track and its children) over that item's time range. It's named after the item's name or its notes.
+- **Folder items (ignore their child items)** sends only the selected folder items, each rendered as the folder's mix like above. Any selected item sitting inside one of them (on a track under the folder item's track, overlapping its time range) is left out, and so is a nested folder item inside it. This is for NVK Folder Items with **auto-select** on: clicking a folder item also selects its child items, and in **Selected items** mode those children would be sent too. A selected item that isn't inside any selected folder item is still sent.
 - **REAPER render settings** sends whatever your render dialog is set to produce, such as regions, stems or the region render matrix. The files render to wherever your render settings say, and are imported from there. The **Render settings...** and **Region matrix...** buttons open those REAPER windows.
 
 The Sound's name comes from the item's take name (or the rendered file's name in render settings mode), unless you give the Sound level a name pattern (see below).
@@ -271,7 +272,7 @@ Afterwards a summary shows the destination, the number of files imported, object
 The gear button opens **Settings**, split into tabs. The window keeps its size as you switch tabs; drag its corner to make it bigger, and a long tab scrolls.
 
 - **Connection:** the WAAPI HTTP port (8090 by default, must match Wwise) and **Reconnect**.
-- **Rendering** (for Source: Selected items):
+- **Rendering** (for Source: Selected items or Folder items):
   - **Import untouched WAV files directly (no render).** Turn it off to always render.
   - **Render items through track FX and master.** Off renders just the items.
   - **Render folder items through master.**
