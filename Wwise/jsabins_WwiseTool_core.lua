@@ -9,7 +9,21 @@ M.EXT = "jsabins_WwiseTool"
 -- are copied over once; per-project settings are read from it when a project has
 -- none under the new key yet.
 M.OLD_EXT = "JS_WwiseTransfer"
-M.VERSION = "1.18.0"
+M.VERSION = "1.18.2"
+-- Show the version from the window script's own @version header, so the two can't drift.
+do
+  local dir = debug.getinfo(1, "S").source:match("^@?(.*[\\/])") or ""
+  local f = io.open(dir .. "jsabins_Wwise Tool.lua", "r")
+  if f then
+    for _ = 1, 10 do
+      local line = f:read("l")
+      if not line then break end
+      local v = line:match("^%-%-%s*@version%s+(%S+)")
+      if v then M.VERSION = v; break end
+    end
+    f:close()
+  end
+end
 
 for _, key in ipairs({ "last_settings", "presets", "view" }) do
   if r.GetExtState(M.EXT, key) == "" then
@@ -1915,13 +1929,13 @@ local function do_render(s, plan)
     end
     -- Several folder items render in one pass through the region render matrix: a temporary
     -- region per folder item (named after its token), with only its folder track ticked.
-    -- "Through master" has no matrix equivalent we can rely on, so it renders one at a time.
+    -- "Through master" uses "Region render matrix via master" (matrix flag 8 + via-master 128).
     local folder_list = {}
     for _, e in ipairs(renders) do if e.kind == "folder" then folder_list[#folder_list + 1] = e end end
     local batched = false
-    if #folder_list > 1 and not s.folders_via_master then
+    if #folder_list > 1 then
       batched = render_folders_batched(folder_list, function()
-        set_n("RENDER_SETTINGS", 8)    -- region render matrix
+        set_n("RENDER_SETTINGS", s.folders_via_master and 136 or 8) -- region render matrix (via master)
         set_n("RENDER_BOUNDSFLAG", 3)  -- all project regions (only matrix-ticked ones render)
         note_targets(prefix .. "$region")
         M.render_command()
