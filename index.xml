@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="5c7894d02c1fab1da49e4f5440302b40bee69c01">
+<index version="1" name="Jay Sabins Scripts" commit="037c3f7387f4d409504fe2a3e2ca9f53e6ea4e7c">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -110,7 +110,7 @@ item is enough) and keep editing it later.]]></changelog>
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Gun Builder\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 A one-stop window for building gun sounds in REAPER. Pick a mode at the top:\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Single shots} (semi-auto): select every item of a rapid-fire session where each shot is one item per layer track, stacked so the layers start together. Gun Builder groups them into shots and spaces the shots out along the timeline with a gap, keeping each shot's layer offsets. Optional region per shot for rendering.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Burst}: select a sausage item (a row of single shots). Gun Builder finds every shot's transient and builds bursts from them at the edit cursor: rounds per burst, rate of fire, how many bursts and the pause between them, gain per round.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Burst}: select a sausage item (a row of single shots), or one sausage per layer track stacked so they play together (each shot then keeps all its layers). Gun Builder finds every shot's transient and builds bursts from them at the edit cursor: rounds per burst, rate of fire, how many bursts and the pause between them, gain per round.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Full auto}: the same from a sausage file, for any number of shots, with an optional ramp (spin-up / spin-down). Or select shots already laid out on the timeline (one item per shot, one track per layer) to re-time them in place.\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Tabs along the top each hold a whole setup (mode and every setting), saved with the project: + adds one, double-click renames, right-click for color, name, order and close. "Presets..." saves and loads named setups for any project.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 With Live update on, the burst you built rebuilds whenever you change a setting, so you can loop playback over it while you dial it in. Each change is one undo step.\par}
@@ -128,6 +128,14 @@ and Spread Rapid-Fire Shots:
 Preset tabs (each tab a whole setup), named presets, rounded window and a big
 close button.]]></changelog>
         <source main="main">https://github.com/jaysabins/reascripts/raw/5c7894d02c1fab1da49e4f5440302b40bee69c01/Items/jsabins_Gun%20Builder.lua</source>
+      </version>
+      <version name="1.1.0" author="Jay Sabins" time="2026-11-12T18:47:05Z">
+        <changelog><![CDATA[Stacked sausages: select one sausage per layer track (stacked so they play together)
+and Burst / Full auto find the shots across all layers at once. Every shot is then
+built from all the layers, each layer on its own track named after its source, so the
+layers stay locked together. "Keep stacked layers together" turns it off to use every
+shot of every item as a separate building block, like before.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/037c3f7387f4d409504fe2a3e2ca9f53e6ea4e7c/Items/jsabins_Gun%20Builder.lua</source>
       </version>
     </reapack>
     <reapack name="jsabins_Measure timing between selected layers.lua" type="script" desc="Measure timing between selected layers (for Wwise initial delay)">
