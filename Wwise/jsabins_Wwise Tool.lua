@@ -1,10 +1,9 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.18.1
+-- @version 1.18.2
 -- @changelog
---   Several folder items now render in one pass (through a temporary region render
---   matrix) instead of opening the render window once per folder item. "Render folder
---   items through master" still renders them one at a time.
+--   The version shown in the window (and the diagnostics log) now matches the package
+--   version. 1.17.x and 1.18.1 still showed an older number there.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua

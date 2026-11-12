@@ -9,7 +9,21 @@ M.EXT = "jsabins_WwiseTool"
 -- are copied over once; per-project settings are read from it when a project has
 -- none under the new key yet.
 M.OLD_EXT = "JS_WwiseTransfer"
-M.VERSION = "1.18.0"
+M.VERSION = "1.18.2"
+-- Show the version from the window script's own @version header, so the two can't drift.
+do
+  local dir = debug.getinfo(1, "S").source:match("^@?(.*[\\/])") or ""
+  local f = io.open(dir .. "jsabins_Wwise Tool.lua", "r")
+  if f then
+    for _ = 1, 10 do
+      local line = f:read("l")
+      if not line then break end
+      local v = line:match("^%-%-%s*@version%s+(%S+)")
+      if v then M.VERSION = v; break end
+    end
+    f:close()
+  end
+end
 
 for _, key in ipairs({ "last_settings", "presets", "view" }) do
   if r.GetExtState(M.EXT, key) == "" then
