@@ -1,11 +1,10 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.18.2
+-- @version 1.18.3
 -- @changelog
---   Folder items render in one pass with "Render folder items through master" on too
---   (region render matrix via master).
---   The version shown in the window (and the diagnostics log) now matches the package
---   version. 1.17.x and 1.18.1 still showed an older number there.
+--   Settings > Diagnostics > "Copy last render log" lists what the last transfer
+--   rendered (tracks, temporary regions, render settings, files), to track down the
+--   missing FX on folder items rendered through master.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1630,6 +1629,11 @@ local function settings_diagnostics()
   end
   ImGui.SameLine(ctx)
   if ImGui.Button(ctx, "Clear log") then slow_log = {} end
+  ImGui.Dummy(ctx, 0, 6)
+  ImGui.TextColored(ctx, COLOR_DIM, string.format("Last transfer's render: %d line(s).", #core.render_log))
+  if ImGui.Button(ctx, "Copy last render log") then
+    ImGui.SetClipboardText(ctx, "Wwise Tool " .. core.VERSION .. " render log\n" .. table.concat(core.render_log, "\n"))
+  end
 end
 
 local SETTINGS_TABS = {
