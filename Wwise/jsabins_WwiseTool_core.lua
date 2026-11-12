@@ -1807,6 +1807,50 @@ local function parse_render_stats(stats)
   return files
 end
 
+-- Render folder items in one pass: park the project's own region render matrix, add one
+-- temporary region per folder item with only its track ticked, run `render`, then remove the
+-- temporary regions and put the matrix back. Returns true when the render ran.
+local function render_folders_batched(list, render)
+  local saved = {}
+  local i = 0
+  while true do
+    local ret, isrgn, _, _, _, idx = r.EnumProjectMarkers3(0, i)
+    if ret == 0 then break end
+    if isrgn then
+      local tracks, j = {}, 0
+      while true do
+        local tr = r.EnumRegionRenderMatrix(0, idx, j)
+        if not tr then break end
+        tracks[#tracks + 1] = tr
+        j = j + 1
+      end
+      if #tracks > 0 then saved[#saved + 1] = { idx = idx, tracks = tracks } end
+    end
+    i = i + 1
+  end
+  for _, sv in ipairs(saved) do
+    for _, tr in ipairs(sv.tracks) do r.SetRegionRenderMatrix(0, sv.idx, tr, -1) end
+  end
+  local temp = {}
+  local ok, err = pcall(function()
+    for _, e in ipairs(list) do
+      local idx = r.AddProjectMarker2(0, true, e.pos, e.pos + e.len, e.token, -1, 0)
+      if idx < 0 then error("couldn't add a temporary region") end
+      temp[#temp + 1] = idx
+      r.SetRegionRenderMatrix(0, idx, e.track, 1)
+    end
+    render()
+  end)
+  for _, idx in ipairs(temp) do r.DeleteProjectMarker(0, idx, true) end
+  for _, sv in ipairs(saved) do
+    for _, tr in ipairs(sv.tracks) do
+      if tr == r.GetMasterTrack(0) or r.ValidatePtr(tr, "MediaTrack*") then r.SetRegionRenderMatrix(0, sv.idx, tr, 1) end
+    end
+  end
+  if not ok then error(err, 0) end
+  return true
+end
+
 local function do_render(s, plan)
   local renders = {}
   for _, e in ipairs(plan.entries) do
@@ -1869,8 +1913,22 @@ local function do_render(s, plan)
       note_targets(prefix .. "$item")
       M.render_command()
     end
+    -- Several folder items render in one pass through the region render matrix: a temporary
+    -- region per folder item (named after its token), with only its folder track ticked.
+    -- "Through master" has no matrix equivalent we can rely on, so it renders one at a time.
+    local folder_list = {}
+    for _, e in ipairs(renders) do if e.kind == "folder" then folder_list[#folder_list + 1] = e end end
+    local batched = false
+    if #folder_list > 1 and not s.folders_via_master then
+      batched = render_folders_batched(folder_list, function()
+        set_n("RENDER_SETTINGS", 8)    -- region render matrix
+        set_n("RENDER_BOUNDSFLAG", 3)  -- all project regions (only matrix-ticked ones render)
+        note_targets(prefix .. "$region")
+        M.render_command()
+      end)
+    end
     for _, e in ipairs(renders) do
-      if e.kind == "folder" then
+      if e.kind == "folder" and not batched then
         r.SetOnlyTrackSelected(e.track)
         set_n("RENDER_SETTINGS", s.folders_via_master and 128 or 2)
         set_n("RENDER_BOUNDSFLAG", 0)
