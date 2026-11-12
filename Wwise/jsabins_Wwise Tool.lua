@@ -1,9 +1,10 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.17.0
+-- @version 1.17.1
 -- @changelog
---   New Source: "Folder items". Only the selected folder items are sent, and any
---   selected items inside them are ignored, so NVK Folder Items' auto-select can stay on.
+--   Folder items mode now finds NVK folder items (they can have a take, so 1.17.0
+--   missed them). In that mode any item on a folder track counts as a folder item.
+--   Selected items mode also treats an empty-take item on a folder track as a folder item.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
