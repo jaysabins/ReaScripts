@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="5db3251e226153eda4402c1ce0a8ce0f97b2de15">
+<index version="1" name="Jay Sabins Scripts" commit="aa2cd358cb28ab24f0cf0ac051daf76922d2a97f">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -66,13 +66,15 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
 \widowctrl\hyphauto
 
 {\pard \ql \f0 \sa180 \li0 \fi0 Select a "sausage" item holding a row of single shots (or several items, or shots you already split) and run the script. It finds every shot's transient and builds a rapid-fire burst out of them on a new track below, starting at the edit cursor.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Rate of fire in RPM or in ms between shots, with an optional ramp (spin-up / spin-down) to a second rate.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Number of shots and the order they're used in: in order, ping-pong, random (no shot twice in a row) or shuffled rounds.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Gain per shot: draw the gain of every shot with the mouse, or start from a preset shape (fade out, fade in, accent first, random) and tweak it.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Humanize timing, gain and pitch.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Shots can ring out over each other or be cut off by the next one.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Click a shot in the waveform to leave it out of the burst.\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 With "Live update" on, the last burst you built is rebuilt every time you change a setting, so you can loop playback over it while you dial in the rate and gain. Each change is one undo step.\par}
+{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Rate of fire in RPM or in ms between shots, with an optional ramp (spin-up / spin-down) to a second rate.\par}
+{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Number of shots and the order they're used in: in order, ping-pong, random (no shot twice in a row) or shuffled rounds.\par}
+{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Gain per shot: draw the gain of every shot with the mouse, or start from a preset shape (fade out, fade in, accent first, random) and tweak it.\par}
+{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Humanize timing, gain and pitch.\par}
+{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Shots can ring out over each other or be cut off by the next one.\par}
+{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Click a shot in the waveform to leave it out of the burst.\par}
+{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Shots can go on one track, or be spread over a folder of tracks so no two shots overlap and you can see each one in full.\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 With "Live update" on, the last burst you built is rebuilt every time you change a setting, so you can loop playback over it while you dial in the rate and gain. Each change is one undo step. Bursts remember their source and settings in the project: click any burst item to edit that burst again, even after closing the script.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Sequence mode: select shots that are already on the timeline, one item per shot and one track per layer (several items on a track switch to this mode on their own). The n-th item on every track is shot n. Change the rate of fire and gain per shot for the whole sequence, and per layer shuffle the shot order and humanize timing, gain and pitch. The items are moved in place and remember their original positions, so select any one of them later to keep editing.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Requires ReaImGui (install it from ReaPack).\par}
 }
 ]]></description>
@@ -80,6 +82,23 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
       <version name="1.0.0" author="Jay Sabins" time="2026-11-11T20:50:08Z">
         <changelog><![CDATA[First version.]]></changelog>
         <source main="main">https://github.com/jaysabins/reascripts/raw/add57e8f12616c9d451d09b46c70e3900cd136a9/Items/jsabins_Build%20rapid-fire%20burst%20from%20shots.lua</source>
+      </version>
+      <version name="1.1.0" author="Jay Sabins" time="2026-11-12T00:46:04Z">
+        <changelog><![CDATA[Live update now survives closing and reopening the script, and clicking
+elsewhere in REAPER. Each burst remembers its source items and settings
+(saved in the project), so the last burst is picked up again when the script
+opens, and clicking any burst item makes that burst the one you're editing,
+with its settings loaded back into the window.
+New "Tracks" option: put each overlapping shot on its own track (in a folder)
+so you can see every shot in full when the tails ring out. Auto uses just
+enough tracks that no shots overlap; you can also use one track per shot.
+New sequence mode: select shots that are already laid out on the timeline
+(one item per shot, one track per layer, like a burst you built by hand) and
+re-time them in place: rate of fire, ramp, gain per shot, and per layer a
+shuffle of the shot order plus humanize timing, gain and pitch and a delay.
+The items remember where they started, so you can reselect the sequence (one
+item is enough) and keep editing it later.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/aa2cd358cb28ab24f0cf0ac051daf76922d2a97f/Items/jsabins_Build%20rapid-fire%20burst%20from%20shots.lua</source>
       </version>
     </reapack>
     <reapack name="jsabins_Measure timing between selected layers.lua" type="script" desc="Measure timing between selected layers (for Wwise initial delay)">
