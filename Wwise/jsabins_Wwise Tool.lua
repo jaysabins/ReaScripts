@@ -1,9 +1,9 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.17.0
+-- @version 1.18.0
 -- @changelog
---   New Source: "Folder items". Only the selected folder items are sent, and any
---   selected items inside them are ignored, so NVK Folder Items' auto-select can stay on.
+--   Dark grey look: buttons, dropdowns, fields, checkboxes, list highlights, tabs and
+--   the other spots that used ImGui's default blue are now dark grey.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1716,7 +1716,51 @@ local function push_tab_color(rgb)
 end
 local function default_tab_rgb()
   local c = TAB_COLS[3][1] and ImGui.GetStyleColor(ctx, TAB_COLS[3][1])
-  return c and (c >> 8) & 0xFFFFFF or 0x3A6EA5
+  return c and (c >> 8) & 0xFFFFFF or 0x3C3C3C
+end
+
+-- Dark grey theme in place of ImGui's default blue (buttons, dropdowns, fields, checkboxes,
+-- sliders, list highlights, tabs, text selection...). Pushed around the whole window each frame;
+-- anything with its own color (tab colors, type-colored rows, the Transfer button) still wins.
+local GREY_THEME = {
+  { { "Col_Button" }, 0x3A3A3AFF },
+  { { "Col_ButtonHovered" }, 0x4C4C4CFF },
+  { { "Col_ButtonActive" }, 0x5E5E5EFF },
+  { { "Col_FrameBg" }, 0x2A2A2AFF },
+  { { "Col_FrameBgHovered" }, 0x383838FF },
+  { { "Col_FrameBgActive" }, 0x464646FF },
+  { { "Col_Header" }, 0x3A3A3AFF },
+  { { "Col_HeaderHovered" }, 0x4A4A4AFF },
+  { { "Col_HeaderActive" }, 0x585858FF },
+  { { "Col_CheckMark" }, 0xD8D8D8FF },
+  { { "Col_SliderGrab" }, 0x8A8A8AFF },
+  { { "Col_SliderGrabActive" }, 0xB4B4B4FF },
+  { { "Col_SeparatorHovered" }, 0x707070C8 },
+  { { "Col_SeparatorActive" }, 0x909090FF },
+  { { "Col_ResizeGrip" }, 0x5A5A5A40 },
+  { { "Col_ResizeGripHovered" }, 0x7A7A7AAA },
+  { { "Col_ResizeGripActive" }, 0x9A9A9AF2 },
+  { { "Col_Tab" }, 0x2C2C2CFF },
+  { { "Col_TabHovered" }, 0x4C4C4CFF },
+  { { "Col_TabSelected", "Col_TabActive" }, 0x3C3C3CFF },
+  { { "Col_TabSelectedOverline" }, 0x8A8A8AFF },
+  { { "Col_TabDimmed", "Col_TabUnfocused" }, 0x242424FF },
+  { { "Col_TabDimmedSelected", "Col_TabUnfocusedActive" }, 0x333333FF },
+  { { "Col_TabDimmedSelectedOverline" }, 0x5A5A5AFF },
+  { { "Col_TextSelectedBg" }, 0x6A6A6A80 },
+  { { "Col_DragDropTarget" }, 0xC8C8C8E6 },
+  { { "Col_NavCursor", "Col_NavHighlight" }, 0x9A9A9AFF },
+  { { "Col_DockingPreview" }, 0x8A8A8AB3 },
+  { { "Col_PlotLinesHovered" }, 0xB4B4B4FF },
+}
+for _, t in ipairs(GREY_THEME) do t[1] = imgui_const(table.unpack(t[1])) end
+-- Push the grey theme; returns how many colors to pop.
+local function push_grey_theme()
+  local n = 0
+  for _, t in ipairs(GREY_THEME) do
+    if t[1] then ImGui.PushStyleColor(ctx, t[1], t[2]); n = n + 1 end
+  end
+  return n
 end
 
 -- Forget everything the preview worked out for the setup that was showing.
@@ -1992,6 +2036,7 @@ loop_body = function()
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
+  local theme_n = push_grey_theme()
   -- No p_open: ImGui's small title-bar X is replaced by our big X in the same corner, and the
   -- title bar is made taller to fit it. When docked there's no title bar, so the dock tab gets
   -- ImGui's normal X instead (main_win_docked is from the last frame).
@@ -2040,7 +2085,7 @@ loop_body = function()
     if not main_win_docked then title_close_button() end
     ImGui.End(ctx)
   end
-  ImGui.PopStyleColor(ctx, 4)
+  ImGui.PopStyleColor(ctx, 4 + theme_n)
   if close_clicked then open = false end
   return open
 end
