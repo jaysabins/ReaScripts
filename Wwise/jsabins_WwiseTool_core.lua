@@ -256,7 +256,7 @@ M.TEMPLATE_OPS = { { "always", "All objects (new and existing)" }, { "new", "New
 
 function M.default_settings()
   return {
-    source = "items",                -- "items" (selected items) or "render" (REAPER render settings)
+    source = "items",                -- "items" (selected items), "folders" (selected folder items only) or "render" (REAPER render settings)
     skip_render_untouched = true,
     items_via_master = false,
     folders_via_master = false,
@@ -851,6 +851,46 @@ local function sound_tag(s, conn)
   return s.leaf.voice and "<Sound Voice>" or "<Sound SFX>"
 end
 
+-- True when `tr` sits under `parent` in the folder structure (any depth).
+local function track_is_under(tr, parent)
+  local p = r.GetParentTrack(tr)
+  while p do
+    if p == parent then return true end
+    p = r.GetParentTrack(p)
+  end
+  return false
+end
+
+-- Source "Folder items": keep only the selected folder items. A selected item (normal or
+-- a nested folder item) on a track under a selected folder item's track, overlapping its
+-- time range, is part of that folder item's render, so it's dropped. That's what NVK Folder
+-- Items' auto-select adds when you click a folder item. Loose items not covered by a
+-- selected folder item are kept. Returns the kept items and how many were dropped.
+function M.folder_items_only(items)
+  local folders = {}
+  for _, it in ipairs(items) do
+    if is_folder_item(it) then
+      local pos = r.GetMediaItemInfo_Value(it, "D_POSITION")
+      folders[#folders + 1] = { item = it, track = r.GetMediaItem_Track(it), s = pos,
+                                e = pos + r.GetMediaItemInfo_Value(it, "D_LENGTH") }
+    end
+  end
+  local kept, dropped = {}, 0
+  for _, it in ipairs(items) do
+    local tr = r.GetMediaItem_Track(it)
+    local pos = r.GetMediaItemInfo_Value(it, "D_POSITION")
+    local fin = pos + r.GetMediaItemInfo_Value(it, "D_LENGTH")
+    local covered = false
+    for _, f in ipairs(folders) do
+      if f.item ~= it and pos < f.e - 1e-9 and fin > f.s + 1e-9 and track_is_under(tr, f.track) then
+        covered = true; break
+      end
+    end
+    if covered then dropped = dropped + 1 else kept[#kept + 1] = it end
+  end
+  return kept, dropped, #folders
+end
+
 -- Each entry: { name, names = {container names}, origsub, kind, file?, item?, track?, token? }
 -- kind: "direct" | "render" | "folder" | "project"
 local function plan_selected_items(s, snap)
@@ -1005,6 +1045,11 @@ function M.build_plan(s, conn)
   local res, err = with_temp_state(function(snap)
     if s.source == "render" then return { plan_render_settings(s) } end
     if #snap.items == 0 then return { {}, { "Select one or more items in REAPER." } } end
+    if s.source == "folders" then
+      local kept, _, nfolders = M.folder_items_only(snap.items)
+      if nfolders == 0 then return { {}, { "Source is Folder items: select one or more folder items in REAPER." } } end
+      snap = setmetatable({ items = kept }, { __index = snap })
+    end
     return { plan_selected_items(s, snap) }
   end)
   if not res then return { entries = {}, errors = { "Couldn't read the project: " .. tostring(err) } } end
