@@ -1,11 +1,8 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.19.0
+-- @version 1.19.1
 -- @changelog
---   Settings > Configuration: Export / Import configuration saves the complete setup to a
---   file (every tab, all structure and settings presets, the window's look) and loads it back.
---   "Settings presets..." moved from the main window to Settings > Configuration.
---   Section titles a little smaller (still matching).
+--   "?" (guide) and Settings buttons moved up next to the close X, same size and style.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -379,11 +376,7 @@ local function open_url(url)
 end
 
 -- Square button with a gear drawn on it (no icon font needed).
-local function gear_button(id, size)
-  local pressed = ImGui.Button(ctx, id, size, size)
-  local x1, y1 = ImGui.GetItemRectMin(ctx)
-  local dl = ImGui.GetWindowDrawList(ctx)
-  local col = ImGui.GetColor(ctx, ImGui.Col_Text)
+local function draw_gear(dl, x1, y1, size, col)
   local cx, cy = x1 + size / 2, y1 + size / 2
   local ring, thick = size * 0.20, size * 0.12
   local r_in, r_out, half_w = ring, size * 0.34, size * 0.075
@@ -398,6 +391,11 @@ local function gear_button(id, size)
       cx + dx * r_out - px, cy + dy * r_out - py,
       cx + dx * r_in - px, cy + dy * r_in - py, col)
   end
+end
+local function gear_button(id, size)
+  local pressed = ImGui.Button(ctx, id, size, size)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  draw_gear(ImGui.GetWindowDrawList(ctx), x1, y1, size, ImGui.GetColor(ctx, ImGui.Col_Text))
   return pressed
 end
 
@@ -419,6 +417,27 @@ local function close_button(id, size)
   return pressed
 end
 local close_clicked = false
+local main_win_docked = false
+
+-- Title-bar button in the same style as the close X (rounded dark square), grey on hover.
+-- draw(dl, x1, y1, size, fg) draws the icon.
+local function title_icon_button(id, size, draw)
+  local pressed = ImGui.InvisibleButton(ctx, id, size, size)
+  local hovered, held = ImGui.IsItemHovered(ctx), ImGui.IsItemActive(ctx)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local bg = held and 0x5E5E5EFF or (hovered and 0x4C4C4CFF or 0x2A2A2AFF)
+  local fg = hovered and 0xFFFFFFFF or ImGui.GetColor(ctx, ImGui.Col_Text)
+  ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, bg, size * 0.22)
+  draw(dl, x1, y1, size, fg)
+  return pressed
+end
+local function draw_question(dl, x1, y1, size, fg)
+  local big = section_font and pcall(ImGui.PushFont, ctx, section_font)
+  local tw, th = ImGui.CalcTextSize(ctx, "?")
+  ImGui.DrawList_AddText(dl, x1 + (size - tw) / 2, y1 + (size - th) / 2, fg, "?")
+  if big then ImGui.PopFont(ctx) end
+end
 
 local WINDOW_ROUNDING = 10   -- main window corners
 local TRANSFER_ROUNDING = 8  -- "Transfer to Wwise" button corners
@@ -439,9 +458,22 @@ local function title_close_button()
   local wx, wy = ImGui.GetWindowPos(ctx)
   local ww = ImGui.GetWindowSize(ctx)
   ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + title_bar_size(), false)
-  ImGui.SetCursorScreenPos(ctx, wx + ww - size - m, wy + m)
+  local gap = math.floor(m * 0.6 + 0.5)
+  local x = wx + ww - size - m
+  ImGui.SetCursorScreenPos(ctx, x, wy + m)
   if close_button("##closewin", size) then close_clicked = true end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Close Wwise Tool") end
+  -- Settings and guide buttons, same size, to the left of the X.
+  x = x - gap - size
+  ImGui.SetCursorScreenPos(ctx, x, wy + m)
+  if title_icon_button("##settings_t", size, function(dl, x1, y1, sz, fg) draw_gear(dl, x1, y1, sz, fg) end) then
+    open_settings = true
+  end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Settings: connection (Reconnect), rendering, transfer and window") end
+  x = x - gap - size
+  ImGui.SetCursorScreenPos(ctx, x, wy + m)
+  if title_icon_button("##guide_t", size, draw_question) then open_url(GUIDE_URL) end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Open the Wwise Tool guide on GitHub") end
   ImGui.PopClipRect(ctx)
   -- Don't move the cursor back afterwards: ImGui errors in End() when the cursor is moved
   -- past the content without an item after it. Nothing is drawn after this button.
@@ -470,19 +502,23 @@ local function section_connection()
   end
   if big then ImGui.PopFont(ctx) end
 
-  local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
-  local spacing = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
-  local qw = ImGui.CalcTextSize(ctx, "?") + pad_x * 2
-  local fh = ImGui.GetFrameHeight(ctx)
-  local bw = qw + spacing + fh
-  ImGui.SameLine(ctx)
-  local avail = ImGui.GetContentRegionAvail(ctx)
-  if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
-  if ImGui.Button(ctx, "?") then open_url(GUIDE_URL) end
-  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Open the Wwise Tool guide on GitHub") end
-  ImGui.SameLine(ctx)
-  if gear_button("##settings", fh) then open_settings = true end
-  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Settings: connection (Reconnect), rendering, transfer and window") end
+  -- "?" and Settings sit in the title bar next to the X (see title_close_button). Docked
+  -- windows have no title bar, so then they stay here at the right of the header line.
+  if main_win_docked then
+    local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
+    local spacing = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
+    local qw = ImGui.CalcTextSize(ctx, "?") + pad_x * 2
+    local fh = ImGui.GetFrameHeight(ctx)
+    local bw = qw + spacing + fh
+    ImGui.SameLine(ctx)
+    local avail = ImGui.GetContentRegionAvail(ctx)
+    if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
+    if ImGui.Button(ctx, "?") then open_url(GUIDE_URL) end
+    if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Open the Wwise Tool guide on GitHub") end
+    ImGui.SameLine(ctx)
+    if gear_button("##settings", fh) then open_settings = true end
+    if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Settings: connection (Reconnect), rendering, transfer and window") end
+  end
 
   if not conn and conn_err then
     ImGui.PushStyleColor(ctx, ImGui.Col_ChildBg, 0x2A2213FF)
@@ -976,7 +1012,6 @@ local open_pk_menu = false
 -- window is held in place there, so a drag that starts while the menu is open (ImGui
 -- would treat it as dragging the window) only picks rows.
 local main_win_pos = { 0, 0 }
-local main_win_docked = false
 local pk_pin = nil
 
 local function pk_count()
