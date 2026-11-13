@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="9a971922ca03063e7d7b49f8e86cc47d6ff5b6af">
+<index version="1" name="Jay Sabins Scripts" commit="29dd5cc0fd1941857767e645cee9eb4b049517f5">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -628,6 +628,14 @@ following the window's (window corners slightly rounder to match).]]></changelog
         <source main="main">https://github.com/jaysabins/reascripts/raw/9a971922ca03063e7d7b49f8e86cc47d6ff5b6af/Wwise/jsabins_Wwise%20Tool.lua</source>
         <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/9a971922ca03063e7d7b49f8e86cc47d6ff5b6af/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
         <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/9a971922ca03063e7d7b49f8e86cc47d6ff5b6af/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.20.6" author="Jay Sabins" time="2026-11-13T03:27:48Z">
+        <changelog><![CDATA[A little more room above the "Wwise Tool" title.
+Preview's Originals file column shows the END of the path when it's too narrow (the
+start is cut off instead); hover it to scroll back and forth through the whole path.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/29dd5cc0fd1941857767e645cee9eb4b049517f5/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/29dd5cc0fd1941857767e645cee9eb4b049517f5/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/29dd5cc0fd1941857767e645cee9eb4b049517f5/Wwise/jsabins_WwiseTool_core.lua</source>
       </version>
     </reapack>
   </category>
