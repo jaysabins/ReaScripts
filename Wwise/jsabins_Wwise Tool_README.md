@@ -29,7 +29,8 @@ Wwise Tool is a free REAPER script by Jay Sabins, written in Lua with a ReaImGui
 
 - REAPER 6.x or 7.x on Windows 10 or 11.
 - The **ReaImGui** extension (free, from ReaPack).
-- Wwise with the Wwise Authoring API (WAAPI) turned on. Tested with Wwise 2025.1. Property templates need Wwise 2022.1 or newer.
+- Wwise 2022.1 or newer, with the Wwise Authoring API (WAAPI) turned on. Tested with Wwise 2025.1. An older Wwise may still connect, and shows "(untested)" next to its version; some features, such as property templates, need 2022.1.
+- Wwise 2025.1 renamed Actor-Mixers to **Property Containers**. Wwise Tool uses whichever name your connected Wwise uses; this guide says Actor-Mixer for both.
 
 ## Install
 
@@ -201,7 +202,7 @@ The right side shows what the transfer will create, laid out like Wwise's Projec
 
 - Each object is marked **New** (green), **Exists** (orange) or **Duplicate** (two items would end up with the same name and path).
 - The tag in front of each name, such as `[RND]` or `[SFX]`, shows its type. Hover over it for the full type name.
-- The top row is the import destination, and its tag shows what that object is in Wwise: `[WU]` for a Work Unit, `[VF]` for a Virtual Folder, `[RND]`, `[SEQ]`, `[SW]`, `[BLD]` for containers, `[AM]` for an Actor-Mixer, and so on. It shows `[DEST]` while Wwise isn't connected or the destination doesn't exist yet.
+- The top row is the import destination, and its tag shows what that object is in Wwise: `[WU]` for a Work Unit, `[VF]` for a Virtual Folder, `[RND]`, `[SEQ]`, `[SW]`, `[BLD]` for containers, `[AM]` for an Actor-Mixer (`[PC]` for a Property Container in Wwise 2025.1 and later), and so on. It shows `[DEST]` while Wwise isn't connected or the destination doesn't exist yet.
 - Hover over a name to see its full Wwise path and Originals subfolder.
 - **Columns:**
   - **Source** says where the audio file Wwise imports comes from (hover the header or a value for a reminder):

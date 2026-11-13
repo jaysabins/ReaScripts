@@ -1,16 +1,12 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.20.7
+-- @version 1.21.0
 -- @changelog
---   Originals file column now really shows the END of long paths (the start is cut off), and
---   hovering a path scrolls it slowly back and forth. The cell's width is found from where ImGui
---   clips it (ReaImGui reports the full table width inside a cell).
---   The X in the close button is exactly centred, and the ?, Settings and X buttons sit a little
---   further from the right edge so the space there matches the space above them.
---   Wwise structure table has rounded corners and a little padding around its fields, and the
---   + and - buttons sit closer together with bigger symbols. The drag handle is centred in its
---   column.
---   Source column: "Item render" is now "Item" and "Folder render" is now "Folder item".
+--   Actor-Mixers are called Property Containers when Wwise 2025.1 or newer is connected (the
+--   name Wwise itself uses now), with a [PC] tag in the preview. Older Wwise keeps Actor-Mixer.
+--   Saved setups and presets work with both.
+--   Wwise Tool is made for Wwise 2022.1 and newer. An older Wwise still connects, with an
+--   "(untested)" note next to its version.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -482,6 +478,10 @@ local function status_items()
   if conn then
     local t = { { conn.project or "Wwise", nil, conn.project_path } }
     if (conn.version or "") ~= "" then t[2] = { conn.version, COLOR_DIM } end
+    if (conn.year or 0) > 0 and conn.year < core.MIN_WWISE_YEAR then
+      t[#t + 1] = { "(untested)", 0xF3D6A0FF, "Wwise Tool is made for Wwise " .. core.MIN_WWISE_YEAR ..
+        ".1 and newer. With this version some features (such as property templates) may not work." }
+    end
     return t
   elseif connecting then
     return { { "Connecting to Wwise...", COLOR_DIM } }
@@ -979,7 +979,9 @@ local function section_hierarchy()
       ImGui.TableNextColumn(ctx)
       local c
       push_row_colors(row.type)
-      c, row.type = combo("##type", core.CONTAINER_TYPES, row.type, -1)
+      local type_list = {}
+      for k, t in ipairs(core.CONTAINER_TYPES) do type_list[k] = { t, core.type_label(t) } end
+      c, row.type = combo("##type", type_list, row.type, -1)
       if c then settings_changed(); pop_row_colors(); push_row_colors(row.type) end
       level_drop_target(i, act)
       ImGui.TableNextColumn(ctx)
@@ -1393,10 +1395,11 @@ local function draw_node(node, depth)
   -- The top row shows what the destination is in Wwise ([WU], [RND]...), [DEST] until that's known.
   local shown = node.dest_type or node.type
   ImGui.PushStyleColor(ctx, ImGui.Col_Text, type_color(shown) or type_color("Destination") or 0xFFFFFFFF)
-  local tag = TYPE_TAGS[shown] or ("[" .. shown:sub(1, 3):upper() .. "]")
+  local tag = (shown == "Actor-Mixer" and core.uses_new_names()) and "[PC]"
+    or TYPE_TAGS[shown] or ("[" .. shown:sub(1, 3):upper() .. "]")
   local open = ImGui.TreeNodeEx(ctx, node.path or node.name, tag, flags)
   ImGui.PopStyleColor(ctx)
-  local hover_type = node.dest_type and ("Destination (" .. node.dest_type .. ")") or node.type
+  local hover_type = node.dest_type and ("Destination (" .. core.type_label(node.dest_type) .. ")") or core.type_label(node.type)
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, hover_type) end
   ImGui.SameLine(ctx)
   local label = node.name
@@ -1814,7 +1817,7 @@ local function settings_interface()
       if i % 2 == 1 then ImGui.TableNextRow(ctx) end
       ImGui.TableNextColumn(ctx)
       local cur = type_color(k)
-      local ch, rgb = ImGui.ColorEdit3(ctx, k .. "##tc" .. k, cur >> 8, color_flags)
+      local ch, rgb = ImGui.ColorEdit3(ctx, core.type_label(k) .. "##tc" .. k, cur >> 8, color_flags)
       if ch then
         local rgba = ((rgb & 0xFFFFFF) << 8) | 0xFF
         view.colors[k] = (rgba ~= DEFAULT_TYPE_COLORS[k]) and rgba or nil

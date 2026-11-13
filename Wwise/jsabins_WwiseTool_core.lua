@@ -573,6 +573,10 @@ function M.connect(timeout)
   }
   c.new_types = c.year >= 2025  -- Wwise 2025.1+: "Sound" type, "Containers" root
   c.root = c.new_types and "\\Containers" or "\\Actor-Mixer Hierarchy"
+  if c.year > 0 then
+    M.wwise_year = c.year
+    r.SetExtState(M.EXT, "wwise_year", tostring(c.year), true) -- labels before the next connect
+  end
   pause()
   local p = M.waapi("ak.wwise.core.object.get", { from = { ofType = { "Project" } } }, { ["return"] = { "name", "filePath" } }, timeout)
   if p and p["return"] and p["return"][1] then
@@ -1456,6 +1460,22 @@ function M.build_tree(plan, s, conn)
 end
 
 ----------------------------------------------------------------------
+-- Version-dependent names
+----------------------------------------------------------------------
+-- Oldest Wwise the tool is meant for: property templates and object.set need 2022.1.
+M.MIN_WWISE_YEAR = 2022
+-- Wwise 2025.1 renamed Actor-Mixers to Property Containers. Settings and presets keep
+-- storing "Actor-Mixer"; only the name shown changes, by the connected (or last seen) Wwise.
+function M.uses_new_names()
+  local y = M.wwise_year or tonumber(r.GetExtState(M.EXT, "wwise_year")) or 2025
+  return y >= 2025
+end
+local NEW_TYPE_LABELS = { ["Actor-Mixer"] = "Property Container" }
+function M.type_label(t)
+  return (M.uses_new_names() and NEW_TYPE_LABELS[t]) or t
+end
+
+----------------------------------------------------------------------
 -- Validation
 ----------------------------------------------------------------------
 local CHILDREN = {
@@ -1478,11 +1498,12 @@ function M.validate(s)
     local parent, child = types[i - 1], types[i]
     local g = GROUP[parent]
     if g and not CHILDREN[g][child] then
-      problems[#problems + 1] = string.format("A %s can't contain a %s.", parent, child == "sound" and "Sound" or child)
+      problems[#problems + 1] = string.format("A %s can't contain a %s.", M.type_label(parent),
+        child == "sound" and "Sound" or M.type_label(child))
     end
   end
   for i, row in ipairs(s.rows) do
-    if (row.name or "") == "" then problems[#problems + 1] = "Level " .. i .. " (" .. row.type .. ") needs a name." end
+    if (row.name or "") == "" then problems[#problems + 1] = "Level " .. i .. " (" .. M.type_label(row.type) .. ") needs a name." end
   end
   if s.leaf.voice and (s.leaf.language or "") == "" then problems[#problems + 1] = "Pick a language for Sound Voice." end
   return problems
@@ -2200,6 +2221,11 @@ function M.transfer(s, conn, on_status)
   if not res and not conn.new_types and ierr and ierr:find("Sound SFX") then
     -- Very new Wwise versions dropped "Sound SFX"; retry with the new type name.
     for _, im in ipairs(imports) do im.objectPath = im.objectPath:gsub("<Sound SFX>", "<Sound>"):gsub("<Sound Voice>", "<Sound>") end
+    res, ierr = M.waapi("ak.wwise.core.audio.import", args, { ["return"] = { "id", "path", "type" } })
+  end
+  if not res and conn.new_types and ierr and ierr:find("Actor%-Mixer") then
+    -- In case Wwise 2025+ stops taking the old name: retry with "Property Container".
+    for _, im in ipairs(imports) do im.objectPath = im.objectPath:gsub("<Actor%-Mixer>", "<Property Container>") end
     res, ierr = M.waapi("ak.wwise.core.audio.import", args, { ["return"] = { "id", "path", "type" } })
   end
   if not res then
