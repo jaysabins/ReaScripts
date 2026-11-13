@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="742e470f3115ee8e1d045634bb6ebc4a7fd5be5d">
+<index version="1" name="Jay Sabins Scripts" commit="2d65c496f7f3d21078cec5bec913c3c1c69b590d">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -650,6 +650,16 @@ Source column: "Item render" is now "Item" and "Folder render" is now "Folder it
         <source main="main">https://github.com/jaysabins/reascripts/raw/742e470f3115ee8e1d045634bb6ebc4a7fd5be5d/Wwise/jsabins_Wwise%20Tool.lua</source>
         <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/742e470f3115ee8e1d045634bb6ebc4a7fd5be5d/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
         <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/742e470f3115ee8e1d045634bb6ebc4a7fd5be5d/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.21.0" author="Jay Sabins" time="2026-11-13T04:34:47Z">
+        <changelog><![CDATA[Actor-Mixers are called Property Containers when Wwise 2025.1 or newer is connected (the
+name Wwise itself uses now), with a [PC] tag in the preview. Older Wwise keeps Actor-Mixer.
+Saved setups and presets work with both.
+Wwise Tool is made for Wwise 2022.1 and newer. An older Wwise still connects, with an
+"(untested)" note next to its version.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/2d65c496f7f3d21078cec5bec913c3c1c69b590d/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/2d65c496f7f3d21078cec5bec913c3c1c69b590d/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/2d65c496f7f3d21078cec5bec913c3c1c69b590d/Wwise/jsabins_WwiseTool_core.lua</source>
       </version>
     </reapack>
   </category>
