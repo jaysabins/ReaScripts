@@ -1,9 +1,10 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.20.1
+-- @version 1.20.2
 -- @changelog
---   The big "Wwise Tool" title moves up into the title bar (left side, level with the
---   buttons), removing the empty band at the top of the window.
+--   Window background is now grey (#191919) instead of black, title bar included.
+--   Fixes the see-through line around the window's edge: the border is now solid.
+--   Title nudged a little further right.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -523,7 +524,7 @@ local function title_close_button()
   -- Big bold "Wwise Tool" at the left of the title bar, centered on the buttons' row.
   local big = title_font and pcall(ImGui.PushFont, ctx, title_font)
   local _, th = ImGui.CalcTextSize(ctx, "Wwise Tool")
-  ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), wx + m + 6, wy + m + (size - th) / 2,
+  ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2,
     ImGui.GetColor(ctx, ImGui.Col_Text), "Wwise Tool")
   if big then ImGui.PopFont(ctx) end
   ImGui.PopClipRect(ctx)
@@ -1891,6 +1892,10 @@ end
 -- sliders, list highlights, tabs, text selection...). Pushed around the whole window each frame;
 -- anything with its own color (tab colors, type-colored rows, the Transfer button) still wins.
 local GREY_THEME = {
+  { { "Col_WindowBg" }, 0x191919FF }, -- window background (#191919; alpha comes from the opacity setting)
+  -- Solid border: ImGui's default is half transparent, so the window's outline (and the line under
+  -- the title bar) let REAPER show through.
+  { { "Col_Border" }, 0x2E2E2EFF },
   { { "Col_Button" }, 0x3A3A3AFF },
   { { "Col_ButtonHovered" }, 0x4C4C4CFF },
   { { "Col_ButtonActive" }, 0x5E5E5EFF },
@@ -2219,9 +2224,9 @@ loop_body = function()
   ImGui.SetNextWindowCollapsed(ctx, false, ImGui.Cond_Always)
   -- Always set it: ImGui's default window background is only ~94% opaque, so 100% must be explicit.
   ImGui.SetNextWindowBgAlpha(ctx, view.opacity)
-  ImGui.PushStyleColor(ctx, ImGui.Col_PopupBg, 0x141414FF) -- solid popups and Settings/summary windows
+  ImGui.PushStyleColor(ctx, ImGui.Col_PopupBg, 0x202020FF) -- solid popups and Settings/summary windows
   -- Title bar in the window's own dark background instead of ImGui's default blue.
-  local title_bg = 0x0F0F0F00 | math.floor(view.opacity * 255 + 0.5)
+  local title_bg = 0x19191900 | math.floor(view.opacity * 255 + 0.5) -- same grey as the window
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
