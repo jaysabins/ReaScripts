@@ -3,6 +3,8 @@
 -- @version 1.20.6
 -- @changelog
 --   A little more room above the "Wwise Tool" title.
+--   Preview's Originals file column shows the END of the path when it's too narrow (the
+--   start is cut off instead); hover it to scroll back and forth through the whole path.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1270,6 +1272,37 @@ local function status_cell(st)
   else ImGui.TextDisabled(ctx, "-") end
 end
 
+-- Text in a table cell that keeps its END visible when the column is too narrow (the start is
+-- cut off instead). Hovering it scrolls slowly back and forth so the whole text can be read.
+UI.TAIL_SPEED, UI.TAIL_PAUSE = 60, 0.8 -- pixels per second, seconds paused at each end
+local function tail_text(text, col, tip)
+  local avail = math.max(1, ImGui.GetContentRegionAvail(ctx))
+  local tw = ImGui.CalcTextSize(ctx, text)
+  local x, y = ImGui.GetCursorScreenPos(ctx)
+  local h = ImGui.GetTextLineHeight(ctx)
+  ImGui.Dummy(ctx, avail, h)
+  local hovered = ImGui.IsItemHovered(ctx)
+  local off = 0
+  if tw > avail then
+    local over = tw - avail
+    off = over -- show the end
+    if hovered then
+      if UI.tail_key ~= text then UI.tail_key, UI.tail_t0 = text, ImGui.GetTime(ctx) end
+      local d, p = over / UI.TAIL_SPEED, UI.TAIL_PAUSE
+      local u = (ImGui.GetTime(ctx) - UI.tail_t0) % (2 * (d + p))
+      if u < p then off = over
+      elseif u < p + d then off = over - (u - p) * UI.TAIL_SPEED
+      elseif u < 2 * p + d then off = 0
+      else off = (u - 2 * p - d) * UI.TAIL_SPEED end
+    end
+  end
+  if not hovered and UI.tail_key == text then UI.tail_key = nil end
+  ImGui.PushClipRect(ctx, x, y, x + avail, y + h, true)
+  ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), x - off, y, col, text)
+  ImGui.PopClipRect(ctx)
+  if hovered and tip then ImGui.SetTooltip(ctx, tip) end
+end
+
 local function draw_node(node, depth)
   ImGui.TableNextRow(ctx)
   ImGui.TableNextColumn(ctx)
@@ -1327,8 +1360,7 @@ local function draw_node(node, depth)
   if node.entry then
     local o = core.originals_name(node.entry)
     if o then
-      ImGui.TextColored(ctx, COLOR_DIM, o)
-      if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Originals\\" .. core.originals_root(S) .. "\\" .. o) end
+      tail_text(o, COLOR_DIM, "Originals\\" .. core.originals_root(S) .. "\\" .. o)
     end
   end
   ImGui.TableNextColumn(ctx)
