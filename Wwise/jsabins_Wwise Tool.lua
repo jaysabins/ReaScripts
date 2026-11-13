@@ -2,8 +2,8 @@
 -- @author Jay Sabins
 -- @version 1.22.0
 -- @changelog
---   Verdana is the window's font, at a smaller 10px; the title and section
---   headings are smaller to match.
+--   Verdana is the window's font, at a smaller 11px; the title and section
+--   headings are 14px.
 --   Settings is its own window now: the main window no longer greys out while it's open, and
 --   you can keep using both. Close it with its X, the Close button or Esc.
 --   Settings pages are listed down the left side instead of as tabs across the top.
@@ -64,8 +64,8 @@ local ctx = ImGui.CreateContext("Wwise Tool")
 -- Layout constants live in one table: the main chunk is at Lua's 200-locals limit.
 local UI = {}
 -- Every font in the window is Verdana (falls back to ImGui's own font if it can't be made).
-UI.FONT, UI.FONT_SIZE = "Verdana", 10
--- The header, section and title fonts keep their old proportions to a 13px main font.
+UI.FONT, UI.FONT_SIZE = "Verdana", 11
+-- The header line keeps its old proportion to a 13px main font.
 UI.font_px = function(px13) return math.floor(px13 * UI.FONT_SIZE / 13 + 0.5) end
 do
   local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.FONT_SIZE)
@@ -79,7 +79,7 @@ do
 end
 -- Bigger, matching titles for the left column's sections (Source, Wwise destination,
 -- Wwise structure). Falls back to the normal font if it can't be made.
-UI.SECTION_FONT_SIZE = UI.font_px(16)
+UI.SECTION_FONT_SIZE = 14
 local section_font = nil
 do
   local okb, bold = pcall(function() return ImGui.FontFlags_Bold end)
@@ -89,12 +89,12 @@ do
   if ok and f and pcall(ImGui.Attach, ctx, f) then section_font = f end
 end
 -- Big bold "Wwise Tool" title at the top of the window (the title bar itself shows no text).
-local title_font = nil -- bold, 21px at a 13px main font (the main chunk is near Lua's 200-locals limit, so no size constant)
+local title_font = nil -- bold, same size as the section titles
 do
   local okb, bold = pcall(function() return ImGui.FontFlags_Bold end)
   local flags = (okb and type(bold) == "number") and bold or 0
-  local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.font_px(21), flags)
-  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.font_px(21)) end
+  local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.SECTION_FONT_SIZE, flags)
+  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.SECTION_FONT_SIZE) end
   if ok and f and pcall(ImGui.Attach, ctx, f) then title_font = f end
 end
 local function section_title(text)
