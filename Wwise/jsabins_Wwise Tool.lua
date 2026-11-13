@@ -8,7 +8,8 @@
 --   you can keep using both. Close it with its X, the Close button or Esc.
 --   Settings pages are listed down the left side instead of as tabs across the top.
 --   Buttons, fields, dropdowns, tabs, panels, scrollbars and the preview table get slightly
---   rounded corners everywhere (both windows), instead of hard right angles.
+--   rounded corners everywhere (both windows), instead of hard right angles. The Wwise
+--   structure table uses the same small corners as the preview table.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -951,7 +952,8 @@ end
 
 -- Round a table's corners: ImGui tables are square, so paint the window background over the
 -- corners with a rounded-rect stroke whose inner edge is the rounded outline (radius r).
-UI.TABLE_ROUNDING, UI.MAP_CELL_PAD, UI.PM_GAP = 6, { 6, 3 }, 3 -- PM_GAP: between + and -
+-- Both tables (Wwise structure and preview) share one small radius, a touch more than the buttons'.
+UI.TABLE_ROUNDING, UI.MAP_CELL_PAD, UI.PM_GAP = UI.FRAME_ROUNDING + 1, { 6, 3 }, 3 -- PM_GAP: between + and -
 local function round_table_corners(x0, y0, x1, y1, dl, r)
   r = r or UI.TABLE_ROUNDING
   local t = math.ceil(r * 0.5) -- just enough to cover the square corners (needs > 0.414 * r)
@@ -1579,7 +1581,7 @@ local function section_preview()
     if ok_fg and fg then
       local x0, y0 = ImGui.GetItemRectMin(ctx)
       local x1, y1 = ImGui.GetItemRectMax(ctx)
-      round_table_corners(x0, y0, x1, y1, fg, UI.FRAME_ROUNDING + 1)
+      round_table_corners(x0, y0, x1, y1, fg)
     end
   end
   pick_menu()
