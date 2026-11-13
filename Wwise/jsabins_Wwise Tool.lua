@@ -1,8 +1,10 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.19.1
+-- @version 1.20.0
 -- @changelog
---   "?" (guide) and Settings buttons moved up next to the close X, same size and style.
+--   Tighter top: the connection status (dot, Wwise project, Wwise version) moves into the
+--   title bar next to the ?, Settings and close buttons, in a smaller font. The "Wwise Tool"
+--   title moves down into the window in a larger, bold font.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -57,22 +59,33 @@ local ImGui = require "imgui" "0.9"
 local ctx = ImGui.CreateContext("Wwise Tool")
 -- Slightly bigger font for the header line (status dot, Wwise project, Wwise version).
 -- If the font can't be made, the header just uses the normal font.
-local HEADER_FONT_SIZE = 15
+-- Layout constants live in one table: the main chunk is at Lua's 200-locals limit.
+local UI = {}
+UI.HEADER_FONT_SIZE = 15
 local header_font = nil
 do
-  local ok, f = pcall(ImGui.CreateFont, "sans-serif", HEADER_FONT_SIZE)
+  local ok, f = pcall(ImGui.CreateFont, "sans-serif", UI.HEADER_FONT_SIZE)
   if ok and f and pcall(ImGui.Attach, ctx, f) then header_font = f end
 end
 -- Bigger, matching titles for the left column's sections (Source, Wwise destination,
 -- Wwise structure). Falls back to the normal font if it can't be made.
-local SECTION_FONT_SIZE = 16
+UI.SECTION_FONT_SIZE = 16
 local section_font = nil
 do
   local okb, bold = pcall(function() return ImGui.FontFlags_Bold end)
   local flags = (okb and type(bold) == "number") and bold or 0
-  local ok, f = pcall(ImGui.CreateFont, "sans-serif", SECTION_FONT_SIZE, flags)
-  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, "sans-serif", SECTION_FONT_SIZE) end
+  local ok, f = pcall(ImGui.CreateFont, "sans-serif", UI.SECTION_FONT_SIZE, flags)
+  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, "sans-serif", UI.SECTION_FONT_SIZE) end
   if ok and f and pcall(ImGui.Attach, ctx, f) then section_font = f end
+end
+-- Big bold "Wwise Tool" title at the top of the window (the title bar itself shows no text).
+local title_font = nil -- 21px bold (the main chunk is near Lua's 200-locals limit, so no size constant)
+do
+  local okb, bold = pcall(function() return ImGui.FontFlags_Bold end)
+  local flags = (okb and type(bold) == "number") and bold or 0
+  local ok, f = pcall(ImGui.CreateFont, "sans-serif", 21, flags)
+  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, "sans-serif", 21) end
+  if ok and f and pcall(ImGui.Attach, ctx, f) then title_font = f end
 end
 local function section_title(text)
   local big = section_font and pcall(ImGui.PushFont, ctx, section_font)
@@ -159,12 +172,12 @@ local WILDCARDS = {
 
 -- Connecting runs in the background (see start_connect) with a short timeout per call,
 -- so opening the window never waits on Wwise and a busy Wwise can't freeze REAPER.
-local CONNECT_TIMEOUT = 3
+UI.CONNECT_TIMEOUT = 3
 local connecting, reconnect_at = false, nil
 local function connect()
   core.http_port = S.http_port
   local code
-  conn, conn_err, code = core.connect(CONNECT_TIMEOUT)
+  conn, conn_err, code = core.connect(UI.CONNECT_TIMEOUT)
   -- Busy (e.g. still loading a project): try again in a few seconds.
   reconnect_at = (not conn and code == "busy") and (r.time_precise() + 5) or nil
   if conn and S.destination == "" then S.destination = conn.root .. "\\Default Work Unit" end
@@ -439,10 +452,10 @@ local function draw_question(dl, x1, y1, size, fg)
   if big then ImGui.PopFont(ctx) end
 end
 
-local WINDOW_ROUNDING = 10   -- main window corners
-local TRANSFER_ROUNDING = 8  -- "Transfer to Wwise" button corners
-local FRAME_ROUNDING = 4     -- dropdowns, fields, buttons, checkboxes (softened, not pill-shaped)
-local TRANSFER_H = 34        -- "Transfer to Wwise" button height
+UI.WINDOW_ROUNDING = 10   -- main window corners
+UI.TRANSFER_ROUNDING = 8  -- "Transfer to Wwise" button corners
+UI.FRAME_ROUNDING = 4     -- dropdowns, fields, buttons, checkboxes (softened, not pill-shaped)
+UI.TRANSFER_H = 34        -- "Transfer to Wwise" button height
 -- Close button: twice the font size each way (about 4x the area of ImGui's own X), with an even
 -- margin from the window's top and right edges. The title bar is made taller (FramePadding pushed
 -- around Begin) so the button plus its margins fit above the title bar's divider line.
@@ -453,7 +466,39 @@ local function title_bar_size() return close_size() + close_margin() * 2 end
 -- Put the big X near the window's top-right corner, over the title bar. Called at the end of the
 -- window so it draws on top. The title bar is outside the content clip area, so the clip rect
 -- is widened to the whole title bar while the button is drawn.
+-- Connection status pieces: { text, color (nil = normal), tooltip }.
+local function status_items()
+  if conn then
+    local t = { { conn.project or "Wwise", nil, conn.project_path } }
+    if (conn.version or "") ~= "" then t[2] = { conn.version, COLOR_DIM } end
+    return t
+  elseif connecting then
+    return { { "Connecting to Wwise...", COLOR_DIM } }
+  end
+  return { { "Not connected", COLOR_BAD } }
+end
+
 local function title_close_button()
+  -- Status dot, Wwise project and Wwise version, right-aligned to right_x and centered on a
+  -- row of height h starting at top (screen coordinates). Normal font, sized to the buttons.
+  local function title_status(right_x, top, h)
+    local items = status_items()
+    local sp = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
+    local dot = 8
+    local w = dot + sp
+    for i, it in ipairs(items) do w = w + ImGui.CalcTextSize(ctx, it[1]) + (i > 1 and sp or 0) end
+    local th = ImGui.GetTextLineHeight(ctx)
+    local x, y = right_x - w, top + (h - th) / 2
+    ImGui.DrawList_AddCircleFilled(ImGui.GetWindowDrawList(ctx), x + dot / 2, top + h / 2, dot / 2,
+      conn and COLOR_OK or COLOR_BAD)
+    x = x + dot + sp
+    for _, it in ipairs(items) do
+      ImGui.SetCursorScreenPos(ctx, x, y)
+      if it[2] then ImGui.TextColored(ctx, it[2], it[1]) else ImGui.Text(ctx, it[1]) end
+      if it[3] and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, it[3]) end
+      x = x + ImGui.CalcTextSize(ctx, it[1]) + sp
+    end
+  end
   local size, m = close_size(), close_margin()
   local wx, wy = ImGui.GetWindowPos(ctx)
   local ww = ImGui.GetWindowSize(ctx)
@@ -474,37 +519,40 @@ local function title_close_button()
   ImGui.SetCursorScreenPos(ctx, x, wy + m)
   if title_icon_button("##guide_t", size, draw_question) then open_url(GUIDE_URL) end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Open the Wwise Tool guide on GitHub") end
+  -- Connection status to the left of the buttons.
+  title_status(x - gap * 2, wy + m, size)
   ImGui.PopClipRect(ctx)
   -- Don't move the cursor back afterwards: ImGui errors in End() when the cursor is moved
   -- past the content without an item after it. Nothing is drawn after this button.
 end
 
 local function section_connection()
-  -- Left: status dot, Wwise project and Wwise version. Right: "?" (opens the guide) and Settings (which also has Reconnect).
-  -- A connection problem shows as a banner underneath.
-  local big = push_header_font()
-  local lh = ImGui.GetFrameHeight(ctx)
-  local dot = big and 10 or 8
-  local dl = ImGui.GetWindowDrawList(ctx)
-  local x, y = ImGui.GetCursorScreenPos(ctx)
-  ImGui.DrawList_AddCircleFilled(dl, x + dot / 2, y + lh / 2, dot / 2, conn and COLOR_OK or COLOR_BAD)
-  ImGui.Dummy(ctx, dot, lh)
-  ImGui.SameLine(ctx)
-  ImGui.AlignTextToFramePadding(ctx)
-  if conn then
-    ImGui.Text(ctx, conn.project or "Wwise")
-    if conn.project_path and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, conn.project_path) end
-    if (conn.version or "") ~= "" then ImGui.SameLine(ctx); ImGui.TextDisabled(ctx, conn.version) end
-  elseif connecting then
-    ImGui.TextDisabled(ctx, "Connecting to Wwise...")
+  -- Floating window: the big "Wwise Tool" title; the connection status and the ?, Settings and
+  -- close buttons are in the title bar (title_close_button). Docked (no title bar): status on
+  -- the left, "?" and Settings on the right. A connection problem shows as a banner underneath.
+  if not main_win_docked then
+    local big = title_font and pcall(ImGui.PushFont, ctx, title_font)
+    ImGui.Indent(ctx, 6)
+    ImGui.Text(ctx, "Wwise Tool")
+    ImGui.Unindent(ctx, 6)
+    if big then ImGui.PopFont(ctx) end
   else
-    ImGui.TextColored(ctx, COLOR_BAD, "Not connected")
-  end
-  if big then ImGui.PopFont(ctx) end
+    local big = push_header_font()
+    local lh = ImGui.GetFrameHeight(ctx)
+    local dot = big and 10 or 8
+    local dl = ImGui.GetWindowDrawList(ctx)
+    local x, y = ImGui.GetCursorScreenPos(ctx)
+    ImGui.DrawList_AddCircleFilled(dl, x + dot / 2, y + lh / 2, dot / 2, conn and COLOR_OK or COLOR_BAD)
+    ImGui.Dummy(ctx, dot, lh)
+    ImGui.SameLine(ctx)
+    ImGui.AlignTextToFramePadding(ctx)
+    for i, it in ipairs(status_items()) do
+      if i > 1 then ImGui.SameLine(ctx) end
+      if it[2] then ImGui.TextColored(ctx, it[2], it[1]) else ImGui.Text(ctx, it[1]) end
+      if it[3] and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, it[3]) end
+    end
+    if big then ImGui.PopFont(ctx) end
 
-  -- "?" and Settings sit in the title bar next to the X (see title_close_button). Docked
-  -- windows have no title bar, so then they stay here at the right of the header line.
-  if main_win_docked then
     local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
     local spacing = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
     local qw = ImGui.CalcTextSize(ctx, "?") + pad_x * 2
@@ -1464,13 +1512,13 @@ local function section_transfer()
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, 0x166A2EFF)
     ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0xFFFFFFFF)
   end
-  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, TRANSFER_ROUNDING)
-  if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", bw, TRANSFER_H) and not transfer_task then do_transfer() end
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, UI.TRANSFER_ROUNDING)
+  if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", bw, UI.TRANSFER_H) and not transfer_task then do_transfer() end
   ImGui.PopStyleVar(ctx)
   if busy then ImGui.EndDisabled(ctx) else ImGui.PopStyleColor(ctx, 4) end
   if why and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then ImGui.SetTooltip(ctx, why) end
   ImGui.SameLine(ctx, 0, 14)
-  ImGui.SetCursorPosY(ctx, y0 + math.max(0, (TRANSFER_H - ImGui.GetTextLineHeight(ctx)) / 2))
+  ImGui.SetCursorPosY(ctx, y0 + math.max(0, (UI.TRANSFER_H - ImGui.GetTextLineHeight(ctx)) / 2))
   ImGui.PushTextWrapPos(ctx, 0)
   ImGui.TextColored(ctx, (why and status_line == "") and 0xF4D35EFF or COLOR_DIM, text)
   ImGui.PopTextWrapPos(ctx)
@@ -2184,15 +2232,21 @@ loop_body = function()
   -- Softly rounded dropdowns, fields, buttons, sliders and popups. Pushed BEFORE Begin and popped
   -- after End: ImGui errors ("Missing PopStyleVar") if a push made inside the window is still on
   -- the stack at End().
-  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, FRAME_ROUNDING)
-  ImGui.PushStyleVar(ctx, ImGui.StyleVar_GrabRounding, FRAME_ROUNDING)
-  ImGui.PushStyleVar(ctx, ImGui.StyleVar_PopupRounding, FRAME_ROUNDING)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, UI.FRAME_ROUNDING)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_GrabRounding, UI.FRAME_ROUNDING)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_PopupRounding, UI.FRAME_ROUNDING)
   local pad_x, pad_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
   local title_pad = (title_bar_size() - ImGui.GetFontSize(ctx)) / 2
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_FramePadding, pad_x, math.max(pad_y, title_pad))
-  ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowRounding, WINDOW_ROUNDING) -- rounded window corners
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowRounding, UI.WINDOW_ROUNDING) -- rounded window corners
   local title_h = ImGui.GetFontSize(ctx) + math.max(pad_y, title_pad) * 2
+  -- The title bar shows no text (the big title is drawn inside the window), so its text color is
+  -- made transparent just for Begin. Not when docked: the dock tab still reads "Wwise Tool".
+  -- The window keeps its name, so ImGui's saved position, size and docking still apply.
+  local hide_title = not main_win_docked
+  if hide_title then ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0x00000000) end
   local visible, open = ImGui.Begin(ctx, "Wwise Tool", main_win_docked and true or nil, ImGui.WindowFlags_NoCollapse)
+  if hide_title then ImGui.PopStyleColor(ctx) end
   ImGui.PopStyleVar(ctx, 2)
   if open == nil then open = true end
   if visible and not ImGui.IsWindowDocked(ctx) then
@@ -2218,14 +2272,13 @@ loop_body = function()
     end
     was_focused = focused
     section_connection()
-    ImGui.Spacing(ctx)
     section_tabs()
     -- Layout: setup on the left, preview + transfer on the right.
     local avail_w = ImGui.GetContentRegionAvail(ctx)
     local left_w = math.floor(math.max(340, math.min(440, avail_w * 0.42)))
     -- Leave room under both columns for the Transfer bar along the bottom.
     local _, sp_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
-    local footer_h = TRANSFER_H + sp_y * 2
+    local footer_h = UI.TRANSFER_H + sp_y * 2
     if ImGui.BeginChild(ctx, "setup", left_w, -footer_h, ImGui.ChildFlags_Border) then
       section_source()
       section_destination()
