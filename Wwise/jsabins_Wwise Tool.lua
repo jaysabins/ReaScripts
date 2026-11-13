@@ -8,7 +8,8 @@
 --   The X in the close button is exactly centred, and the ?, Settings and X buttons sit a little
 --   further from the right edge so the space there matches the space above them.
 --   Wwise structure table has rounded corners and a little padding around its fields, and the
---   + and - buttons sit closer together.
+--   + and - buttons sit closer together with bigger symbols. The drag handle is centred in its
+--   column.
 --   Source column: "Item render" is now "Item" and "Folder render" is now "Folder item".
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
@@ -888,10 +889,28 @@ local function grip_handle(id, w, h)
   local col = ImGui.GetColor(ctx, (ImGui.IsItemHovered(ctx) or ImGui.IsItemActive(ctx)) and ImGui.Col_Text or ImGui.Col_TextDisabled)
   local cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
   local hw = math.min(x2 - x1, y2 - y1) * 0.30
+  -- Whole-pixel positions and spacing, so the three lines look the same and evenly spaced.
+  local gap = math.max(3, math.floor(hw * 0.75 + 0.5))
+  local lx1, lx2, my = math.floor(cx - hw + 0.5), math.floor(cx + hw + 0.5), math.floor(cy + 0.5)
   for k = -1, 1 do
-    local ly = cy + k * hw * 0.75
-    ImGui.DrawList_AddLine(dl, cx - hw, ly, cx + hw, ly, col, 1.5)
+    local ly = my + k * gap
+    ImGui.DrawList_AddLine(dl, lx1, ly, lx2, ly, col, 1.5)
   end
+end
+
+-- Square + / - button with the symbol drawn bigger than the font's "+" and "-".
+local function pm_button(id, plus, size)
+  local pressed = ImGui.Button(ctx, id, size, size)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local col = ImGui.GetColor(ctx, ImGui.Col_Text)
+  -- 2px lines on whole pixels (ImGui adds half a pixel to lines, so take it back off).
+  local c = math.floor(size / 2 + 0.5)
+  local cx, cy = math.floor(x1 + 0.5) + c - 0.5, math.floor(y1 + 0.5) + c - 0.5
+  local h = math.floor(size * 0.27 + 0.5)
+  ImGui.DrawList_AddLine(dl, cx - h, cy, cx + h, cy, col, 2)
+  if plus then ImGui.DrawList_AddLine(dl, cx, cy - h, cx, cy + h, col, 2) end
+  return pressed
 end
 
 local function new_level(at)
@@ -927,7 +946,9 @@ local function section_hierarchy()
 
   local sq = ImGui.GetFrameHeight(ctx)
   local sp, sp_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
-  local flags = ImGui.TableFlags_RowBg | ImGui.TableFlags_BordersInnerV
+  -- PadOuterX: the same padding at the table's left and right edges as between cells, so the
+  -- drag handle is centred in its column and the - button isn't against the edge.
+  local flags = ImGui.TableFlags_RowBg | ImGui.TableFlags_BordersInnerV | (ImGui.TableFlags_PadOuterX or 0)
   local act = {}
   -- A little room between the fields and the cell edges (guarded: skipped if the name is missing).
   local cell_pad = ImGui.StyleVar_CellPadding and 1 or 0
@@ -970,10 +991,10 @@ local function section_hierarchy()
       level_options("r" .. i, function() return row.template end, function(t) row.template = t end)
       pop_row_colors()
       ImGui.TableNextColumn(ctx)
-      if ImGui.Button(ctx, "+##add", sq, sq) then act.add = i + 1 end
+      if pm_button("##add", true, sq) then act.add = i + 1 end
       if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Add level below this one") end
       ImGui.SameLine(ctx, 0, UI.PM_GAP)
-      if ImGui.Button(ctx, "-##rem", sq, sq) then act.remove = i end
+      if pm_button("##rem", false, sq) then act.remove = i end
       if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Remove this level") end
       ImGui.PopID(ctx)
     end
@@ -999,7 +1020,7 @@ local function section_hierarchy()
     level_options("leaf", function() return S.leaf.template end, function(t) S.leaf.template = t end)
     pop_row_colors()
     ImGui.TableNextColumn(ctx)
-    if ImGui.Button(ctx, "+##add", sq, sq) then act.add = #S.rows + 1 end
+    if pm_button("##add", true, sq) then act.add = #S.rows + 1 end
     if ImGui.IsItemHovered(ctx) then
       ImGui.SetTooltip(ctx, #S.rows == 0 and "Add level above the Sound" or "Add level just above the Sound")
     end
