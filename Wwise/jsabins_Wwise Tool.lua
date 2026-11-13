@@ -1,8 +1,8 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.20.5
+-- @version 1.20.6
 -- @changelog
---   Smaller gap between the "Wwise Tool" title and the tabs.
+--   A little more room above the "Wwise Tool" title.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -524,7 +524,7 @@ local function title_close_button()
   -- Big bold "Wwise Tool" at the left of the title bar, centered on the buttons' row.
   local big = title_font and pcall(ImGui.PushFont, ctx, title_font)
   local _, th = ImGui.CalcTextSize(ctx, "Wwise Tool")
-  ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2,
+  ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2 + 3, -- a little lower than the buttons' centre: more room above
     ImGui.GetColor(ctx, ImGui.Col_Text), "Wwise Tool")
   if big then ImGui.PopFont(ctx) end
   ImGui.PopClipRect(ctx)
