@@ -274,7 +274,7 @@ Afterwards a summary shows the destination, the number of files imported, object
 
 ## Settings
 
-The gear button opens **Settings**, split into tabs. The window keeps its size as you switch tabs; drag its corner to make it bigger, and a long tab scrolls.
+The gear button opens **Settings** in its own window. The main window stays usable while Settings is open (it doesn't grey out), so you can change an option and watch the preview update. Settings' pages are listed down the left side; click one to show it on the right. The window keeps its size as you switch pages; drag its corner to make it bigger, and a long page scrolls. Close it with its **X**, the **Close** button or Esc.
 
 - **Connection:** the WAAPI HTTP port (8090 by default, must match Wwise) and **Reconnect**.
 - **Rendering** (for Source: Selected items or Folder items):

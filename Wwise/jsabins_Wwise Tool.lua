@@ -1,12 +1,11 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.21.0
+-- @version 1.22.0
 -- @changelog
---   Actor-Mixers are called Property Containers when Wwise 2025.1 or newer is connected (the
---   name Wwise itself uses now), with a [PC] tag in the preview. Older Wwise keeps Actor-Mixer.
---   Saved setups and presets work with both.
---   Wwise Tool is made for Wwise 2022.1 and newer. An older Wwise still connects, with an
---   "(untested)" note next to its version.
+--   Verdana is the window's font (titles and headers too).
+--   Settings is its own window now: the main window no longer greys out while it's open, and
+--   you can keep using both. Close it with its X, the Close button or Esc.
+--   Settings pages are listed down the left side instead of as tabs across the top.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -63,10 +62,16 @@ local ctx = ImGui.CreateContext("Wwise Tool")
 -- If the font can't be made, the header just uses the normal font.
 -- Layout constants live in one table: the main chunk is at Lua's 200-locals limit.
 local UI = {}
+-- Every font in the window is Verdana (falls back to ImGui's own font if it can't be made).
+UI.FONT, UI.FONT_SIZE = "Verdana", 13
+do
+  local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.FONT_SIZE)
+  if ok and f and pcall(ImGui.Attach, ctx, f) then UI.main_font = f end
+end
 UI.HEADER_FONT_SIZE = 15
 local header_font = nil
 do
-  local ok, f = pcall(ImGui.CreateFont, "sans-serif", UI.HEADER_FONT_SIZE)
+  local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.HEADER_FONT_SIZE)
   if ok and f and pcall(ImGui.Attach, ctx, f) then header_font = f end
 end
 -- Bigger, matching titles for the left column's sections (Source, Wwise destination,
@@ -76,8 +81,8 @@ local section_font = nil
 do
   local okb, bold = pcall(function() return ImGui.FontFlags_Bold end)
   local flags = (okb and type(bold) == "number") and bold or 0
-  local ok, f = pcall(ImGui.CreateFont, "sans-serif", UI.SECTION_FONT_SIZE, flags)
-  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, "sans-serif", UI.SECTION_FONT_SIZE) end
+  local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.SECTION_FONT_SIZE, flags)
+  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.SECTION_FONT_SIZE) end
   if ok and f and pcall(ImGui.Attach, ctx, f) then section_font = f end
 end
 -- Big bold "Wwise Tool" title at the top of the window (the title bar itself shows no text).
@@ -85,8 +90,8 @@ local title_font = nil -- 21px bold (the main chunk is near Lua's 200-locals lim
 do
   local okb, bold = pcall(function() return ImGui.FontFlags_Bold end)
   local flags = (okb and type(bold) == "number") and bold or 0
-  local ok, f = pcall(ImGui.CreateFont, "sans-serif", 21, flags)
-  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, "sans-serif", 21) end
+  local ok, f = pcall(ImGui.CreateFont, UI.FONT, 21, flags)
+  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, UI.FONT, 21) end
   if ok and f and pcall(ImGui.Attach, ctx, f) then title_font = f end
 end
 local function section_title(text)
@@ -1918,31 +1923,51 @@ local SETTINGS_TABS = {
   { "Diagnostics", settings_diagnostics },
 }
 
--- New ID (title still reads "Settings") so the old auto-sized window's saved size
--- doesn't carry over to the tabbed one.
-local SETTINGS_ID = "Settings##tabbed"
+-- Settings is a normal window (not a modal popup), so the main window doesn't grey out and
+-- stays usable while it's open. Pages are listed down the left side; the selected page's
+-- contents sit on the right and scroll when they don't fit; the footer stays put.
+-- New ID (title still reads "Settings") so the old popup's saved size doesn't carry over.
+local SETTINGS_ID = "Settings##settingswin"
+UI.settings_open, UI.settings_page = false, 1
 
-local function settings_popup()
-  if open_settings then ImGui.OpenPopup(ctx, SETTINGS_ID); open_settings = false end
-  ImGui.SetNextWindowSize(ctx, 560, 440, ImGui.Cond_FirstUseEver)
-  ImGui.SetNextWindowSizeConstraints(ctx, 420, 300, 2000, 2000)
-  if not ImGui.BeginPopupModal(ctx, SETTINGS_ID) then return end
+local function settings_window()
+  if open_settings then
+    open_settings = false
+    UI.settings_open = true
+    ImGui.SetNextWindowFocus(ctx) -- clicking the gear again brings it to the front
+  end
+  if not UI.settings_open then return end
+  ImGui.SetNextWindowSize(ctx, 720, 460, ImGui.Cond_FirstUseEver)
+  ImGui.SetNextWindowSizeConstraints(ctx, 520, 300, 3000, 3000)
+  ImGui.SetNextWindowBgAlpha(ctx, 1) -- solid, whatever the main window's opacity
+  -- Solid background and a dark title bar (the main window's title-bar colors are see-through).
+  ImGui.PushStyleColor(ctx, ImGui.Col_WindowBg, 0x202020FF)
+  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, 0x0F0F0FFF)
+  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, 0x0F0F0FFF)
+  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, 0x0F0F0FFF)
+  local visible, open = ImGui.Begin(ctx, SETTINGS_ID, true, ImGui.WindowFlags_NoCollapse)
+  ImGui.PopStyleColor(ctx, 4)
+  if open == false then UI.settings_open = false end
+  if not visible then return end
 
-  -- Fixed-size window: switching tabs doesn't make it jump around. The tab's
-  -- contents scroll when they don't fit; the footer stays put.
   local footer_h = ImGui.GetFrameHeightWithSpacing(ctx) + 8
-  if ImGui.BeginTabBar(ctx, "settingstabs") then
-    for _, t in ipairs(SETTINGS_TABS) do
-      if ImGui.BeginTabItem(ctx, t[1]) then
-        if ImGui.BeginChild(ctx, "##settings_" .. t[1], 0, -footer_h) then
-          ImGui.Dummy(ctx, 0, 2)
-          t[2]()
-          ImGui.EndChild(ctx)
-        end
-        ImGui.EndTabItem(ctx)
-      end
+  -- Left: the page list, as wide as its longest name.
+  local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_WindowPadding)
+  local side_w = 0
+  for _, t in ipairs(SETTINGS_TABS) do side_w = math.max(side_w, (ImGui.CalcTextSize(ctx, t[1]))) end
+  side_w = math.floor(side_w + pad_x * 2 + 16)
+  if ImGui.BeginChild(ctx, "##settings_nav", side_w, -footer_h, ImGui.ChildFlags_Border) then
+    for i, t in ipairs(SETTINGS_TABS) do
+      if ImGui.Selectable(ctx, t[1] .. "##sp" .. i, UI.settings_page == i) then UI.settings_page = i end
     end
-    ImGui.EndTabBar(ctx)
+    ImGui.EndChild(ctx)
+  end
+  ImGui.SameLine(ctx)
+  -- Right: the selected page. Each page has its own child, so each keeps its own scroll position.
+  local page = SETTINGS_TABS[UI.settings_page] or SETTINGS_TABS[1]
+  if ImGui.BeginChild(ctx, "##settings_" .. page[1], 0, -footer_h) then
+    page[2]()
+    ImGui.EndChild(ctx)
   end
 
   ImGui.Separator(ctx)
@@ -1951,8 +1976,10 @@ local function settings_popup()
   local w = 80
   local avail = ImGui.GetContentRegionAvail(ctx)
   if avail > w then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - w) end
-  if ImGui.Button(ctx, "Close", w) or ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then ImGui.CloseCurrentPopup(ctx) end
-  ImGui.EndPopup(ctx)
+  local esc = ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows)
+    and not ImGui.IsAnyItemActive(ctx) and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape)
+  if ImGui.Button(ctx, "Close", w) or esc then UI.settings_open = false end
+  ImGui.End(ctx)
 end
 
 ----------------------------------------------------------------------
@@ -2328,6 +2355,9 @@ loop_body = function()
   elseif pk_pin then
     ImGui.SetNextWindowPos(ctx, pk_pin[1], pk_pin[2], ImGui.Cond_Always)
   end
+  -- Verdana for both windows (title bars included). Pushed before Begin, popped after the
+  -- last End, so it's never left on a window's stack.
+  local main_font = UI.main_font and pcall(ImGui.PushFont, ctx, UI.main_font)
   -- No collapsing (WindowFlags_NoCollapse), so double-clicking the title bar does nothing.
   -- Older versions could leave the window collapsed (saved by ImGui); always open it.
   ImGui.SetNextWindowCollapsed(ctx, false, ImGui.Cond_Always)
@@ -2415,12 +2445,14 @@ loop_body = function()
     end
     section_transfer(left_w) -- as wide as the left panel
     summary_popup()
-    settings_popup()
     if not main_win_docked then title_close_button() end
     ImGui.End(ctx)
   end
+  -- Its own window, drawn after the main one ends, inside the same theme and rounding pushes.
+  settings_window()
   ImGui.PopStyleVar(ctx, 3)
   ImGui.PopStyleColor(ctx, 4 + theme_n)
+  if main_font then ImGui.PopFont(ctx) end
   if close_clicked then open = false end
   return open
 end
