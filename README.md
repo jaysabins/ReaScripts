@@ -39,6 +39,7 @@ https://github.com/jaysabins/reascripts/raw/main/index.xml
 
 **Rename**
 - **Name items by track and number them per region**: renames items to their track name plus a counter (`Footsteps_01`, `Footsteps_02`...), restarting at 01 in each region and counting each track separately. Works on folder/empty items too.
+- **Name folder items by track and number them per region**: the same naming, but for folder items only. Renames the folder items and leaves their child items alone even when they're selected too, so NVK Folder Items' auto-select can stay on (same folder-item rule as Wwise Tool's Folder items source).
 - **Rename and number items with region name**: renames selected items to their region name plus a counter (`Region_01`, `Region_02`...). Made with acendan.
 
 **Utility**
