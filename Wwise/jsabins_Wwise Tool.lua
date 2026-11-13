@@ -2,7 +2,7 @@
 -- @author Jay Sabins
 -- @version 1.22.0
 -- @changelog
---   Verdana is the window's font (titles and headers too).
+--   Verdana is the window's font (12px; titles and headers too).
 --   Settings is its own window now: the main window no longer greys out while it's open, and
 --   you can keep using both. Close it with its X, the Close button or Esc.
 --   Settings pages are listed down the left side instead of as tabs across the top.
@@ -63,7 +63,7 @@ local ctx = ImGui.CreateContext("Wwise Tool")
 -- Layout constants live in one table: the main chunk is at Lua's 200-locals limit.
 local UI = {}
 -- Every font in the window is Verdana (falls back to ImGui's own font if it can't be made).
-UI.FONT, UI.FONT_SIZE = "Verdana", 13
+UI.FONT, UI.FONT_SIZE = "Verdana", 12
 do
   local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.FONT_SIZE)
   if ok and f and pcall(ImGui.Attach, ctx, f) then UI.main_font = f end
