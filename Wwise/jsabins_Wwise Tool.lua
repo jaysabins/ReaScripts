@@ -1,9 +1,10 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.20.3
+-- @version 1.20.4
 -- @changelog
---   Fixes the see-through line between the title bar and the window for good: the whole
---   window background is now drawn as one shape, so there's no seam left to see through.
+--   "Transfer to Wwise" is as wide as the left panel and sits in the window's bottom-left
+--   corner, the same distance from the bottom as from the left, with its rounded corner
+--   following the window's (window corners slightly rounder to match).
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -451,8 +452,9 @@ local function draw_question(dl, x1, y1, size, fg)
   if big then ImGui.PopFont(ctx) end
 end
 
-UI.WINDOW_ROUNDING = 10   -- main window corners
-UI.TRANSFER_ROUNDING = 8  -- "Transfer to Wwise" button corners
+UI.WINDOW_ROUNDING = 14   -- main window corners
+-- The "Transfer to Wwise" button sits in the window's bottom-left corner, inset by the window
+-- padding on both sides, with corners concentric to the window's: radius = window radius - inset.
 UI.FRAME_ROUNDING = 4     -- dropdowns, fields, buttons, checkboxes (softened, not pill-shaped)
 UI.TRANSFER_H = 34        -- "Transfer to Wwise" button height
 -- Close button: twice the font size each way (about 4x the area of ImGui's own X), with an even
@@ -1481,7 +1483,7 @@ local function do_transfer()
   transfer_task = run_task(transfer_task)
 end
 
-local function section_transfer()
+local function section_transfer(bw)
   local problems = core.validate(S)
   -- Why the button is greyed out (first reason wins).
   local why
@@ -1494,7 +1496,6 @@ local function section_transfer()
   elseif core.plan_needs_render(S, plan) and not core.project_saved() then why = core.UNSAVED_MSG
   end
   local can = why == nil
-  local bw = 260
   local text = status_line
   if text == "" and why then text = why end
   if text == "" then
@@ -1512,7 +1513,8 @@ local function section_transfer()
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, 0x166A2EFF)
     ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0xFFFFFFFF)
   end
-  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, UI.TRANSFER_ROUNDING)
+  local inset = ImGui.GetStyleVar(ctx, ImGui.StyleVar_WindowPadding)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, math.max(2, UI.WINDOW_ROUNDING - inset))
   if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", bw, UI.TRANSFER_H) and not transfer_task then do_transfer() end
   ImGui.PopStyleVar(ctx)
   if busy then ImGui.EndDisabled(ctx) else ImGui.PopStyleColor(ctx, 4) end
@@ -2253,7 +2255,8 @@ loop_body = function()
   -- The window keeps its name, so ImGui's saved position, size and docking still apply.
   local hide_title = not main_win_docked
   if hide_title then ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0x00000000) end
-  local visible, open = ImGui.Begin(ctx, "Wwise Tool", main_win_docked and true or nil, ImGui.WindowFlags_NoCollapse)
+  local visible, open = ImGui.Begin(ctx, "Wwise Tool", main_win_docked and true or nil,
+    ImGui.WindowFlags_NoCollapse | ImGui.WindowFlags_NoScrollbar | ImGui.WindowFlags_NoScrollWithMouse)
   if hide_title then ImGui.PopStyleColor(ctx) end
   ImGui.PopStyleVar(ctx, 2)
   if open == nil then open = true end
@@ -2285,7 +2288,9 @@ loop_body = function()
     local left_w = math.floor(math.max(340, math.min(440, avail_w * 0.42)))
     -- Leave room under both columns for the Transfer bar along the bottom.
     local _, sp_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
-    local footer_h = UI.TRANSFER_H + sp_y * 2
+    -- Just the button plus one item spacing, so the button's bottom edge sits at the window
+    -- padding, the same distance from the bottom as from the left.
+    local footer_h = UI.TRANSFER_H + sp_y
     if ImGui.BeginChild(ctx, "setup", left_w, -footer_h, ImGui.ChildFlags_Border) then
       section_source()
       section_destination()
@@ -2297,7 +2302,7 @@ loop_body = function()
       section_preview()
       ImGui.EndChild(ctx)
     end
-    section_transfer()
+    section_transfer(left_w) -- as wide as the left panel
     summary_popup()
     settings_popup()
     if not main_win_docked then title_close_button() end
