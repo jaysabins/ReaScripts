@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="4db26fe94988123d68c3aa17078b4ad219e51def">
+<index version="1" name="Jay Sabins Scripts" commit="34f4e462a67309099bf170e707f32c4d848b333c">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -113,6 +113,25 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
     </reapack>
   </category>
   <category name="Rename">
+    <reapack name="jsabins_Name folder and nested folder items by track and number per region.lua" type="script" desc="Name folder items and nested folder items by track and number them per region">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Same as "Name folder items by track and number them per region", but nested folder items under a selected folder item are renamed too, each with its own folder track's name. Regular child items (media items on non-folder tracks) are still left alone, so NVK Folder Items' auto-select (which selects the children too) can stay on.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Each folder item gets its folder track's name plus a counter: Footsteps_01, Footsteps_02... The counter starts again at 01 inside each region and counts left to right. Each folder track keeps its own count.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Which items: the selected items. If no items are selected, every item on the selected tracks is used. From those, every folder item (any item on a folder track, at any nesting level) is renamed. Items that aren't folder items are skipped.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Folder items with a take have the take renamed; empty ones get the item notes set, which is the text REAPER shows on an empty item.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Items that don't start inside a region are left alone (change SKIP_OUTSIDE_REGIONS below to number them too). If regions overlap, the one that starts latest wins. Fully undoable.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Jay Sabins" time="2026-11-13T03:15:02Z">
+        <changelog><![CDATA[Initial release: like "Name folder items by track and number them per region", but nested folder items are renamed too]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/34f4e462a67309099bf170e707f32c4d848b333c/Rename/jsabins_Name%20folder%20and%20nested%20folder%20items%20by%20track%20and%20number%20per%20region.lua</source>
+      </version>
+    </reapack>
     <reapack name="jsabins_Name folder items by track and number per region.lua" type="script" desc="Name folder items by track and number them per region">
       <metadata>
         <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
