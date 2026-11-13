@@ -1,10 +1,9 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.20.2
+-- @version 1.20.3
 -- @changelog
---   Window background is now grey (#191919) instead of black, title bar included.
---   Fixes the see-through line around the window's edge: the border is now solid.
---   Title nudged a little further right.
+--   Fixes the see-through line between the title bar and the window for good: the whole
+--   window background is now drawn as one shape, so there's no seam left to see through.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -2223,10 +2222,15 @@ loop_body = function()
   -- Older versions could leave the window collapsed (saved by ImGui); always open it.
   ImGui.SetNextWindowCollapsed(ctx, false, ImGui.Cond_Always)
   -- Always set it: ImGui's default window background is only ~94% opaque, so 100% must be explicit.
-  ImGui.SetNextWindowBgAlpha(ctx, view.opacity)
+  -- Floating, the whole window background (title bar included) is painted by us as ONE rounded
+  -- shape right after Begin. ImGui draws the title bar and the body as two shapes whose
+  -- anti-aliased edges meet in a faint see-through line; with one shape there's no seam. So
+  -- ImGui's own title bar and body backgrounds are made fully transparent. Docked: ImGui's own.
+  local own_bg = not main_win_docked
+  local bg_col = 0x19191900 | math.floor(view.opacity * 255 + 0.5) -- #191919 at the window opacity
+  ImGui.SetNextWindowBgAlpha(ctx, own_bg and 0 or view.opacity)
   ImGui.PushStyleColor(ctx, ImGui.Col_PopupBg, 0x202020FF) -- solid popups and Settings/summary windows
-  -- Title bar in the window's own dark background instead of ImGui's default blue.
-  local title_bg = 0x19191900 | math.floor(view.opacity * 255 + 0.5) -- same grey as the window
+  local title_bg = own_bg and 0x19191900 or bg_col
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
@@ -2244,7 +2248,6 @@ loop_body = function()
   local title_pad = (title_bar_size() - ImGui.GetFontSize(ctx)) / 2
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_FramePadding, pad_x, math.max(pad_y, title_pad))
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowRounding, UI.WINDOW_ROUNDING) -- rounded window corners
-  local title_h = ImGui.GetFontSize(ctx) + math.max(pad_y, title_pad) * 2
   -- The title bar shows no text (the big title is drawn inside the window), so its text color is
   -- made transparent just for Begin. Not when docked: the dock tab still reads "Wwise Tool".
   -- The window keeps its name, so ImGui's saved position, size and docking still apply.
@@ -2254,15 +2257,14 @@ loop_body = function()
   if hide_title then ImGui.PopStyleColor(ctx) end
   ImGui.PopStyleVar(ctx, 2)
   if open == nil then open = true end
-  if visible and not ImGui.IsWindowDocked(ctx) then
-    -- The title bar and the window body are drawn as two shapes whose anti-aliased edges meet
-    -- at the title bar's bottom, leaving a thin half-transparent line (plus ImGui's divider)
-    -- you could see through. Paint that seam over in the window's own background color.
+  if visible and own_bg then
+    -- One rounded rectangle for the whole window, then the solid border on top of it.
     local wx, wy = ImGui.GetWindowPos(ctx)
-    local ww = ImGui.GetWindowSize(ctx)
+    local ww, wh = ImGui.GetWindowSize(ctx)
     local dl = ImGui.GetWindowDrawList(ctx)
-    ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + title_h + 2, false)
-    ImGui.DrawList_AddRectFilled(dl, wx + 1, wy + title_h - 2, wx + ww - 1, wy + title_h + 1, title_bg)
+    ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + wh, false)
+    ImGui.DrawList_AddRectFilled(dl, wx, wy, wx + ww, wy + wh, bg_col, UI.WINDOW_ROUNDING)
+    ImGui.DrawList_AddRect(dl, wx + 0.5, wy + 0.5, wx + ww - 0.5, wy + wh - 0.5, 0x2E2E2EFF, UI.WINDOW_ROUNDING, 0, 1)
     ImGui.PopClipRect(ctx)
   end
   if visible then
