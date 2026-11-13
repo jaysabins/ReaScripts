@@ -667,6 +667,94 @@ function M.browse_folder(title, starts)
   return nil
 end
 
+-- Save-file picker. Uses js_ReaScriptAPI when it's installed, otherwise Windows' own
+-- Save dialog through PowerShell (like browse_folder). Returns the chosen path, or nil.
+function M.browse_save_file(title, start_dir, default_name)
+  if r.JS_Dialog_BrowseForSaveFile then
+    local ok, f = r.JS_Dialog_BrowseForSaveFile(title, start_dir or "", default_name or "", "JSON files (*.json)\0*.json\0\0")
+    if ok == 1 and f and f ~= "" then return f end
+    return nil
+  end
+  if not r.GetOS():match("^Win") then return nil, "Saving a file needs Windows or the js_ReaScriptAPI extension." end
+  local base = TMP .. SEP .. "save_" .. math.random(100000, 999999)
+  local function q(x) return "'" .. (x or ""):gsub("'", "''") .. "'" end
+  local ps = table.concat({
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "$d = New-Object System.Windows.Forms.SaveFileDialog",
+    "$d.Title = " .. q(title),
+    "$d.Filter = 'JSON files (*.json)|*.json|All files (*.*)|*.*'",
+    "$d.FileName = " .. q(default_name),
+    "$d.OverwritePrompt = $true",
+    "if (" .. q(start_dir) .. " -and (Test-Path -LiteralPath " .. q(start_dir) .. ")) { $d.InitialDirectory = " .. q(start_dir) .. " }",
+    "$owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false }",
+    "$res = $d.ShowDialog($owner)",
+    "if ($res -eq [System.Windows.Forms.DialogResult]::OK) { [IO.File]::WriteAllText(" .. q(base .. ".txt") ..
+      ", $d.FileName, (New-Object System.Text.UTF8Encoding $false)) }",
+  }, "\r\n")
+  local f = io.open(base .. ".ps1", "wb")
+  if not f then return nil, "Couldn't write the file picker script to " .. TMP end
+  f:write("\239\187\191", ps)
+  f:close()
+  r.ExecProcess('powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File "' ..
+    base .. '.ps1"', 600000)
+  local out
+  local rf = io.open(base .. ".txt", "rb")
+  if rf then out = rf:read("*a"); rf:close() end
+  os.remove(base .. ".ps1"); os.remove(base .. ".txt")
+  if out and out ~= "" then return out end
+  return nil
+end
+
+-- Whole configuration in one file: every tab (structure and settings), both kinds of
+-- presets and the window's look (opacity, columns, type colors, delay unit).
+M.CONFIG_FORMAT = "jsabins Wwise Tool configuration"
+
+function M.config_text(tabs, view)
+  local list = {}
+  for i, tab in ipairs(tabs.list) do list[i] = { name = tab.name, color = tab.color, s = tab.s } end
+  return json.encode({
+    format = M.CONFIG_FORMAT, config_version = 1, script_version = M.VERSION,
+    tabs = { active = tabs.active, list = list },
+    structure_presets = read_table(PRESET_KEYS.structure),
+    settings_presets = read_table(PRESET_KEYS.settings),
+    view = view,
+  })
+end
+
+function M.write_config(path, tabs, view)
+  if not path:lower():match("%.json$") then path = path .. ".json" end
+  local f = io.open(path, "wb")
+  if not f then return nil, "Couldn't write " .. path end
+  f:write(M.config_text(tabs, view))
+  f:close()
+  return path
+end
+
+-- Returns { tabs =, structure_presets =, settings_presets =, view = } or nil, error.
+function M.read_config(path)
+  local f = io.open(path, "rb")
+  if not f then return nil, "Couldn't open " .. path end
+  local txt = f:read("*a"); f:close()
+  local ok, c = pcall(json.decode, txt)
+  if not ok or type(c) ~= "table" or c.format ~= M.CONFIG_FORMAT then
+    return nil, "That file isn't a Wwise Tool configuration."
+  end
+  local t = type(c.tabs) == "table" and read_tabs_text(json.encode(c.tabs)) or nil
+  if not t then return nil, "That configuration has no tabs in it." end
+  for i, tab in ipairs(t.list) do
+    tab.id = i
+    if tab.name == "" then tab.name = "Tab " .. i end
+  end
+  t.next_id = #t.list + 1
+  local function presets(x)
+    local out = {}
+    if type(x) == "table" then for name, p in pairs(x) do if type(p) == "table" then out[tostring(name)] = p end end end
+    return out
+  end
+  return { tabs = t, structure_presets = presets(c.structure_presets), settings_presets = presets(c.settings_presets),
+    view = type(c.view) == "table" and c.view or nil }
+end
+
 ----------------------------------------------------------------------
 -- Small helpers
 ----------------------------------------------------------------------
