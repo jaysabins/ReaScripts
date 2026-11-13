@@ -103,11 +103,15 @@ Presets still work inside a tab: loading a structure or settings preset changes 
 There are two kinds of presets, so you can load one part of a setup without changing the rest:
 
 - **Structure presets...** (under **Wwise structure**) save just the structure: the levels, their names and property templates, and the Sound row (SFX or Voice, name, template and language).
-- **Settings presets...** (the button at the bottom of the **Source** section) save everything else: the source, the Wwise destination, the Originals subfolder, the conflict choice, the Initial Delay options, and the rendering and transfer options in **Settings**.
+- **Settings presets...** (in **Settings > Configuration**) save everything else: the source, the Wwise destination, the Originals subfolder, the conflict choice, the Initial Delay options, and the rendering and transfer options in **Settings**.
 
 In either popup, click a name under **Load** to load it. To save, type a name and click **Save** (an existing name is overwritten). To delete, type or load its name and click **Delete**.
 
 The connection port and the Mono/Stereo choices from the preview are never part of a preset.
+
+### Export and import the whole configuration
+
+**Settings > Configuration > Export configuration...** saves everything to one `.json` file: every tab (its structure, settings, name and color), all structure and settings presets, and the window's look (opacity, visible columns, type colors, delay unit). **Import configuration...** loads such a file: this project's tabs and the window's look are replaced, presets from the file are added (a preset with the same name is overwritten, your others stay), and your connection port is kept. Use it to back up a setup or move it to another computer.
 
 Presets from before version 1.11 held the structure plus the Originals subfolder, conflict choice and template option. The first time you open 1.11 or later, each one is split into a structure preset and a settings preset with the same name, so nothing is lost.
 

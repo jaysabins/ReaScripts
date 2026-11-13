@@ -1,13 +1,11 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.18.5
+-- @version 1.19.0
 -- @changelog
---   Fixes 1.18.4 failing on launch ("ImGui_End: Missing PopStyleVar()").
---   Layout and styling: "Transfer to Wwise" moves to the bottom left of the window, with
---   its status text beside it. Dropdowns, fields and buttons get slightly rounded corners.
---   Bigger, matching section titles on the left (Source, Wwise destination, Wwise
---   structure). "Settings presets..." moves to the bottom of the Source section. Fixes the
---   thin see-through line between the title bar and the window.
+--   Settings > Configuration: Export / Import configuration saves the complete setup to a
+--   file (every tab, all structure and settings presets, the window's look) and loads it back.
+--   "Settings presets..." moved from the main window to Settings > Configuration.
+--   Section titles a little smaller (still matching).
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -25,7 +23,7 @@
 --     Work Units) named with REAPER wildcards like $region, $track, $item.
 --   - Property templates per level, Sound SFX or Sound Voice (with language),
 --     Originals subfolder (wildcards allowed).
---   - Tabs, each a whole setup you can flick between. Conflict handling, structure and settings presets, live preview (new vs existing objects),
+--   - Tabs, each a whole setup you can flick between. Conflict handling, structure and settings presets, export/import of the whole configuration, live preview (new vs existing objects),
 --     transfer summary. One Wwise undo step per transfer.
 --   - Auto mono/stereo: a Sound whose left and right match is made mono
 --     (also for folder items). Click the preview's Channels column to force
@@ -70,7 +68,7 @@ do
 end
 -- Bigger, matching titles for the left column's sections (Source, Wwise destination,
 -- Wwise structure). Falls back to the normal font if it can't be made.
-local SECTION_FONT_SIZE = 18
+local SECTION_FONT_SIZE = 16
 local section_font = nil
 do
   local okb, bold = pcall(function() return ImGui.FontFlags_Bold end)
@@ -99,10 +97,9 @@ core.http_port = S.http_port
 -- Look of the window (same in every project): background opacity, hidden preview columns,
 -- type colors and the unit the preview's Initial delay column shows ("s" or "ms").
 local view = { opacity = 1.0, hidden = {}, colors = {}, delay_unit = "s" }
-do
-  local v = r.GetExtState(core.EXT, "view")
-  local ok, t = pcall(core.json.decode, v ~= "" and v or "{}")
-  if ok and type(t) == "table" then
+-- Fill `view` from a saved (or imported) table, keeping only values that make sense.
+local function read_view(t)
+  if type(t) == "table" then
     if type(t.opacity) == "number" then view.opacity = math.max(0.2, math.min(1, t.opacity)) end
     if type(t.hidden) == "table" then for k, b in pairs(t.hidden) do if b == true then view.hidden[k] = true end end end
     if type(t.colors) == "table" then
@@ -111,6 +108,11 @@ do
     if t.delay_unit == "ms" then view.delay_unit = "ms" end
     if type(t.size_v) == "number" then view.size_v = t.size_v end
   end
+end
+do
+  local v = r.GetExtState(core.EXT, "view")
+  local ok, t = pcall(core.json.decode, v ~= "" and v or "{}")
+  if ok then read_view(t) end
 end
 local function save_view() r.SetExtState(core.EXT, "view", core.json.encode(view), true) end
 local view_dirty = false -- type colors changed; saved once the color picker is let go
@@ -575,10 +577,6 @@ local function section_source()
     dim_label("Files render where your render settings say, then import from there.")
     ImGui.PopTextWrapPos(ctx)
   end
-  presets_button("settings", "Settings presets...",
-    "Save or load everything except the Wwise structure: source, destination, Originals\n" ..
-    "subfolder, conflict choice, Initial Delay, and the render and transfer options in Settings.\n" ..
-    "Loading one leaves the Wwise structure as it is.")
   ImGui.Dummy(ctx, 0, 4)
 end
 
@@ -1658,6 +1656,64 @@ local function settings_diagnostics()
   end
 end
 
+-- Export / import the whole configuration (all tabs, both kinds of presets, window look).
+local config_msg, config_msg_bad = "", false
+local apply_imported_config -- set further down, once the tab helpers exist
+
+local function export_config()
+  save_all()
+  local dir = r.GetProjectPath("")
+  local path, err = core.browse_save_file("Export Wwise Tool configuration", dir, "Wwise Tool configuration.json")
+  if not path then
+    if err then config_msg, config_msg_bad = err, true end
+    return
+  end
+  local out, werr = core.write_config(path, tabs, view)
+  if out then config_msg, config_msg_bad = "Exported to " .. out, false
+  else config_msg, config_msg_bad = werr, true end
+end
+
+local function import_config()
+  local ok, path = r.GetUserFileNameForRead("", "Import Wwise Tool configuration", "json")
+  if not ok or not path or path == "" then return end
+  local cfg, err = core.read_config(path)
+  if not cfg then config_msg, config_msg_bad = err, true; return end
+  local n = #cfg.tabs.list
+  local answer = r.ShowMessageBox(string.format(
+    "Import this configuration?\n\nThis project's tabs are replaced by the %d tab%s in the file, and the window's " ..
+    "look (opacity, columns, type colors) is replaced too.\nPresets in the file are added; ones with the same " ..
+    "name are overwritten, your other presets stay.", n, n == 1 and "" or "s"), "Wwise Tool", 1)
+  if answer ~= 1 then return end
+  apply_imported_config(cfg)
+  config_msg, config_msg_bad = "Imported " .. path, false
+end
+
+local function settings_configuration()
+  ImGui.SeparatorText(ctx, "Settings presets")
+  ImGui.PushTextWrapPos(ctx, 480)
+  dim_label("Everything except the Wwise structure: source, destination, Originals subfolder, conflict choice, " ..
+    "Initial Delay, and the render and transfer options. Loading one changes the tab that's showing.")
+  ImGui.PopTextWrapPos(ctx)
+  presets_button("settings", "Settings presets...",
+    "Save or load everything except the Wwise structure: source, destination, Originals\n" ..
+    "subfolder, conflict choice, Initial Delay, and the render and transfer options in Settings.\n" ..
+    "Loading one leaves the Wwise structure as it is.")
+  ImGui.Dummy(ctx, 0, 6)
+  ImGui.SeparatorText(ctx, "Export and import")
+  ImGui.PushTextWrapPos(ctx, 480)
+  dim_label("Save the complete setup to a file: every tab with its structure and settings, all structure and " ..
+    "settings presets, and the window's look. Import it on another computer or to go back to it later.")
+  ImGui.PopTextWrapPos(ctx)
+  if ImGui.Button(ctx, "Export configuration...") then export_config() end
+  ImGui.SameLine(ctx)
+  if ImGui.Button(ctx, "Import configuration...") then import_config() end
+  if config_msg ~= "" then
+    ImGui.PushTextWrapPos(ctx, 480)
+    ImGui.TextColored(ctx, config_msg_bad and COLOR_BAD or COLOR_DIM, config_msg)
+    ImGui.PopTextWrapPos(ctx)
+  end
+end
+
 local SETTINGS_TABS = {
   { "Connection", settings_connection },
   { "Rendering", settings_rendering },
@@ -1665,6 +1721,7 @@ local SETTINGS_TABS = {
   { "Transfer", settings_transfer },
   { "Stream & loop", settings_streaming },
   { "Interface", settings_interface },
+  { "Configuration", settings_configuration },
   { "Diagnostics", settings_diagnostics },
 }
 
@@ -1799,6 +1856,27 @@ local function setup_switched()
   pk_col, pk_sel, pk_anchor = nil, {}, nil
   sel_poll_at = 0
   last_sig = nil
+end
+
+apply_imported_config = function(cfg)
+  local port = S.http_port -- keep this computer's connection port
+  for _, kind in ipairs({ "structure", "settings" }) do
+    for name, p in pairs(cfg[kind .. "_presets"]) do presets[kind][name] = p end
+    core.save_presets(kind, presets[kind])
+  end
+  if cfg.view then
+    view.hidden, view.colors = {}, {}
+    read_view(cfg.view)
+    save_view()
+  end
+  tabs = cfg.tabs
+  for _, tab in ipairs(tabs.list) do tab.s.http_port = port end
+  S = tabs.list[tabs.active].s
+  core.http_port = S.http_port
+  save_all()
+  tab_select_pending = true
+  setup_switched()
+  settings_changed()
 end
 
 local function show_tab(i)
