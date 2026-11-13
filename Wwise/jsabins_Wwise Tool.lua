@@ -1,7 +1,8 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.18.4
+-- @version 1.18.5
 -- @changelog
+--   Fixes 1.18.4 failing on launch ("ImGui_End: Missing PopStyleVar()").
 --   Layout and styling: "Transfer to Wwise" moves to the bottom left of the window, with
 --   its status text beside it. Dropdowns, fields and buttons get slightly rounded corners.
 --   Bigger, matching section titles on the left (Source, Wwise destination, Wwise
@@ -2067,6 +2068,12 @@ loop_body = function()
   -- No p_open: ImGui's small title-bar X is replaced by our big X in the same corner, and the
   -- title bar is made taller to fit it. When docked there's no title bar, so the dock tab gets
   -- ImGui's normal X instead (main_win_docked is from the last frame).
+  -- Softly rounded dropdowns, fields, buttons, sliders and popups. Pushed BEFORE Begin and popped
+  -- after End: ImGui errors ("Missing PopStyleVar") if a push made inside the window is still on
+  -- the stack at End().
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, FRAME_ROUNDING)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_GrabRounding, FRAME_ROUNDING)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_PopupRounding, FRAME_ROUNDING)
   local pad_x, pad_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
   local title_pad = (title_bar_size() - ImGui.GetFontSize(ctx)) / 2
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_FramePadding, pad_x, math.max(pad_y, title_pad))
@@ -2074,10 +2081,6 @@ loop_body = function()
   local title_h = ImGui.GetFontSize(ctx) + math.max(pad_y, title_pad) * 2
   local visible, open = ImGui.Begin(ctx, "Wwise Tool", main_win_docked and true or nil, ImGui.WindowFlags_NoCollapse)
   ImGui.PopStyleVar(ctx, 2)
-  -- Softly rounded dropdowns, fields, buttons, sliders and popups inside the window.
-  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, FRAME_ROUNDING)
-  ImGui.PushStyleVar(ctx, ImGui.StyleVar_GrabRounding, FRAME_ROUNDING)
-  ImGui.PushStyleVar(ctx, ImGui.StyleVar_PopupRounding, FRAME_ROUNDING)
   if open == nil then open = true end
   if visible and not ImGui.IsWindowDocked(ctx) then
     -- The title bar and the window body are drawn as two shapes whose anti-aliased edges meet
