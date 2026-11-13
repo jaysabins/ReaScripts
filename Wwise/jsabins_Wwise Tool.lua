@@ -907,7 +907,7 @@ local function pm_button(id, plus, size)
   -- 2px lines on whole pixels (ImGui adds half a pixel to lines, so take it back off).
   local c = math.floor(size / 2 + 0.5)
   local cx, cy = math.floor(x1 + 0.5) + c - 0.5, math.floor(y1 + 0.5) + c - 0.5
-  local h = math.floor(size * 0.27 + 0.5)
+  local h = math.floor(size * 0.20 + 0.5)
   ImGui.DrawList_AddLine(dl, cx - h, cy, cx + h, cy, col, 2)
   if plus then ImGui.DrawList_AddLine(dl, cx, cy - h, cx, cy + h, col, 2) end
   return pressed
