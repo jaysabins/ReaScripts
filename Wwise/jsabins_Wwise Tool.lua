@@ -1,10 +1,8 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.20.4
+-- @version 1.20.5
 -- @changelog
---   "Transfer to Wwise" is as wide as the left panel and sits in the window's bottom-left
---   corner, the same distance from the bottom as from the left, with its rounded corner
---   following the window's (window corners slightly rounder to match).
+--   Smaller gap between the "Wwise Tool" title and the tabs.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -462,7 +460,8 @@ UI.TRANSFER_H = 34        -- "Transfer to Wwise" button height
 -- around Begin) so the button plus its margins fit above the title bar's divider line.
 local function close_size() return math.floor(ImGui.GetFontSize(ctx) * 2 + 0.5) end
 local function close_margin() return math.floor(ImGui.GetFontSize(ctx) * 0.5 + 0.5) end
-local function title_bar_size() return close_size() + close_margin() * 2 end
+-- Margin above the buttons, a thin one below, so the title sits close to the tabs.
+local function title_bar_size() return close_size() + close_margin() + math.max(2, math.floor(close_margin() * 0.4)) end
 
 -- Put the big X near the window's top-right corner, over the title bar. Called at the end of the
 -- window so it draws on top. The title bar is outside the content clip area, so the clip rect
@@ -2281,6 +2280,9 @@ loop_body = function()
       sel_poll_at = 0; forget_existing(); last_sig = nil
     end
     was_focused = focused
+    -- Floating: start the tabs a few pixels higher (still inside the content area) so they sit
+    -- close under the title. The tab bar always follows, so the cursor move has an item after it.
+    if own_bg then ImGui.SetCursorPosY(ctx, ImGui.GetCursorPosY(ctx) - 4) end
     section_connection()
     section_tabs()
     -- Layout: setup on the left, preview + transfer on the right.
