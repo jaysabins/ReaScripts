@@ -10,6 +10,8 @@
 --   Buttons, fields, dropdowns, tabs, panels, scrollbars and the preview table get slightly
 --   rounded corners everywhere (both windows), instead of hard right angles. The Wwise
 --   structure table uses the same small corners as the preview table.
+--   The text next to Transfer to Wwise is gone (its messages show in the button's tooltip), and
+--   the preview now runs down to the bottom of the window, level with the button.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1636,14 +1638,8 @@ local function section_transfer(bw)
   elseif core.plan_needs_render(S, plan) and not core.project_saved() then why = core.UNSAVED_MSG
   end
   local can = why == nil
-  local text = status_line
-  if text == "" and why then text = why end
-  if text == "" then
-    local n = #plan.entries
-    text = string.format("%d Sound%s  ->  %s", n, n == 1 and "" or "s", current_destination() ~= "" and current_destination() or "(no destination)")
-  end
-  -- Button at the bottom left, status text to its right (vertically centered on the button).
-  local y0 = ImGui.GetCursorPosY(ctx)
+  -- Just the button, under the left panel (no status text next to it: why it's greyed out is
+  -- in its tooltip, and the preview sits to its right).
   local busy = not can or transfer_task
   if busy then ImGui.BeginDisabled(ctx)
   else
@@ -1658,12 +1654,10 @@ local function section_transfer(bw)
   if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", bw, UI.TRANSFER_H) and not transfer_task then do_transfer() end
   ImGui.PopStyleVar(ctx)
   if busy then ImGui.EndDisabled(ctx) else ImGui.PopStyleColor(ctx, 4) end
-  if why and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then ImGui.SetTooltip(ctx, why) end
-  ImGui.SameLine(ctx, 0, 14)
-  ImGui.SetCursorPosY(ctx, y0 + math.max(0, (UI.TRANSFER_H - ImGui.GetTextLineHeight(ctx)) / 2))
-  ImGui.PushTextWrapPos(ctx, 0)
-  ImGui.TextColored(ctx, (why and status_line == "") and 0xF4D35EFF or COLOR_DIM, text)
-  ImGui.PopTextWrapPos(ctx)
+  -- Tooltip: the latest message (transfer progress, a preset or folder problem), then why it's greyed out.
+  local tip = (status_line ~= "" and why and status_line ~= why) and (status_line .. "\n" .. why) or
+    (status_line ~= "" and status_line or why)
+  if tip and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then ImGui.SetTooltip(ctx, tip) end
 end
 
 local function summary_popup()
@@ -2457,23 +2451,26 @@ loop_body = function()
     -- Layout: setup on the left, preview + transfer on the right.
     local avail_w = ImGui.GetContentRegionAvail(ctx)
     local left_w = math.floor(math.max(340, math.min(440, avail_w * 0.42)))
-    -- Leave room under both columns for the Transfer bar along the bottom.
+    -- Left column: setup panel with the Transfer button under it. The preview on the right runs
+    -- all the way down, so its bottom lines up with the button's.
     local _, sp_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
     -- Just the button plus one item spacing, so the button's bottom edge sits at the window
     -- padding, the same distance from the bottom as from the left.
     local footer_h = UI.TRANSFER_H + sp_y
+    ImGui.BeginGroup(ctx)
     if ImGui.BeginChild(ctx, "setup", left_w, -footer_h, ImGui.ChildFlags_Border) then
       section_source()
       section_destination()
       section_hierarchy()
       ImGui.EndChild(ctx)
     end
+    section_transfer(left_w) -- as wide as the left panel
+    ImGui.EndGroup(ctx)
     ImGui.SameLine(ctx)
-    if ImGui.BeginChild(ctx, "previewpane", 0, -footer_h) then
+    if ImGui.BeginChild(ctx, "previewpane", 0, 0) then
       section_preview()
       ImGui.EndChild(ctx)
     end
-    section_transfer(left_w) -- as wide as the left panel
     summary_popup()
     if not main_win_docked then title_close_button() end
     if round_n > 0 then ImGui.PopStyleVar(ctx, round_n) end

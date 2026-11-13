@@ -264,7 +264,7 @@ Looping is written after the property templates, so a template can't undo it. Ch
 
 ### Transfer
 
-**Transfer to Wwise** (bottom left of the window) runs the whole transfer as one Wwise undo step. When the button is greyed out, the text next to it (and its tooltip) says why, for example "Select one or more items in REAPER".
+**Transfer to Wwise** (bottom left of the window) runs the whole transfer as one Wwise undo step. When the button is greyed out, hover over it: the tooltip says why, for example "Select one or more items in REAPER".
 
 Afterwards a summary shows the destination, the number of files imported, objects created, templates applied, Sounds set to stream and delays set, how long each step took, and any problems. **Copy details** copies the problems so you can paste them somewhere. If **Select imported Sounds in Wwise afterwards** is on, Wwise jumps to the new Sounds.
 
@@ -316,7 +316,7 @@ Result: `Pistol` holds three Random Containers (`Muzzle`, `Mech`, `Tail`), each 
 - **Red dot, "Couldn't reach Wwise".** Wwise isn't open, WAAPI is off, or the HTTP port doesn't match. Check the Wwise setup above, then click **Reconnect** in Settings.
 - **"Wwise refused the connection (HTTP 404)".** Set **Allow connections from** to `127.0.0.1,::1` in Wwise's User Preferences, make sure the WAMP and HTTP ports are different, and restart Wwise.
 - **"Wwise is busy and didn't answer in time".** Wwise is still loading or working on something. Wait a moment; the preview updates on its own.
-- **Transfer is greyed out.** Read the text next to the button. Usually nothing is selected in REAPER or in Wwise, or a structure level has no name.
+- **Transfer is greyed out.** Hover over the button to see why. Usually nothing is selected in REAPER or in Wwise, or a structure level has no name.
 - **"Save the REAPER project first".** The REAPER project has never been saved, and the transfer needs to render. Save it (**File > Save project**) and transfer again. Items sent as they are (no render) work without saving.
 - **"REAPER didn't render a file for it".** REAPER ran the render but the file for that Sound wasn't where Wwise Tool expected it. Check that the **Keep rendered files in** folder can be written to, and try again.
 - **"A wildcard in the hierarchy didn't resolve to a single name".** A wildcard came out empty for some items, for example `$region` on an item that's outside every region.
