@@ -3,8 +3,8 @@
 -- @version 1.20.7
 -- @changelog
 --   Originals file column now really shows the END of long paths (the start is cut off), and
---   hovering a path scrolls it slowly back and forth. The column width is read from its header,
---   because ReaImGui reports the full table width inside a cell.
+--   hovering a path scrolls it slowly back and forth. The cell's width is found from where ImGui
+--   clips it (ReaImGui reports the full table width inside a cell).
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1276,14 +1276,31 @@ end
 -- cut off instead). Hovering it scrolls slowly back and forth so the whole text can be read.
 UI.TAIL_SPEED, UI.TAIL_PAUSE = 60, 0.8 -- pixels per second, seconds paused at each end
 UI.CELL_PAD_X, UI.col_x2 = 4, {} -- ImGui's default table cell padding; column right edges
+-- Right edge of the current cell's clip rect: the line where ImGui really cuts the text off.
+-- Found by binary search with IsRectVisibleEx (there's no clip-rect getter in ReaImGui 0.9).
+local function cell_clip_right(x, y)
+  if not ImGui.IsRectVisibleEx or not ImGui.IsRectVisibleEx(ctx, x, y, x + 1, y + 1) then return nil end
+  local lo, hi = x, x + 8192
+  for _ = 1, 16 do
+    local mid = (lo + hi) / 2
+    if ImGui.IsRectVisibleEx(ctx, mid, y, mid + 1, y + 1) then lo = mid else hi = mid end
+  end
+  return lo
+end
+
 -- col_id: the column's id, so its right edge can be read from UI.col_x2 (recorded from the
 -- header row). Inside a table cell GetContentRegionAvail doesn't stop at the column edge.
 local function tail_text(text, col, tip, col_id)
   local x, y = ImGui.GetCursorScreenPos(ctx)
-  local x2 = col_id and UI.col_x2[col_id]
-  local avail = math.max(1, x2 and (x2 - x) or ImGui.GetContentRegionAvail(ctx))
-  local tw = ImGui.CalcTextSize(ctx, text)
   local h = ImGui.GetTextLineHeight(ctx)
+  -- Use the narrowest of the three ways to measure the cell, so the text never runs past it.
+  local x2 = x + ImGui.GetContentRegionAvail(ctx)
+  local hx = col_id and UI.col_x2[col_id]
+  if hx then x2 = math.min(x2, hx) end
+  local cx = cell_clip_right(x, y + h * 0.5)
+  if cx then x2 = math.min(x2, cx - UI.CELL_PAD_X) end
+  local avail = math.max(1, x2 - x)
+  local tw = ImGui.CalcTextSize(ctx, text)
   ImGui.Dummy(ctx, avail, h)
   local hovered = ImGui.IsItemHovered(ctx)
   local off = 0
