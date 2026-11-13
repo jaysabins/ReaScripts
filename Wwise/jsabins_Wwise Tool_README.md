@@ -103,7 +103,7 @@ Presets still work inside a tab: loading a structure or settings preset changes 
 There are two kinds of presets, so you can load one part of a setup without changing the rest:
 
 - **Structure presets...** (under **Wwise structure**) save just the structure: the levels, their names and property templates, and the Sound row (SFX or Voice, name, template and language).
-- **Settings presets...** (the button at the top of the left side) save everything else: the source, the Wwise destination, the Originals subfolder, the conflict choice, the Initial Delay options, and the rendering and transfer options in **Settings**.
+- **Settings presets...** (the button at the bottom of the **Source** section) save everything else: the source, the Wwise destination, the Originals subfolder, the conflict choice, the Initial Delay options, and the rendering and transfer options in **Settings**.
 
 In either popup, click a name under **Load** to load it. To save, type a name and click **Save** (an existing name is overwritten). To delete, type or load its name and click **Delete**.
 
@@ -259,7 +259,7 @@ Looping is written after the property templates, so a template can't undo it. Ch
 
 ### Transfer
 
-**Transfer to Wwise** runs the whole transfer as one Wwise undo step. When the button is greyed out, the text next to it (and its tooltip) says why, for example "Select one or more items in REAPER".
+**Transfer to Wwise** (bottom left of the window) runs the whole transfer as one Wwise undo step. When the button is greyed out, the text next to it (and its tooltip) says why, for example "Select one or more items in REAPER".
 
 Afterwards a summary shows the destination, the number of files imported, objects created, templates applied, Sounds set to stream and delays set, how long each step took, and any problems. **Copy details** copies the problems so you can paste them somewhere. If **Select imported Sounds in Wwise afterwards** is on, Wwise jumps to the new Sounds.
 

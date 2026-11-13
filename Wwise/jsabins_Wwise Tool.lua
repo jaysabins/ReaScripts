@@ -1,10 +1,12 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.18.3
+-- @version 1.18.4
 -- @changelog
---   Settings > Diagnostics > "Copy last render log" lists what the last transfer
---   rendered (tracks, temporary regions, render settings, files), to track down the
---   missing FX on folder items rendered through master.
+--   Layout and styling: "Transfer to Wwise" moves to the bottom left of the window, with
+--   its status text beside it. Dropdowns, fields and buttons get slightly rounded corners.
+--   Bigger, matching section titles on the left (Source, Wwise destination, Wwise
+--   structure). "Settings presets..." moves to the bottom of the Source section. Fixes the
+--   thin see-through line between the title bar and the window.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -64,6 +66,22 @@ local header_font = nil
 do
   local ok, f = pcall(ImGui.CreateFont, "sans-serif", HEADER_FONT_SIZE)
   if ok and f and pcall(ImGui.Attach, ctx, f) then header_font = f end
+end
+-- Bigger, matching titles for the left column's sections (Source, Wwise destination,
+-- Wwise structure). Falls back to the normal font if it can't be made.
+local SECTION_FONT_SIZE = 18
+local section_font = nil
+do
+  local okb, bold = pcall(function() return ImGui.FontFlags_Bold end)
+  local flags = (okb and type(bold) == "number") and bold or 0
+  local ok, f = pcall(ImGui.CreateFont, "sans-serif", SECTION_FONT_SIZE, flags)
+  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, "sans-serif", SECTION_FONT_SIZE) end
+  if ok and f and pcall(ImGui.Attach, ctx, f) then section_font = f end
+end
+local function section_title(text)
+  local big = section_font and pcall(ImGui.PushFont, ctx, section_font)
+  ImGui.SeparatorText(ctx, text)
+  if big then ImGui.PopFont(ctx) end
 end
 local function push_header_font()
   if header_font and pcall(ImGui.PushFont, ctx, header_font) then return true end
@@ -401,6 +419,8 @@ local close_clicked = false
 
 local WINDOW_ROUNDING = 10   -- main window corners
 local TRANSFER_ROUNDING = 8  -- "Transfer to Wwise" button corners
+local FRAME_ROUNDING = 4     -- dropdowns, fields, buttons, checkboxes (softened, not pill-shaped)
+local TRANSFER_H = 34        -- "Transfer to Wwise" button height
 -- Close button: twice the font size each way (about 4x the area of ImGui's own X), with an even
 -- margin from the window's top and right edges. The title bar is made taller (FramePadding pushed
 -- around Begin) so the button plus its margins fit above the title bar's divider line.
@@ -530,7 +550,7 @@ local function presets_button(kind, label, tip)
 end
 
 local function section_source()
-  ImGui.SeparatorText(ctx, "Source")
+  section_title("Source")
   local changed
   changed, S.source = combo("##source", { { "items", "Selected items" }, { "folders", "Folder items (ignore their child items)" },
     { "render", "REAPER render settings (regions, stems, matrix...)" } }, S.source, -1)
@@ -554,6 +574,10 @@ local function section_source()
     dim_label("Files render where your render settings say, then import from there.")
     ImGui.PopTextWrapPos(ctx)
   end
+  presets_button("settings", "Settings presets...",
+    "Save or load everything except the Wwise structure: source, destination, Originals\n" ..
+    "subfolder, conflict choice, Initial Delay, and the render and transfer options in Settings.\n" ..
+    "Loading one leaves the Wwise structure as it is.")
   ImGui.Dummy(ctx, 0, 4)
 end
 
@@ -604,7 +628,7 @@ local function browse_originals()
 end
 
 local function section_destination()
-  ImGui.SeparatorText(ctx, "Wwise destination")
+  section_title("Wwise destination")
   local c
   c, S.use_wwise_selection = ImGui.Checkbox(ctx, "Always use the object selected in Wwise", S.use_wwise_selection)
   if c then settings_changed(); sel_poll_at = 0 end
@@ -789,7 +813,7 @@ local function level_drop_target(i, out)
 end
 
 local function section_hierarchy()
-  ImGui.SeparatorText(ctx, "Wwise structure")
+  section_title("Wwise structure")
   ImGui.PushTextWrapPos(ctx, 0)
   dim_label("Levels created under the destination, top to bottom. Names can use wildcards.")
   ImGui.PopTextWrapPos(ctx)
@@ -1315,7 +1339,7 @@ local function section_preview()
   local flags = ImGui.TableFlags_BordersV | ImGui.TableFlags_BordersOuterH | ImGui.TableFlags_RowBg |
                 ImGui.TableFlags_ScrollY | ImGui.TableFlags_Resizable | ImGui.TableFlags_Hideable |
                 ImGui.TableFlags_Reorderable
-  local h = math.max(160, select(2, ImGui.GetContentRegionAvail(ctx)) - 52)
+  local h = math.max(160, select(2, ImGui.GetContentRegionAvail(ctx)))
   if ImGui.BeginTable(ctx, "previewtree", #PREVIEW_COLS, flags, 0, h) then
     ImGui.TableSetupScrollFreeze(ctx, 0, 1)
     for _, c in ipairs(PREVIEW_COLS) do
@@ -1388,8 +1412,6 @@ local function section_transfer()
   elseif core.plan_needs_render(S, plan) and not core.project_saved() then why = core.UNSAVED_MSG
   end
   local can = why == nil
-  ImGui.Separator(ctx)
-  ImGui.Dummy(ctx, 0, 2)
   local bw = 260
   local text = status_line
   if text == "" and why then text = why end
@@ -1397,14 +1419,8 @@ local function section_transfer()
     local n = #plan.entries
     text = string.format("%d Sound%s  ->  %s", n, n == 1 and "" or "s", current_destination() ~= "" and current_destination() or "(no destination)")
   end
-  local avail = ImGui.GetContentRegionAvail(ctx)
-  ImGui.AlignTextToFramePadding(ctx)
-  ImGui.PushTextWrapPos(ctx, math.max(80, avail - bw - 12))
-  ImGui.TextColored(ctx, (why and status_line == "") and 0xF4D35EFF or COLOR_DIM, text)
-  ImGui.PopTextWrapPos(ctx)
-  ImGui.SameLine(ctx)
-  avail = ImGui.GetContentRegionAvail(ctx)
-  if avail > bw then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - bw) end
+  -- Button at the bottom left, status text to its right (vertically centered on the button).
+  local y0 = ImGui.GetCursorPosY(ctx)
   local busy = not can or transfer_task
   if busy then ImGui.BeginDisabled(ctx)
   else
@@ -1415,10 +1431,15 @@ local function section_transfer()
     ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0xFFFFFFFF)
   end
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, TRANSFER_ROUNDING)
-  if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", bw, 34) and not transfer_task then do_transfer() end
+  if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", bw, TRANSFER_H) and not transfer_task then do_transfer() end
   ImGui.PopStyleVar(ctx)
   if busy then ImGui.EndDisabled(ctx) else ImGui.PopStyleColor(ctx, 4) end
   if why and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then ImGui.SetTooltip(ctx, why) end
+  ImGui.SameLine(ctx, 0, 14)
+  ImGui.SetCursorPosY(ctx, y0 + math.max(0, (TRANSFER_H - ImGui.GetTextLineHeight(ctx)) / 2))
+  ImGui.PushTextWrapPos(ctx, 0)
+  ImGui.TextColored(ctx, (why and status_line == "") and 0xF4D35EFF or COLOR_DIM, text)
+  ImGui.PopTextWrapPos(ctx)
 end
 
 local function summary_popup()
@@ -2050,9 +2071,25 @@ loop_body = function()
   local title_pad = (title_bar_size() - ImGui.GetFontSize(ctx)) / 2
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_FramePadding, pad_x, math.max(pad_y, title_pad))
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowRounding, WINDOW_ROUNDING) -- rounded window corners
+  local title_h = ImGui.GetFontSize(ctx) + math.max(pad_y, title_pad) * 2
   local visible, open = ImGui.Begin(ctx, "Wwise Tool", main_win_docked and true or nil, ImGui.WindowFlags_NoCollapse)
   ImGui.PopStyleVar(ctx, 2)
+  -- Softly rounded dropdowns, fields, buttons, sliders and popups inside the window.
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, FRAME_ROUNDING)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_GrabRounding, FRAME_ROUNDING)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_PopupRounding, FRAME_ROUNDING)
   if open == nil then open = true end
+  if visible and not ImGui.IsWindowDocked(ctx) then
+    -- The title bar and the window body are drawn as two shapes whose anti-aliased edges meet
+    -- at the title bar's bottom, leaving a thin half-transparent line (plus ImGui's divider)
+    -- you could see through. Paint that seam over in the window's own background color.
+    local wx, wy = ImGui.GetWindowPos(ctx)
+    local ww = ImGui.GetWindowSize(ctx)
+    local dl = ImGui.GetWindowDrawList(ctx)
+    ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + title_h + 2, false)
+    ImGui.DrawList_AddRectFilled(dl, wx + 1, wy + title_h - 2, wx + ww - 1, wy + title_h + 1, title_bg)
+    ImGui.PopClipRect(ctx)
+  end
   if visible then
     main_win_pos[1], main_win_pos[2] = ImGui.GetWindowPos(ctx)
     main_win_docked = ImGui.IsWindowDocked(ctx)
@@ -2070,27 +2107,27 @@ loop_body = function()
     -- Layout: setup on the left, preview + transfer on the right.
     local avail_w = ImGui.GetContentRegionAvail(ctx)
     local left_w = math.floor(math.max(340, math.min(440, avail_w * 0.42)))
-    if ImGui.BeginChild(ctx, "setup", left_w, 0, ImGui.ChildFlags_Border) then
-      presets_button("settings", "Settings presets...",
-        "Save or load everything except the Wwise structure: source, destination, Originals\n" ..
-        "subfolder, conflict choice, Initial Delay, and the render and transfer options in Settings.\n" ..
-        "Loading one leaves the Wwise structure as it is.")
+    -- Leave room under both columns for the Transfer bar along the bottom.
+    local _, sp_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
+    local footer_h = TRANSFER_H + sp_y * 2
+    if ImGui.BeginChild(ctx, "setup", left_w, -footer_h, ImGui.ChildFlags_Border) then
       section_source()
       section_destination()
       section_hierarchy()
       ImGui.EndChild(ctx)
     end
     ImGui.SameLine(ctx)
-    if ImGui.BeginChild(ctx, "previewpane", 0, 0) then
+    if ImGui.BeginChild(ctx, "previewpane", 0, -footer_h) then
       section_preview()
-      section_transfer()
       ImGui.EndChild(ctx)
     end
+    section_transfer()
     summary_popup()
     settings_popup()
     if not main_win_docked then title_close_button() end
     ImGui.End(ctx)
   end
+  ImGui.PopStyleVar(ctx, 3)
   ImGui.PopStyleColor(ctx, 4 + theme_n)
   if close_clicked then open = false end
   return open
