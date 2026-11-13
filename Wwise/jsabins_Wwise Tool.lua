@@ -1,10 +1,9 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.20.6
+-- @version 1.20.7
 -- @changelog
---   A little more room above the "Wwise Tool" title.
---   Preview's Originals file column shows the END of the path when it's too narrow (the
---   start is cut off instead); hover it to scroll back and forth through the whole path.
+--   Fixes the Originals file column still showing the start of long paths: the column's
+--   width was read wrong inside the table, so paths never counted as too long.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1276,9 +1275,12 @@ end
 -- cut off instead). Hovering it scrolls slowly back and forth so the whole text can be read.
 UI.TAIL_SPEED, UI.TAIL_PAUSE = 60, 0.8 -- pixels per second, seconds paused at each end
 local function tail_text(text, col, tip)
-  local avail = math.max(1, ImGui.GetContentRegionAvail(ctx))
-  local tw = ImGui.CalcTextSize(ctx, text)
   local x, y = ImGui.GetCursorScreenPos(ctx)
+  -- In a table cell GetContentRegionAvail doesn't stop at the column's edge, so use the cell's
+  -- clip rectangle (the column's visible right edge) for the width.
+  local clip_x2 = ImGui.DrawList_GetClipRectMax(ImGui.GetWindowDrawList(ctx))
+  local avail = math.max(1, math.min(ImGui.GetContentRegionAvail(ctx), clip_x2 - x))
+  local tw = ImGui.CalcTextSize(ctx, text)
   local h = ImGui.GetTextLineHeight(ctx)
   ImGui.Dummy(ctx, avail, h)
   local hovered = ImGui.IsItemHovered(ctx)
