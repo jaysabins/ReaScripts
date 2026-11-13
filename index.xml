@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="c8650bce2adf86d754028e03264c40612b6d2ef3">
+<index version="1" name="Jay Sabins Scripts" commit="976778d7a60b37d6a2edf39e2493dba6e255f36d">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -197,7 +197,7 @@ Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></chang
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Import destination: type a Wwise path or grab the Wwise selection.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Hierarchy mapping: build Wwise containers above each Sound (Actor-Mixers, Random/Sequence/Switch/Blend Containers, Virtual Folders, Work Units) named with REAPER wildcards like $region, $track, $item.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Property templates per level, Sound SFX or Sound Voice (with language), Originals subfolder (wildcards allowed).\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Tabs, each a whole setup you can flick between. Conflict handling, structure and settings presets, live preview (new vs existing objects), transfer summary. One Wwise undo step per transfer.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Tabs, each a whole setup you can flick between. Conflict handling, structure and settings presets, export/import of the whole configuration, live preview (new vs existing objects), transfer summary. One Wwise undo step per transfer.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Auto mono/stereo: a Sound whose left and right match is made mono (also for folder items). Click the preview's Channels column to force Mono or Stereo for a Sound or a whole container, or drag/Shift/Ctrl+click to set many rows at once.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Streaming: turn on Stream per Sound or container from the preview's Streaming column, or automatically for Sounds longer than a set length.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Loop: set Sounds to loop (infinite) from the preview's Loop column.\par}
@@ -531,6 +531,15 @@ thin see-through line between the title bar and the window.]]></changelog>
         <source main="main">https://github.com/jaysabins/reascripts/raw/c8650bce2adf86d754028e03264c40612b6d2ef3/Wwise/jsabins_Wwise%20Tool.lua</source>
         <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/c8650bce2adf86d754028e03264c40612b6d2ef3/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
         <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/c8650bce2adf86d754028e03264c40612b6d2ef3/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.19.0" author="Jay Sabins" time="2026-11-13T02:02:43Z">
+        <changelog><![CDATA[Settings > Configuration: Export / Import configuration saves the complete setup to a
+file (every tab, all structure and settings presets, the window's look) and loads it back.
+"Settings presets..." moved from the main window to Settings > Configuration.
+Section titles a little smaller (still matching).]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/976778d7a60b37d6a2edf39e2493dba6e255f36d/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/976778d7a60b37d6a2edf39e2493dba6e255f36d/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/976778d7a60b37d6a2edf39e2493dba6e255f36d/Wwise/jsabins_WwiseTool_core.lua</source>
       </version>
     </reapack>
   </category>
