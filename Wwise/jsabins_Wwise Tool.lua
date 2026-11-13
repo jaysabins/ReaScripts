@@ -2,8 +2,9 @@
 -- @author Jay Sabins
 -- @version 1.20.7
 -- @changelog
---   Work in progress: Originals file column still shows the start of long paths
---   (investigating with Jay; DrawList_GetClipRectMax isn't in ReaImGui 0.9, removed).
+--   Originals file column now really shows the END of long paths (the start is cut off), and
+--   hovering a path scrolls it slowly back and forth. The column width is read from its header,
+--   because ReaImGui reports the full table width inside a cell.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1274,9 +1275,13 @@ end
 -- Text in a table cell that keeps its END visible when the column is too narrow (the start is
 -- cut off instead). Hovering it scrolls slowly back and forth so the whole text can be read.
 UI.TAIL_SPEED, UI.TAIL_PAUSE = 60, 0.8 -- pixels per second, seconds paused at each end
-local function tail_text(text, col, tip)
+UI.CELL_PAD_X, UI.col_x2 = 4, {} -- ImGui's default table cell padding; column right edges
+-- col_id: the column's id, so its right edge can be read from UI.col_x2 (recorded from the
+-- header row). Inside a table cell GetContentRegionAvail doesn't stop at the column edge.
+local function tail_text(text, col, tip, col_id)
   local x, y = ImGui.GetCursorScreenPos(ctx)
-  local avail = math.max(1, ImGui.GetContentRegionAvail(ctx))
+  local x2 = col_id and UI.col_x2[col_id]
+  local avail = math.max(1, x2 and (x2 - x) or ImGui.GetContentRegionAvail(ctx))
   local tw = ImGui.CalcTextSize(ctx, text)
   local h = ImGui.GetTextLineHeight(ctx)
   ImGui.Dummy(ctx, avail, h)
@@ -1359,7 +1364,7 @@ local function draw_node(node, depth)
   if node.entry then
     local o = core.originals_name(node.entry)
     if o then
-      tail_text(o, COLOR_DIM, "Originals\\" .. core.originals_root(S) .. "\\" .. o)
+      tail_text(o, COLOR_DIM, "Originals\\" .. core.originals_root(S) .. "\\" .. o, "Originals file")
     end
   end
   ImGui.TableNextColumn(ctx)
@@ -1464,9 +1469,12 @@ local function section_preview()
     end
     -- Header row drawn by hand (same as TableHeadersRow) so a header can have a tooltip.
     ImGui.TableNextRow(ctx, ImGui.TableRowFlags_Headers)
+    UI.col_x2 = {}
     for i, c in ipairs(PREVIEW_COLS) do
       if ImGui.TableSetColumnIndex(ctx, i - 1) then
         ImGui.TableHeader(ctx, c.label or c.id)
+        -- A header fills its whole column, so its right edge is the column's right edge.
+        UI.col_x2[c.id] = ImGui.GetItemRectMax(ctx) - UI.CELL_PAD_X
         if c.tip and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, c.tip) end
       end
     end
