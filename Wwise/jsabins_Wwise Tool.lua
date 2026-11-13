@@ -1,10 +1,16 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.20.6
+-- @version 1.20.7
 -- @changelog
---   A little more room above the "Wwise Tool" title.
---   Preview's Originals file column shows the END of the path when it's too narrow (the
---   start is cut off instead); hover it to scroll back and forth through the whole path.
+--   Originals file column now really shows the END of long paths (the start is cut off), and
+--   hovering a path scrolls it slowly back and forth. The cell's width is found from where ImGui
+--   clips it (ReaImGui reports the full table width inside a cell).
+--   The X in the close button is exactly centred, and the ?, Settings and X buttons sit a little
+--   further from the right edge so the space there matches the space above them.
+--   Wwise structure table has rounded corners and a little padding around its fields, and the
+--   + and - buttons sit closer together with bigger symbols. The drag handle is centred in its
+--   column.
+--   Source column: "Item render" is now "Item" and "Folder render" is now "Folder item".
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -424,9 +430,12 @@ local function close_button(id, size)
   local bg = held and 0xB8323AFF or (hovered and 0xE04048FF or 0x2A2A2AFF)
   local fg = hovered and 0xFFFFFFFF or ImGui.GetColor(ctx, ImGui.Col_Text)
   ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, bg, size * 0.22)
+  -- ImGui nudges lines half a pixel right and down (pixel centres), so start half a pixel back
+  -- to keep the X exactly centred in the square.
   local m, th = size * 0.30, math.max(2, size * 0.08)
-  ImGui.DrawList_AddLine(dl, x1 + m, y1 + m, x1 + size - m, y1 + size - m, fg, th)
-  ImGui.DrawList_AddLine(dl, x1 + size - m, y1 + m, x1 + m, y1 + size - m, fg, th)
+  local a, b = m - 0.5, size - m - 0.5
+  ImGui.DrawList_AddLine(dl, x1 + a, y1 + a, x1 + b, y1 + b, fg, th)
+  ImGui.DrawList_AddLine(dl, x1 + b, y1 + a, x1 + a, y1 + b, fg, th)
   return pressed
 end
 local close_clicked = false
@@ -506,7 +515,9 @@ local function title_close_button()
   local ww = ImGui.GetWindowSize(ctx)
   ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + title_bar_size(), false)
   local gap = math.floor(m * 0.6 + 0.5)
-  local x = wx + ww - size - m
+  -- A bit more room on the right than the margin on top: the window's rounded corner makes
+  -- the same gap look smaller on the side.
+  local x = wx + ww - size - m - gap
   ImGui.SetCursorScreenPos(ctx, x, wy + m)
   if close_button("##closewin", size) then close_clicked = true end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Close Wwise Tool") end
@@ -878,10 +889,28 @@ local function grip_handle(id, w, h)
   local col = ImGui.GetColor(ctx, (ImGui.IsItemHovered(ctx) or ImGui.IsItemActive(ctx)) and ImGui.Col_Text or ImGui.Col_TextDisabled)
   local cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
   local hw = math.min(x2 - x1, y2 - y1) * 0.30
+  -- Whole-pixel positions and spacing, so the three lines look the same and evenly spaced.
+  local gap = math.max(3, math.floor(hw * 0.75 + 0.5))
+  local lx1, lx2, my = math.floor(cx - hw + 0.5), math.floor(cx + hw + 0.5), math.floor(cy + 0.5)
   for k = -1, 1 do
-    local ly = cy + k * hw * 0.75
-    ImGui.DrawList_AddLine(dl, cx - hw, ly, cx + hw, ly, col, 1.5)
+    local ly = my + k * gap
+    ImGui.DrawList_AddLine(dl, lx1, ly, lx2, ly, col, 1.5)
   end
+end
+
+-- Square + / - button with the symbol drawn bigger than the font's "+" and "-".
+local function pm_button(id, plus, size)
+  local pressed = ImGui.Button(ctx, id, size, size)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local col = ImGui.GetColor(ctx, ImGui.Col_Text)
+  -- 2px lines on whole pixels (ImGui adds half a pixel to lines, so take it back off).
+  local c = math.floor(size / 2 + 0.5)
+  local cx, cy = math.floor(x1 + 0.5) + c - 0.5, math.floor(y1 + 0.5) + c - 0.5
+  local h = math.floor(size * 0.20 + 0.5)
+  ImGui.DrawList_AddLine(dl, cx - h, cy, cx + h, cy, col, 2)
+  if plus then ImGui.DrawList_AddLine(dl, cx, cy - h, cx, cy + h, col, 2) end
+  return pressed
 end
 
 local function new_level(at)
@@ -898,6 +927,17 @@ local function level_drop_target(i, out)
   end
 end
 
+-- Round a table's corners: ImGui tables are square, so paint the window background over the
+-- corners with a rounded-rect stroke whose inner edge is the rounded outline (radius r).
+UI.TABLE_ROUNDING, UI.MAP_CELL_PAD, UI.PM_GAP = 6, { 6, 3 }, 3 -- PM_GAP: between + and -
+local function round_table_corners(x0, y0, x1, y1)
+  local r = UI.TABLE_ROUNDING
+  local t = math.ceil(r * 0.5) -- just enough to cover the square corners (needs > 0.414 * r)
+  local col = 0x19191900 | math.floor(view.opacity * 255 + 0.5) -- window background (#191919)
+  ImGui.DrawList_AddRect(ImGui.GetWindowDrawList(ctx), x0 - t / 2, y0 - t / 2, x1 + t / 2, y1 + t / 2,
+    col, r + t / 2, 0, t)
+end
+
 local function section_hierarchy()
   section_title("Wwise structure")
   ImGui.PushTextWrapPos(ctx, 0)
@@ -905,15 +945,23 @@ local function section_hierarchy()
   ImGui.PopTextWrapPos(ctx)
 
   local sq = ImGui.GetFrameHeight(ctx)
-  local sp = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
-  local flags = ImGui.TableFlags_RowBg | ImGui.TableFlags_BordersInnerV
+  local sp, sp_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
+  -- PadOuterX: the same padding at the table's left and right edges as between cells, so the
+  -- drag handle is centred in its column and the - button isn't against the edge.
+  local flags = ImGui.TableFlags_RowBg | ImGui.TableFlags_BordersInnerV | (ImGui.TableFlags_PadOuterX or 0)
   local act = {}
-  if ImGui.BeginTable(ctx, "map", 5, flags) then
+  -- A little room between the fields and the cell edges (guarded: skipped if the name is missing).
+  local cell_pad = ImGui.StyleVar_CellPadding and 1 or 0
+  if cell_pad == 1 then ImGui.PushStyleVar(ctx, ImGui.StyleVar_CellPadding, UI.MAP_CELL_PAD[1], UI.MAP_CELL_PAD[2]) end
+  local tx0, ty0 = ImGui.GetCursorScreenPos(ctx)
+  local tx1 = tx0 + ImGui.GetContentRegionAvail(ctx)
+  local map_open = ImGui.BeginTable(ctx, "map", 5, flags)
+  if map_open then
     ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, 12)
     ImGui.TableSetupColumn(ctx, "Type", ImGui.TableColumnFlags_WidthFixed, 150)
     ImGui.TableSetupColumn(ctx, "Name", ImGui.TableColumnFlags_WidthStretch)
     ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, 30)
-    ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, sq * 2 + sp)
+    ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, sq * 2 + UI.PM_GAP)
     ImGui.TableHeadersRow(ctx)
 
     for i, row in ipairs(S.rows) do
@@ -943,10 +991,10 @@ local function section_hierarchy()
       level_options("r" .. i, function() return row.template end, function(t) row.template = t end)
       pop_row_colors()
       ImGui.TableNextColumn(ctx)
-      if ImGui.Button(ctx, "+##add", sq, sq) then act.add = i + 1 end
+      if pm_button("##add", true, sq) then act.add = i + 1 end
       if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Add level below this one") end
-      ImGui.SameLine(ctx, 0, sp)
-      if ImGui.Button(ctx, "-##rem", sq, sq) then act.remove = i end
+      ImGui.SameLine(ctx, 0, UI.PM_GAP)
+      if pm_button("##rem", false, sq) then act.remove = i end
       if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Remove this level") end
       ImGui.PopID(ctx)
     end
@@ -972,13 +1020,15 @@ local function section_hierarchy()
     level_options("leaf", function() return S.leaf.template end, function(t) S.leaf.template = t end)
     pop_row_colors()
     ImGui.TableNextColumn(ctx)
-    if ImGui.Button(ctx, "+##add", sq, sq) then act.add = #S.rows + 1 end
+    if pm_button("##add", true, sq) then act.add = #S.rows + 1 end
     if ImGui.IsItemHovered(ctx) then
       ImGui.SetTooltip(ctx, #S.rows == 0 and "Add level above the Sound" or "Add level just above the Sound")
     end
     ImGui.PopID(ctx)
     ImGui.EndTable(ctx)
   end
+  if cell_pad == 1 then ImGui.PopStyleVar(ctx) end
+  if map_open then round_table_corners(tx0, ty0, tx1, select(2, ImGui.GetCursorScreenPos(ctx)) - sp_y) end
 
   if act.remove then table.remove(S.rows, act.remove); settings_changed()
   elseif act.add then new_level(act.add)
@@ -1256,7 +1306,7 @@ local function pick_menu()
 end
 
 -- Preview's "Source" column: where the audio file Wwise imports comes from.
-local KIND_LABEL = { direct = "Original WAV", render = "Item render", folder = "Folder render", project = "Project render" }
+local KIND_LABEL = { direct = "Original WAV", render = "Item", folder = "Folder item", project = "Project render" }
 local KIND_HELP = {
   direct = "The item's own WAV is imported as is, no render.\nThe item is untouched: whole file, no fades, FX, volume, pitch or rate changes.",
   render = "The item is rendered first (it has edits, FX, fades or isn't a WAV),\nthen that render is imported.",
@@ -1275,11 +1325,32 @@ end
 -- Text in a table cell that keeps its END visible when the column is too narrow (the start is
 -- cut off instead). Hovering it scrolls slowly back and forth so the whole text can be read.
 UI.TAIL_SPEED, UI.TAIL_PAUSE = 60, 0.8 -- pixels per second, seconds paused at each end
-local function tail_text(text, col, tip)
-  local avail = math.max(1, ImGui.GetContentRegionAvail(ctx))
-  local tw = ImGui.CalcTextSize(ctx, text)
+UI.CELL_PAD_X, UI.col_x2 = 4, {} -- ImGui's default table cell padding; column right edges
+-- Right edge of the current cell's clip rect: the line where ImGui really cuts the text off.
+-- Found by binary search with IsRectVisibleEx (there's no clip-rect getter in ReaImGui 0.9).
+local function cell_clip_right(x, y)
+  if not ImGui.IsRectVisibleEx or not ImGui.IsRectVisibleEx(ctx, x, y, x + 1, y + 1) then return nil end
+  local lo, hi = x, x + 8192
+  for _ = 1, 16 do
+    local mid = (lo + hi) / 2
+    if ImGui.IsRectVisibleEx(ctx, mid, y, mid + 1, y + 1) then lo = mid else hi = mid end
+  end
+  return lo
+end
+
+-- col_id: the column's id, so its right edge can be read from UI.col_x2 (recorded from the
+-- header row). Inside a table cell GetContentRegionAvail doesn't stop at the column edge.
+local function tail_text(text, col, tip, col_id)
   local x, y = ImGui.GetCursorScreenPos(ctx)
   local h = ImGui.GetTextLineHeight(ctx)
+  -- Use the narrowest of the three ways to measure the cell, so the text never runs past it.
+  local x2 = x + ImGui.GetContentRegionAvail(ctx)
+  local hx = col_id and UI.col_x2[col_id]
+  if hx then x2 = math.min(x2, hx) end
+  local cx = cell_clip_right(x, y + h * 0.5)
+  if cx then x2 = math.min(x2, cx - UI.CELL_PAD_X) end
+  local avail = math.max(1, x2 - x)
+  local tw = ImGui.CalcTextSize(ctx, text)
   ImGui.Dummy(ctx, avail, h)
   local hovered = ImGui.IsItemHovered(ctx)
   local off = 0
@@ -1360,7 +1431,7 @@ local function draw_node(node, depth)
   if node.entry then
     local o = core.originals_name(node.entry)
     if o then
-      tail_text(o, COLOR_DIM, "Originals\\" .. core.originals_root(S) .. "\\" .. o)
+      tail_text(o, COLOR_DIM, "Originals\\" .. core.originals_root(S) .. "\\" .. o, "Originals file")
     end
   end
   ImGui.TableNextColumn(ctx)
@@ -1391,8 +1462,8 @@ local PREVIEW_COLS = {
   { id = "Audio", label = "Source", w = 110,
     tip = "Where the audio file Wwise imports comes from:\n" ..
       "Original WAV: the item's own file, imported as is (no render).\n" ..
-      "Item render: the item has edits, so it's rendered first.\n" ..
-      "Folder render: a folder item, rendered with what's under it.\n" ..
+      "Item: the item has edits, so it's rendered first.\n" ..
+      "Folder item: a folder item, rendered with what's under it.\n" ..
       "Project render: made by REAPER's render settings (regions, stems...)." },
   { id = "Channels", w = 80 },
   { id = "Streaming", w = 90 },
@@ -1465,9 +1536,12 @@ local function section_preview()
     end
     -- Header row drawn by hand (same as TableHeadersRow) so a header can have a tooltip.
     ImGui.TableNextRow(ctx, ImGui.TableRowFlags_Headers)
+    UI.col_x2 = {}
     for i, c in ipairs(PREVIEW_COLS) do
       if ImGui.TableSetColumnIndex(ctx, i - 1) then
         ImGui.TableHeader(ctx, c.label or c.id)
+        -- A header fills its whole column, so its right edge is the column's right edge.
+        UI.col_x2[c.id] = ImGui.GetItemRectMax(ctx) - UI.CELL_PAD_X
         if c.tip and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, c.tip) end
       end
     end

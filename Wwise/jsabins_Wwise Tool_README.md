@@ -206,8 +206,8 @@ The right side shows what the transfer will create, laid out like Wwise's Projec
 - **Columns:**
   - **Source** says where the audio file Wwise imports comes from (hover the header or a value for a reminder):
     - **Original WAV**: the item's own WAV file is imported as is, no render. Only for untouched items (whole file, no fades, FX, volume, pitch or rate changes).
-    - **Item render**: the item has edits (or isn't a WAV), so it's rendered first and the render is imported.
-    - **Folder render**: a folder item, rendered with everything under it mixed in.
+    - **Item**: the item has edits (or isn't a WAV), so it's rendered first and the render is imported.
+    - **Folder item**: a folder item, rendered with everything under it mixed in.
     - **Project render**: the file comes from REAPER's render settings (regions, stems...), rendered first.
   - **Channels** shows whether a Sound will be mono or stereo, and lets you change it. See [Mono and stereo](#mono-and-stereo).
   - **Streaming** shows whether a Sound will be set to stream in Wwise, and lets you change it. See [Streaming](#streaming).
