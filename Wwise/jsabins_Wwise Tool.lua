@@ -1,10 +1,9 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.20.0
+-- @version 1.20.1
 -- @changelog
---   Tighter top: the connection status (dot, Wwise project, Wwise version) moves into the
---   title bar next to the ?, Settings and close buttons, in a smaller font. The "Wwise Tool"
---   title moves down into the window in a larger, bold font.
+--   The big "Wwise Tool" title moves up into the title bar (left side, level with the
+--   buttons), removing the empty band at the top of the window.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -521,6 +520,12 @@ local function title_close_button()
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Open the Wwise Tool guide on GitHub") end
   -- Connection status to the left of the buttons.
   title_status(x - gap * 2, wy + m, size)
+  -- Big bold "Wwise Tool" at the left of the title bar, centered on the buttons' row.
+  local big = title_font and pcall(ImGui.PushFont, ctx, title_font)
+  local _, th = ImGui.CalcTextSize(ctx, "Wwise Tool")
+  ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), wx + m + 6, wy + m + (size - th) / 2,
+    ImGui.GetColor(ctx, ImGui.Col_Text), "Wwise Tool")
+  if big then ImGui.PopFont(ctx) end
   ImGui.PopClipRect(ctx)
   -- Don't move the cursor back afterwards: ImGui errors in End() when the cursor is moved
   -- past the content without an item after it. Nothing is drawn after this button.
@@ -530,13 +535,8 @@ local function section_connection()
   -- Floating window: the big "Wwise Tool" title; the connection status and the ?, Settings and
   -- close buttons are in the title bar (title_close_button). Docked (no title bar): status on
   -- the left, "?" and Settings on the right. A connection problem shows as a banner underneath.
-  if not main_win_docked then
-    local big = title_font and pcall(ImGui.PushFont, ctx, title_font)
-    ImGui.Indent(ctx, 6)
-    ImGui.Text(ctx, "Wwise Tool")
-    ImGui.Unindent(ctx, 6)
-    if big then ImGui.PopFont(ctx) end
-  else
+  -- (Floating: the "Wwise Tool" title is drawn in the title bar itself, see title_close_button.)
+  if main_win_docked then
     local big = push_header_font()
     local lh = ImGui.GetFrameHeight(ctx)
     local dot = big and 10 or 8
