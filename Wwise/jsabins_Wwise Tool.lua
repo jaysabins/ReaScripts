@@ -7,6 +7,8 @@
 --   clips it (ReaImGui reports the full table width inside a cell).
 --   The X in the close button is exactly centred, and the ?, Settings and X buttons sit a little
 --   further from the right edge so the space there matches the space above them.
+--   Wwise structure table has rounded corners and a little padding around its fields.
+--   Source column: "Item render" is now "Item" and "Folder render" is now "Folder item".
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -905,6 +907,17 @@ local function level_drop_target(i, out)
   end
 end
 
+-- Round a table's corners: ImGui tables are square, so paint the window background over the
+-- corners with a rounded-rect stroke whose inner edge is the rounded outline (radius r).
+UI.TABLE_ROUNDING, UI.MAP_CELL_PAD = 6, { 6, 3 }
+local function round_table_corners(x0, y0, x1, y1)
+  local r = UI.TABLE_ROUNDING
+  local t = math.ceil(r * 0.5) -- just enough to cover the square corners (needs > 0.414 * r)
+  local col = 0x19191900 | math.floor(view.opacity * 255 + 0.5) -- window background (#191919)
+  ImGui.DrawList_AddRect(ImGui.GetWindowDrawList(ctx), x0 - t / 2, y0 - t / 2, x1 + t / 2, y1 + t / 2,
+    col, r + t / 2, 0, t)
+end
+
 local function section_hierarchy()
   section_title("Wwise structure")
   ImGui.PushTextWrapPos(ctx, 0)
@@ -912,10 +925,16 @@ local function section_hierarchy()
   ImGui.PopTextWrapPos(ctx)
 
   local sq = ImGui.GetFrameHeight(ctx)
-  local sp = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
+  local sp, sp_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
   local flags = ImGui.TableFlags_RowBg | ImGui.TableFlags_BordersInnerV
   local act = {}
-  if ImGui.BeginTable(ctx, "map", 5, flags) then
+  -- A little room between the fields and the cell edges (guarded: skipped if the name is missing).
+  local cell_pad = ImGui.StyleVar_CellPadding and 1 or 0
+  if cell_pad == 1 then ImGui.PushStyleVar(ctx, ImGui.StyleVar_CellPadding, UI.MAP_CELL_PAD[1], UI.MAP_CELL_PAD[2]) end
+  local tx0, ty0 = ImGui.GetCursorScreenPos(ctx)
+  local tx1 = tx0 + ImGui.GetContentRegionAvail(ctx)
+  local map_open = ImGui.BeginTable(ctx, "map", 5, flags)
+  if map_open then
     ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, 12)
     ImGui.TableSetupColumn(ctx, "Type", ImGui.TableColumnFlags_WidthFixed, 150)
     ImGui.TableSetupColumn(ctx, "Name", ImGui.TableColumnFlags_WidthStretch)
@@ -986,6 +1005,8 @@ local function section_hierarchy()
     ImGui.PopID(ctx)
     ImGui.EndTable(ctx)
   end
+  if cell_pad == 1 then ImGui.PopStyleVar(ctx) end
+  if map_open then round_table_corners(tx0, ty0, tx1, select(2, ImGui.GetCursorScreenPos(ctx)) - sp_y) end
 
   if act.remove then table.remove(S.rows, act.remove); settings_changed()
   elseif act.add then new_level(act.add)
@@ -1263,7 +1284,7 @@ local function pick_menu()
 end
 
 -- Preview's "Source" column: where the audio file Wwise imports comes from.
-local KIND_LABEL = { direct = "Original WAV", render = "Item render", folder = "Folder render", project = "Project render" }
+local KIND_LABEL = { direct = "Original WAV", render = "Item", folder = "Folder item", project = "Project render" }
 local KIND_HELP = {
   direct = "The item's own WAV is imported as is, no render.\nThe item is untouched: whole file, no fades, FX, volume, pitch or rate changes.",
   render = "The item is rendered first (it has edits, FX, fades or isn't a WAV),\nthen that render is imported.",
@@ -1419,8 +1440,8 @@ local PREVIEW_COLS = {
   { id = "Audio", label = "Source", w = 110,
     tip = "Where the audio file Wwise imports comes from:\n" ..
       "Original WAV: the item's own file, imported as is (no render).\n" ..
-      "Item render: the item has edits, so it's rendered first.\n" ..
-      "Folder render: a folder item, rendered with what's under it.\n" ..
+      "Item: the item has edits, so it's rendered first.\n" ..
+      "Folder item: a folder item, rendered with what's under it.\n" ..
       "Project render: made by REAPER's render settings (regions, stems...)." },
   { id = "Channels", w = 80 },
   { id = "Streaming", w = 90 },
