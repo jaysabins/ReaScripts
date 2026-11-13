@@ -7,7 +7,8 @@
 --   clips it (ReaImGui reports the full table width inside a cell).
 --   The X in the close button is exactly centred, and the ?, Settings and X buttons sit a little
 --   further from the right edge so the space there matches the space above them.
---   Wwise structure table has rounded corners and a little padding around its fields.
+--   Wwise structure table has rounded corners and a little padding around its fields, and the
+--   + and - buttons sit closer together.
 --   Source column: "Item render" is now "Item" and "Folder render" is now "Folder item".
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
@@ -909,7 +910,7 @@ end
 
 -- Round a table's corners: ImGui tables are square, so paint the window background over the
 -- corners with a rounded-rect stroke whose inner edge is the rounded outline (radius r).
-UI.TABLE_ROUNDING, UI.MAP_CELL_PAD = 6, { 6, 3 }
+UI.TABLE_ROUNDING, UI.MAP_CELL_PAD, UI.PM_GAP = 6, { 6, 3 }, 3 -- PM_GAP: between + and -
 local function round_table_corners(x0, y0, x1, y1)
   local r = UI.TABLE_ROUNDING
   local t = math.ceil(r * 0.5) -- just enough to cover the square corners (needs > 0.414 * r)
@@ -939,7 +940,7 @@ local function section_hierarchy()
     ImGui.TableSetupColumn(ctx, "Type", ImGui.TableColumnFlags_WidthFixed, 150)
     ImGui.TableSetupColumn(ctx, "Name", ImGui.TableColumnFlags_WidthStretch)
     ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, 30)
-    ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, sq * 2 + sp)
+    ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, sq * 2 + UI.PM_GAP)
     ImGui.TableHeadersRow(ctx)
 
     for i, row in ipairs(S.rows) do
@@ -971,7 +972,7 @@ local function section_hierarchy()
       ImGui.TableNextColumn(ctx)
       if ImGui.Button(ctx, "+##add", sq, sq) then act.add = i + 1 end
       if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Add level below this one") end
-      ImGui.SameLine(ctx, 0, sp)
+      ImGui.SameLine(ctx, 0, UI.PM_GAP)
       if ImGui.Button(ctx, "-##rem", sq, sq) then act.remove = i end
       if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Remove this level") end
       ImGui.PopID(ctx)
