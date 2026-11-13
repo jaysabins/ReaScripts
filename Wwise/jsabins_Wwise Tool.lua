@@ -5,6 +5,8 @@
 --   Originals file column now really shows the END of long paths (the start is cut off), and
 --   hovering a path scrolls it slowly back and forth. The cell's width is found from where ImGui
 --   clips it (ReaImGui reports the full table width inside a cell).
+--   The X in the close button is exactly centred, and the ?, Settings and X buttons sit a little
+--   further from the right edge so the space there matches the space above them.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -424,9 +426,12 @@ local function close_button(id, size)
   local bg = held and 0xB8323AFF or (hovered and 0xE04048FF or 0x2A2A2AFF)
   local fg = hovered and 0xFFFFFFFF or ImGui.GetColor(ctx, ImGui.Col_Text)
   ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, bg, size * 0.22)
+  -- ImGui nudges lines half a pixel right and down (pixel centres), so start half a pixel back
+  -- to keep the X exactly centred in the square.
   local m, th = size * 0.30, math.max(2, size * 0.08)
-  ImGui.DrawList_AddLine(dl, x1 + m, y1 + m, x1 + size - m, y1 + size - m, fg, th)
-  ImGui.DrawList_AddLine(dl, x1 + size - m, y1 + m, x1 + m, y1 + size - m, fg, th)
+  local a, b = m - 0.5, size - m - 0.5
+  ImGui.DrawList_AddLine(dl, x1 + a, y1 + a, x1 + b, y1 + b, fg, th)
+  ImGui.DrawList_AddLine(dl, x1 + b, y1 + a, x1 + a, y1 + b, fg, th)
   return pressed
 end
 local close_clicked = false
@@ -506,7 +511,9 @@ local function title_close_button()
   local ww = ImGui.GetWindowSize(ctx)
   ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + title_bar_size(), false)
   local gap = math.floor(m * 0.6 + 0.5)
-  local x = wx + ww - size - m
+  -- A bit more room on the right than the margin on top: the window's rounded corner makes
+  -- the same gap look smaller on the side.
+  local x = wx + ww - size - m - gap
   ImGui.SetCursorScreenPos(ctx, x, wy + m)
   if close_button("##closewin", size) then close_clicked = true end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Close Wwise Tool") end
