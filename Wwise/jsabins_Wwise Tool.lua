@@ -7,6 +7,8 @@
 --   Settings is its own window now: the main window no longer greys out while it's open, and
 --   you can keep using both. Close it with its X, the Close button or Esc.
 --   Settings pages are listed down the left side instead of as tabs across the top.
+--   Buttons, fields, dropdowns, tabs, panels, scrollbars and the preview table get slightly
+--   rounded corners everywhere (both windows), instead of hard right angles.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -468,7 +470,19 @@ end
 UI.WINDOW_ROUNDING = 14   -- main window corners
 -- The "Transfer to Wwise" button sits in the window's bottom-left corner, inset by the window
 -- padding on both sides, with corners concentric to the window's: radius = window radius - inset.
-UI.FRAME_ROUNDING = 4     -- dropdowns, fields, buttons, checkboxes (softened, not pill-shaped)
+UI.FRAME_ROUNDING = 3     -- dropdowns, fields, buttons, checkboxes, tabs, panels: just softened
+-- Softly rounded corners for everything ImGui draws square by default. Pushed right after a
+-- window's Begin and popped (UI.pop_rounding) right before its End, on every path.
+UI.ROUNDING_VARS = { "StyleVar_FrameRounding", "StyleVar_GrabRounding", "StyleVar_PopupRounding",
+  "StyleVar_ChildRounding", "StyleVar_TabRounding", "StyleVar_ScrollbarRounding" }
+UI.push_rounding = function()
+  local n = 0
+  for _, k in ipairs(UI.ROUNDING_VARS) do
+    local ok, v = pcall(function() return ImGui[k] end)
+    if ok and type(v) == "number" then ImGui.PushStyleVar(ctx, v, UI.FRAME_ROUNDING); n = n + 1 end
+  end
+  return n
+end
 UI.TRANSFER_H = 34        -- "Transfer to Wwise" button height
 -- Close button: twice the font size each way (about 4x the area of ImGui's own X), with an even
 -- margin from the window's top and right edges. The title bar is made taller (FramePadding pushed
@@ -938,11 +952,11 @@ end
 -- Round a table's corners: ImGui tables are square, so paint the window background over the
 -- corners with a rounded-rect stroke whose inner edge is the rounded outline (radius r).
 UI.TABLE_ROUNDING, UI.MAP_CELL_PAD, UI.PM_GAP = 6, { 6, 3 }, 3 -- PM_GAP: between + and -
-local function round_table_corners(x0, y0, x1, y1)
-  local r = UI.TABLE_ROUNDING
+local function round_table_corners(x0, y0, x1, y1, dl, r)
+  r = r or UI.TABLE_ROUNDING
   local t = math.ceil(r * 0.5) -- just enough to cover the square corners (needs > 0.414 * r)
   local col = 0x19191900 | math.floor(view.opacity * 255 + 0.5) -- window background (#191919)
-  ImGui.DrawList_AddRect(ImGui.GetWindowDrawList(ctx), x0 - t / 2, y0 - t / 2, x1 + t / 2, y1 + t / 2,
+  ImGui.DrawList_AddRect(dl or ImGui.GetWindowDrawList(ctx), x0 - t / 2, y0 - t / 2, x1 + t / 2, y1 + t / 2,
     col, r + t / 2, 0, t)
 end
 
@@ -1559,6 +1573,14 @@ local function section_preview()
     sync_columns()
     if tree and #tree.children > 0 then draw_node(tree, 0) end
     ImGui.EndTable(ctx)
+    -- Soften the preview's square corners (header row included). The table scrolls, so it sits
+    -- in its own child window drawn over this one: paint the corners on the foreground list.
+    local ok_fg, fg = pcall(ImGui.GetForegroundDrawList, ctx)
+    if ok_fg and fg then
+      local x0, y0 = ImGui.GetItemRectMin(ctx)
+      local x1, y1 = ImGui.GetItemRectMax(ctx)
+      round_table_corners(x0, y0, x1, y1, fg, UI.FRAME_ROUNDING + 1)
+    end
   end
   pick_menu()
   if open_delay_menu then ImGui.OpenPopup(ctx, "delayunit"); open_delay_menu = false end
@@ -1952,6 +1974,7 @@ local function settings_window()
   ImGui.PopStyleColor(ctx, 4)
   if open == false then UI.settings_open = false end
   if not visible then return end
+  local round_n = UI.push_rounding()
 
   local footer_h = ImGui.GetFrameHeightWithSpacing(ctx) + 8
   -- Left: the page list, as wide as its longest name.
@@ -1982,6 +2005,7 @@ local function settings_window()
   local esc = ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows)
     and not ImGui.IsAnyItemActive(ctx) and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape)
   if ImGui.Button(ctx, "Close", w) or esc then UI.settings_open = false end
+  if round_n > 0 then ImGui.PopStyleVar(ctx, round_n) end
   ImGui.End(ctx)
 end
 
@@ -2401,6 +2425,7 @@ loop_body = function()
   if hide_title then ImGui.PopStyleColor(ctx) end
   ImGui.PopStyleVar(ctx, 2)
   if open == nil then open = true end
+  local round_n = visible and UI.push_rounding() or 0
   if visible and own_bg then
     -- One rounded rectangle for the whole window, then the solid border on top of it.
     local wx, wy = ImGui.GetWindowPos(ctx)
@@ -2449,6 +2474,7 @@ loop_body = function()
     section_transfer(left_w) -- as wide as the left panel
     summary_popup()
     if not main_win_docked then title_close_button() end
+    if round_n > 0 then ImGui.PopStyleVar(ctx, round_n) end
     ImGui.End(ctx)
   end
   -- Its own window, drawn after the main one ends, inside the same theme and rounding pushes.
