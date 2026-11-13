@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="29dd5cc0fd1941857767e645cee9eb4b049517f5">
+<index version="1" name="Jay Sabins Scripts" commit="742e470f3115ee8e1d045634bb6ebc4a7fd5be5d">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -636,6 +636,20 @@ start is cut off instead); hover it to scroll back and forth through the whole p
         <source main="main">https://github.com/jaysabins/reascripts/raw/29dd5cc0fd1941857767e645cee9eb4b049517f5/Wwise/jsabins_Wwise%20Tool.lua</source>
         <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/29dd5cc0fd1941857767e645cee9eb4b049517f5/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
         <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/29dd5cc0fd1941857767e645cee9eb4b049517f5/Wwise/jsabins_WwiseTool_core.lua</source>
+      </version>
+      <version name="1.20.7" author="Jay Sabins" time="2026-11-13T04:21:42Z">
+        <changelog><![CDATA[Originals file column now really shows the END of long paths (the start is cut off), and
+hovering a path scrolls it slowly back and forth. The cell's width is found from where ImGui
+clips it (ReaImGui reports the full table width inside a cell).
+The X in the close button is exactly centred, and the ?, Settings and X buttons sit a little
+further from the right edge so the space there matches the space above them.
+Wwise structure table has rounded corners and a little padding around its fields, and the
++ and - buttons sit closer together with bigger symbols. The drag handle is centred in its
+column.
+Source column: "Item render" is now "Item" and "Folder render" is now "Folder item".]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/742e470f3115ee8e1d045634bb6ebc4a7fd5be5d/Wwise/jsabins_Wwise%20Tool.lua</source>
+        <source main="main" file="jsabins_Wwise Tool - Quick send.lua">https://github.com/jaysabins/reascripts/raw/742e470f3115ee8e1d045634bb6ebc4a7fd5be5d/Wwise/jsabins_Wwise%20Tool%20-%20Quick%20send.lua</source>
+        <source file="jsabins_WwiseTool_core.lua">https://github.com/jaysabins/reascripts/raw/742e470f3115ee8e1d045634bb6ebc4a7fd5be5d/Wwise/jsabins_WwiseTool_core.lua</source>
       </version>
     </reapack>
   </category>
