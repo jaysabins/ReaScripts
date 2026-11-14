@@ -1,19 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="c6cd83a2e08e2fb58f606c73d905f34f92776f12">
+<index version="1" name="Jay Sabins Scripts" commit="951eeeb478745ffa4f0a147cb6934f448324a0dd">
   <category name="Batch Tools">
-    <reapack name="jsabins_Folder_Batch_ImGui.lua" type="script" desc="Folder Batch Processor">
+    <reapack name="jsabins_Folder_Batch.lua" type="script" desc="Folder Batch Processor">
       <metadata>
         <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
-{\pard \ql \f0 \sa180 \li0 \fi0 Batch-renders multi-language VO from a structured project folder (_Raw to _Processed) with per-language overrides and CSV logging. Requires SWS and ReaImGui.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Folder Batch Processor\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Batch-renders multi-language VO from a structured project folder (_Raw to _Processed) with per-language overrides and CSV logging.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Requires SWS and ReaImGui (ReaPack > ReaTeam Extensions).\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Full guide: https://github.com/jaysabins/reascripts/blob/main/Batch%20Tools/jsabins_Folder_Batch_README.md\par}
 }
 ]]></description>
       </metadata>
-      <version name="2.0.0" author="Jay Sabins, Daniel Petras" time="2026-11-06T23:00:51Z">
-        <changelog><![CDATA[Initial public release]]></changelog>
-        <source main="main">https://github.com/jaysabins/ReaScripts/raw/c856c6b670dd44e90ed324b442270fdbb0bbb0da/Batch%20Tools/jsabins_Folder_Batch_ImGui.lua</source>
+      <version name="2.1.0" author="Jay Sabins, Daniel Petras" time="2026-11-14T01:36:50Z">
+        <changelog><![CDATA[New look to match Wwise Tool: dark #191919 window with big rounded corners and a thin
+outline, Verdana, a bold "Folder Batch" title in a custom title bar with flat ? and X
+buttons (a box only shows on hover), grey buttons and fields with rounded corners.
+One screen instead of three tabs: project and render settings on the left, the languages
+list on the right, and a big Batch button at the bottom left.
+The languages list shows how many files each language folder has, whether a track with
+the same name was found, and whether it uses its own render settings. Click a language to
+give it its own settings.
+Batch is greyed out until the project is saved and the _Raw folder has been scanned; hover
+it to see why.
+If you've changed Wwise Tool's Settings > Appearance (font, colors, corners), Folder Batch
+uses the same look.
+Renamed from jsabins_Folder_Batch_ImGui.lua.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/951eeeb478745ffa4f0a147cb6934f448324a0dd/Batch%20Tools/jsabins_Folder_Batch.lua</source>
       </version>
     </reapack>
   </category>
