@@ -20,6 +20,8 @@
 --   A little more room under the section titles. Checkbox ticks take the showing tab's color.
 --   The Settings window looks like the main window: big rounded corners, a big "Settings"
 --   title and the same close X.
+--   New Settings > Appearance page: title, text, dim text and background colors, window and
+--   button corner rounding, and the font (family and sizes; applies when the window reopens).
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -76,8 +78,39 @@ local ctx = ImGui.CreateContext("Wwise Tool")
 -- If the font can't be made, the header just uses the normal font.
 -- Layout constants live in one table: the main chunk is at Lua's 200-locals limit.
 local UI = {}
--- Every font in the window is Verdana (falls back to ImGui's own font if it can't be made).
-UI.FONT, UI.FONT_SIZE = "Verdana", 12
+-- Look of the window, set in Settings > Appearance (saved with the other window settings, in
+-- view.look). Colors are 0xRRGGBBAA; nil means the built-in default. Fonts are made once at
+-- startup, so font changes apply the next time the window opens; everything else applies live.
+UI.FONT_CHOICES = { "Verdana", "Tahoma", "Segoe UI", "Arial", "Calibri", "Consolas" }
+UI.LOOK_DEFAULTS = { font = "Verdana", size = 12, head = 14, win_round = 14, frame_round = 3 }
+UI.DEFAULT_TEXT, UI.DEFAULT_DIM, UI.DEFAULT_BG = 0xFFFFFFFF, 0x9A9A9AFF, 0x191919FF
+UI.look = {}
+-- Copy valid values from a saved table into UI.look (in place), defaults for the rest.
+UI.read_look = function(t)
+  local L, d = UI.look, UI.LOOK_DEFAULTS
+  t = type(t) == "table" and t or {}
+  local function num(v, lo, hi, def)
+    return type(v) == "number" and math.max(lo, math.min(hi, math.floor(v))) or def
+  end
+  local font = d.font
+  for _, n in ipairs(UI.FONT_CHOICES) do if t.font == n then font = n end end
+  L.font = font
+  L.size = num(t.size, 9, 18, d.size)
+  L.head = num(t.head, 10, 24, d.head)
+  L.win_round = num(t.win_round, 0, 20, d.win_round)
+  L.frame_round = num(t.frame_round, 0, 10, d.frame_round)
+  for _, k in ipairs({ "title", "text", "dim", "bg" }) do
+    L[k] = type(t[k]) == "number" and (math.floor(t[k]) | 0xFF) or nil
+  end
+end
+do
+  local v = r.GetExtState(core.EXT, "view")
+  local ok, t = pcall(core.json.decode, v ~= "" and v or "{}")
+  UI.read_look(ok and type(t) == "table" and t.look or nil)
+end
+UI.bg_rgb = function() return (UI.look.bg or UI.DEFAULT_BG) >> 8 end
+-- Main font (Verdana 12 by default; falls back to ImGui's own font if it can't be made).
+UI.FONT, UI.FONT_SIZE = UI.look.font, UI.look.size
 -- The header line keeps its old proportion to a 13px main font.
 UI.font_px = function(px13) return math.floor(px13 * UI.FONT_SIZE / 13 + 0.5) end
 do
@@ -92,7 +125,7 @@ do
 end
 -- Bigger, matching titles for the left column's sections (Source, Wwise destination,
 -- Wwise structure). Falls back to the normal font if it can't be made.
-UI.SECTION_FONT_SIZE = 14
+UI.SECTION_FONT_SIZE = UI.look.head
 local section_font = nil
 do
   local okb, bold = pcall(function() return ImGui.FontFlags_Bold end)
@@ -150,7 +183,9 @@ local function read_view(t)
     if t.delay_unit == "ms" then view.delay_unit = "ms" end
     if type(t.size_v) == "number" then view.size_v = t.size_v end
     if type(t.cols_v) == "number" then view.cols_v = t.cols_v end
+    if t.look ~= nil then UI.read_look(t.look) end
   end
+  view.look = UI.look
 end
 do
   local v = r.GetExtState(core.EXT, "view")
@@ -198,7 +233,7 @@ local open_settings = false
 
 local COLOR_OK = 0x6BCB77FF
 local COLOR_BAD = 0xFF6B6BFF
-local COLOR_DIM = 0x9A9A9AFF
+local COLOR_DIM = UI.look.dim or UI.DEFAULT_DIM -- Settings > Appearance can change it
 local COLOR_NEW = 0x6BCB77FF     -- green: will be created
 local COLOR_EXISTS = 0xF5A524FF  -- orange: already in Wwise
 
@@ -496,10 +531,10 @@ local function draw_question(dl, x1, y1, size, fg)
   if big then ImGui.PopFont(ctx) end
 end
 
-UI.WINDOW_ROUNDING = 14   -- main window corners
+UI.WINDOW_ROUNDING = UI.look.win_round   -- window corners (Settings > Appearance)
 -- The "Transfer to Wwise" button sits in the window's bottom-left corner, inset by the window
 -- padding on both sides, with corners concentric to the window's: radius = window radius - inset.
-UI.FRAME_ROUNDING = 3     -- dropdowns, fields, buttons, checkboxes, tabs, panels: just softened
+UI.FRAME_ROUNDING = UI.look.frame_round -- dropdowns, fields, buttons, checkboxes, tabs, panels: just softened
 -- Softly rounded corners for everything ImGui draws square by default. Pushed right after a
 -- window's Begin and popped (UI.pop_rounding) right before its End, on every path.
 UI.ROUNDING_VARS = { "StyleVar_FrameRounding", "StyleVar_GrabRounding", "StyleVar_PopupRounding",
@@ -589,7 +624,7 @@ local function title_close_button()
   local big = title_font and pcall(ImGui.PushFont, ctx, title_font)
   local _, th = ImGui.CalcTextSize(ctx, "Wwise Tool")
   ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2 + 3, -- a little lower than the buttons' centre: more room above
-    ImGui.GetColor(ctx, ImGui.Col_Text), "Wwise Tool")
+    UI.look.title or ImGui.GetColor(ctx, ImGui.Col_Text), "Wwise Tool")
   if big then ImGui.PopFont(ctx) end
   ImGui.PopClipRect(ctx)
   -- Don't move the cursor back afterwards: ImGui errors in End() when the cursor is moved
@@ -989,7 +1024,7 @@ UI.TABLE_ROUNDING, UI.MAP_CELL_PAD, UI.PM_GAP = UI.FRAME_ROUNDING + 1, { 6, 3 },
 local function round_table_corners(x0, y0, x1, y1, dl, r)
   r = r or UI.TABLE_ROUNDING
   local t = math.ceil(r * 0.5) -- just enough to cover the square corners (needs > 0.414 * r)
-  local col = 0x19191900 | math.floor(view.opacity * 255 + 0.5) -- window background (#191919)
+  local col = (UI.bg_rgb() << 8) | math.floor(view.opacity * 255 + 0.5) -- window background
   ImGui.DrawList_AddRect(dl or ImGui.GetWindowDrawList(ctx), x0 - t / 2, y0 - t / 2, x1 + t / 2, y1 + t / 2,
     col, r + t / 2, 0, t)
 end
@@ -1918,6 +1953,76 @@ local function settings_interface()
   if view_dirty and not ImGui.IsAnyItemActive(ctx) then save_view(); view_dirty = false end
 end
 
+-- Settings > Appearance: title and text colors, background, corner rounding and font.
+local function settings_appearance()
+  local L = UI.look
+  local cflags = ImGui.ColorEditFlags_NoInputs | ImGui.ColorEditFlags_NoAlpha
+  local function color_row(label, key, def, tip)
+    local ch, rgb = ImGui.ColorEdit3(ctx, label .. "##look_" .. key, (L[key] or def) >> 8, cflags)
+    if ch then
+      local v = ((rgb & 0xFFFFFF) << 8) | 0xFF
+      L[key] = (v ~= def) and v or nil
+      if key == "dim" then COLOR_DIM = L.dim or UI.DEFAULT_DIM end
+      view_dirty = true
+    end
+    if tip and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, tip) end
+  end
+  ImGui.SeparatorText(ctx, "Colors")
+  if ImGui.BeginTable(ctx, "lookcolors", 2) then
+    ImGui.TableNextRow(ctx); ImGui.TableNextColumn(ctx)
+    color_row("Title", "title", UI.DEFAULT_TEXT, "The big \"Wwise Tool\" and \"Settings\" titles")
+    ImGui.TableNextColumn(ctx)
+    color_row("Text", "text", UI.DEFAULT_TEXT)
+    ImGui.TableNextRow(ctx); ImGui.TableNextColumn(ctx)
+    color_row("Dim text", "dim", UI.DEFAULT_DIM, "Help text, hints and \"Auto\" values")
+    ImGui.TableNextColumn(ctx)
+    color_row("Window background", "bg", UI.DEFAULT_BG)
+    ImGui.EndTable(ctx)
+  end
+  ImGui.Dummy(ctx, 0, 6)
+
+  ImGui.SeparatorText(ctx, "Corners")
+  local c, v
+  ImGui.SetNextItemWidth(ctx, 200)
+  c, v = ImGui.SliderInt(ctx, "Window corners", L.win_round, 0, 20, "%d px")
+  if c then L.win_round = v; UI.WINDOW_ROUNDING = v end
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  ImGui.SetNextItemWidth(ctx, 200)
+  c, v = ImGui.SliderInt(ctx, "Buttons, fields and panels", L.frame_round, 0, 10, "%d px")
+  if c then L.frame_round = v; UI.FRAME_ROUNDING = v; UI.TABLE_ROUNDING = v + 1 end
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  ImGui.Dummy(ctx, 0, 6)
+
+  ImGui.SeparatorText(ctx, "Font")
+  local fonts = {}
+  for i, n in ipairs(UI.FONT_CHOICES) do fonts[i] = n end
+  c, v = combo("Font##lookfont", fonts, L.font, 200)
+  if c then L.font = v; save_view() end
+  ImGui.SetNextItemWidth(ctx, 200)
+  c, v = ImGui.SliderInt(ctx, "Text size", L.size, 9, 18, "%d px")
+  if c then L.size = v end
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  ImGui.SetNextItemWidth(ctx, 200)
+  c, v = ImGui.SliderInt(ctx, "Title and heading size", L.head, 10, 24, "%d px")
+  if c then L.head = v end
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  if L.font ~= UI.FONT or L.size ~= UI.FONT_SIZE or L.head ~= UI.SECTION_FONT_SIZE then
+    ImGui.TextColored(ctx, 0xF4D35EFF, "Close and reopen Wwise Tool to see the new font.")
+  else
+    dim_label("Font changes show the next time you open Wwise Tool.")
+  end
+  ImGui.Dummy(ctx, 0, 6)
+  if ImGui.Button(ctx, "Reset appearance") then
+    UI.read_look({})
+    COLOR_DIM = UI.DEFAULT_DIM
+    UI.WINDOW_ROUNDING, UI.FRAME_ROUNDING = UI.look.win_round, UI.look.frame_round
+    UI.TABLE_ROUNDING = UI.FRAME_ROUNDING + 1
+    save_view()
+  end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Back to Verdana 12, the default colors and corners") end
+  if view_dirty and not ImGui.IsAnyItemActive(ctx) then save_view(); view_dirty = false end
+end
+
 local function settings_diagnostics()
   ImGui.PushTextWrapPos(ctx, 480)
   ImGui.TextColored(ctx, COLOR_DIM, string.format("Slow moments recorded: %d. If REAPER stutters or freezes, " ..
@@ -2000,6 +2105,7 @@ local SETTINGS_TABS = {
   { "Transfer", settings_transfer },
   { "Stream & loop", settings_streaming },
   { "Interface", settings_interface },
+  { "Appearance", settings_appearance },
   { "Configuration", settings_configuration },
   { "Diagnostics", settings_diagnostics },
 }
@@ -2026,8 +2132,9 @@ local function settings_window()
   -- Docked: ImGui's own background and title tab, with its normal X.
   local own_bg = not UI.settings_docked
   ImGui.SetNextWindowBgAlpha(ctx, own_bg and 0 or 1)
-  local title_bg = own_bg and 0x19191900 or 0x191919FF
-  ImGui.PushStyleColor(ctx, ImGui.Col_WindowBg, 0x191919FF)
+  local bg_rgba = (UI.bg_rgb() << 8) | 0xFF
+  local title_bg = own_bg and (bg_rgba & 0xFFFFFF00) or bg_rgba
+  ImGui.PushStyleColor(ctx, ImGui.Col_WindowBg, bg_rgba)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
@@ -2047,7 +2154,7 @@ local function settings_window()
   if own_bg then
     local dl = ImGui.GetWindowDrawList(ctx)
     ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + wh, false)
-    ImGui.DrawList_AddRectFilled(dl, wx, wy, wx + ww, wy + wh, 0x191919FF, UI.WINDOW_ROUNDING)
+    ImGui.DrawList_AddRectFilled(dl, wx, wy, wx + ww, wy + wh, bg_rgba, UI.WINDOW_ROUNDING)
     ImGui.DrawList_AddRect(dl, wx + 0.5, wy + 0.5, wx + ww - 0.5, wy + wh - 0.5, 0x2E2E2EFF, UI.WINDOW_ROUNDING, 0, 1)
     ImGui.PopClipRect(ctx)
   end
@@ -2094,7 +2201,7 @@ local function settings_window()
     local big = title_font and pcall(ImGui.PushFont, ctx, title_font)
     local _, th = ImGui.CalcTextSize(ctx, "Settings")
     ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2 + 3,
-      ImGui.GetColor(ctx, ImGui.Col_Text), "Settings")
+      UI.look.title or ImGui.GetColor(ctx, ImGui.Col_Text), "Settings")
     if big then ImGui.PopFont(ctx) end
     ImGui.PopClipRect(ctx)
   end
@@ -2187,8 +2294,13 @@ for _, t in ipairs(GREY_THEME) do t[1] = imgui_const(table.unpack(t[1])) end
 local function push_grey_theme()
   local n = 0
   for _, t in ipairs(GREY_THEME) do
-    if t[1] then ImGui.PushStyleColor(ctx, t[1], t[2]); n = n + 1 end
+    if t[1] then
+      ImGui.PushStyleColor(ctx, t[1], t[1] == ImGui.Col_WindowBg and ((UI.bg_rgb() << 8) | 0xFF) or t[2]); n = n + 1
+    end
   end
+  -- Text colors from Settings > Appearance, when changed from the defaults.
+  if UI.look.text then ImGui.PushStyleColor(ctx, ImGui.Col_Text, UI.look.text); n = n + 1 end
+  if UI.look.dim then ImGui.PushStyleColor(ctx, ImGui.Col_TextDisabled, UI.look.dim); n = n + 1 end
   return n
 end
 
@@ -2211,6 +2323,10 @@ apply_imported_config = function(cfg)
   if cfg.view then
     view.hidden, view.colors = {}, {}
     read_view(cfg.view)
+    -- Appearance from the file: colors and corners apply now, the font when the window reopens.
+    COLOR_DIM = UI.look.dim or UI.DEFAULT_DIM
+    UI.WINDOW_ROUNDING, UI.FRAME_ROUNDING = UI.look.win_round, UI.look.frame_round
+    UI.TABLE_ROUNDING = UI.FRAME_ROUNDING + 1
     save_view()
   end
   tabs = cfg.tabs
@@ -2490,10 +2606,10 @@ loop_body = function()
   -- anti-aliased edges meet in a faint see-through line; with one shape there's no seam. So
   -- ImGui's own title bar and body backgrounds are made fully transparent. Docked: ImGui's own.
   local own_bg = not main_win_docked
-  local bg_col = 0x19191900 | math.floor(view.opacity * 255 + 0.5) -- #191919 at the window opacity
+  local bg_col = (UI.bg_rgb() << 8) | math.floor(view.opacity * 255 + 0.5) -- background at the window opacity
   ImGui.SetNextWindowBgAlpha(ctx, own_bg and 0 or view.opacity)
   ImGui.PushStyleColor(ctx, ImGui.Col_PopupBg, 0x202020FF) -- solid popups and Settings/summary windows
-  local title_bg = own_bg and 0x19191900 or bg_col
+  local title_bg = own_bg and (UI.bg_rgb() << 8) or bg_col
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)

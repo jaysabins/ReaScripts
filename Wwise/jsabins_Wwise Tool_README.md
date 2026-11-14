@@ -276,6 +276,8 @@ Afterwards a summary shows the destination, the number of files imported, object
 
 The gear button opens **Settings** in its own window. The main window stays usable while Settings is open (it doesn't grey out), so you can change an option and watch the preview update. Settings' pages are listed down the left side; click one to show it on the right. The window keeps its size as you switch pages; drag its corner to make it bigger, and a long page scrolls. Close it with its **X**, the **Close** button or Esc.
 
+**Settings > Appearance** changes the window's look: the color of the big title, the text, the dim help text and the window background; how rounded the window corners and the buttons, fields and panels are; and the font (Verdana by default), its text size and the title and heading size. Colors and corners change right away; a new font shows the next time you open Wwise Tool. **Reset appearance** goes back to the defaults. The appearance applies to every project and is included in **Export configuration**.
+
 - **Connection:** the WAAPI HTTP port (8090 by default, must match Wwise) and **Reconnect**.
 - **Rendering** (for Source: Selected items or Folder items):
   - **Import untouched WAV files directly (no render).** Turn it off to always render.
