@@ -12,6 +12,7 @@
 --   structure table uses the same small corners as the preview table.
 --   The text next to Transfer to Wwise is gone (its messages show in the button's tooltip), and
 --   the preview now runs down to the bottom of the window, level with the button.
+--   Fixed: Reset color on a tab stopped the script with an ImGui error.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -2255,9 +2256,12 @@ local function section_tabs()
       end
       ImGui.PopStyleColor(ctx, 3)
       if not can_close then ImGui.EndDisabled(ctx) end
-      if not tab.color then ImGui.BeginDisabled(ctx) end
+      -- Decide once: clicking Reset clears tab.color, and re-checking it for EndDisabled would
+      -- end a Disabled block that was never begun (ImGui error, script stops).
+      local no_color = not tab.color
+      if no_color then ImGui.BeginDisabled(ctx) end
       if ImGui.Button(ctx, "Reset color") then tab.color = nil; settings_changed() end
-      if not tab.color then ImGui.EndDisabled(ctx) end
+      if no_color then ImGui.EndDisabled(ctx) end
       ImGui.SameLine(ctx)
       if ImGui.Button(ctx, "Duplicate") then
         add_tab(i, i + 1, new_tab_name(tab.name .. " copy")); ImGui.CloseCurrentPopup(ctx)
