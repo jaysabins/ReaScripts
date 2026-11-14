@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Jay Sabins Scripts" commit="951eeeb478745ffa4f0a147cb6934f448324a0dd">
+<index version="1" name="Jay Sabins Scripts" commit="3b3ea53e2bcb8a4493268fd06d8a313d08b3234c">
   <category name="Batch Tools">
     <reapack name="jsabins_Folder_Batch.lua" type="script" desc="Folder Batch Processor">
       <metadata>
@@ -72,6 +72,37 @@ Transient threshold is now adjustable in the window.
 Window stays open after Build so you can tweak and build again.
 Requires ReaImGui (Extensions > ReaPack > Browse packages > ReaImGui).]]></changelog>
         <source main="main">https://github.com/jaysabins/ReaScripts/raw/c856c6b670dd44e90ed324b442270fdbb0bbb0da/Items/jsabins_Build%20layer%20variations.lua</source>
+      </version>
+    </reapack>
+    <reapack name="jsabins_GunKit_RPM.lua" type="script" desc="GunKit RPM (respace folder items by rounds per minute)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 GunKit RPM\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Respaces the selected folder items so they start 60 / RPM seconds apart, like the shots of an automatic weapon. Each folder item moves together with everything inside it (the items on its child tracks), and the first shot stays where it is.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The timeline previews every change live; nothing is kept until you click Apply (one undo point). Revert, or closing the window, puts everything back.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Options: burst fire (shots per burst and the gap between bursts), trim so fast rates never overlap (with a fade on the cut), and Sculpt: a volume shape across the shots (Start, End, Curve, Random) and a first-shot accent. Preset tabs keep sets of settings.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Only folder items count as shots, so NVK Folder Items' auto-select (which selects the child items too) can stay on. With no folder items selected, the selected items themselves are used as the shots.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Requires ReaImGui (ReaPack > ReaTeam Extensions). Same look as Wwise Tool.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Guide: https://github.com/jaysabins/reascripts/blob/main/Items/jsabins_GunKit_RPM_README.md\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="Jay Sabins" time="2026-11-14T02:59:05Z">
+        <changelog><![CDATA[First release. Select folder items (shots), drag the Rounds per minute slider and the shots
+move live on the timeline (play while you drag to hear it). Apply makes it stick with one
+undo point; Revert or closing the window puts everything back.
+Optional trim so fast rates never overlap, with a short fade on the trimmed ends.
+Volume shaping across the burst: Start and End level, a Curve, and Random variation, with
+a bar graph of each shot's level.
+Burst fire: bursts of 2 or more shots spaced by the rate, with a gap you set between bursts.
+Sculpt: accent the first shot (or the first shot of every burst).
+Preset tabs: each tab keeps its own rate, burst, trim and sculpt settings; click a tab to
+preview it.
+Accent color (gear button) for the Apply button, sliders, checkmarks and volume bars.]]></changelog>
+        <source main="main">https://github.com/jaysabins/reascripts/raw/3b3ea53e2bcb8a4493268fd06d8a313d08b3234c/Items/jsabins_GunKit_RPM.lua</source>
       </version>
     </reapack>
     <reapack name="jsabins_Measure timing between selected layers.lua" type="script" desc="Measure timing between selected layers (for Wwise initial delay)">
