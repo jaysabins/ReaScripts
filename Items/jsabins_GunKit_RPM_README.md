@@ -2,7 +2,16 @@
 
 Respaces a run of shots so they fire at a set **rounds per minute**, with a live preview on the timeline.
 
-Requires [ReaImGui](https://forum.cockos.com/showthread.php?t=250419) (ReaPack > ReaTeam Extensions).
+- **Live preview**: drag the RPM slider and the shots move on the timeline as you go, even while it plays. Nothing is kept until you click Apply.
+- **Burst fire**: bursts of 2 or more shots with a gap you set between them.
+- **Trim** so fast rates never overlap, with a short fade on each cut.
+- **Sculpt** the volume across the shots, and accent the first shot (or the first shot of every burst).
+- **Preset tabs** keep sets of settings; click one to preview it.
+- **Accent color** of your choice, in the same look as Wwise Tool and Folder Batch.
+
+## Install
+
+In REAPER, **Extensions > ReaPack > Browse packages**, search for "GunKit RPM", right-click it and choose **Install**, then click **Apply**. It needs [ReaImGui](https://forum.cockos.com/showthread.php?t=250419) (ReaPack > ReaTeam Extensions).
 
 ## How to use
 
@@ -15,7 +24,7 @@ Requires [ReaImGui](https://forum.cockos.com/showthread.php?t=250419) (ReaPack >
 
 ## What moves
 
-- Shot *n* starts at `first shot + (n - 1) × 60 / RPM` seconds. The first shot stays where it is.
+- Shot *n* starts at `first shot + (n - 1) × 60 / RPM` seconds (see Burst fire for how bursts change this). The first shot stays where it is.
 - Each folder item moves with everything on its child tracks (nested folders included) that starts inside it.
 - If the selection spans several folder tracks, each track's shots are spaced on their own, each from its own first shot.
 - With no folder items selected, the selected items themselves are the shots (nothing else moves).
