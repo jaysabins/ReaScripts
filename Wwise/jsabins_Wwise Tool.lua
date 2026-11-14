@@ -26,6 +26,7 @@
 --   Title-bar buttons (?, Settings, X) are flat and only show their box on hover (X red), and
 --   the Settings gear is a thin outline cog.
 --   The window title is bolder and 1px bigger (15px).
+--   Removed the note under Source for Folder items (the dropdown's tooltip still explains it).
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -762,11 +763,7 @@ local function section_source()
       "are left out, so you can keep auto-select on.\n" ..
       "Render settings: whatever REAPER's render dialog is set to produce.")
   end
-  if S.source == "folders" then
-    ImGui.PushTextWrapPos(ctx, 0)
-    dim_label("Only folder items are sent. Selected items inside them are ignored, so NVK auto-select can stay on.")
-    ImGui.PopTextWrapPos(ctx)
-  elseif S.source == "render" then
+  if S.source == "render" then
     if ImGui.Button(ctx, "Render settings...") then r.Main_OnCommand(40015, 0) end
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Region matrix...") then r.Main_OnCommand(41888, 0) end
