@@ -4,8 +4,12 @@
 -- @changelog
 --   First release. Select folder items (shots), drag the Rounds per minute slider and the shots
 --   move live on the timeline (play while you drag to hear it). Apply makes it stick with one
---   undo point; Revert or closing the window puts everything back. Optional trim so fast rates
---   never overlap, with a short fade on the trimmed ends.
+--   undo point; Revert or closing the window puts everything back.
+--   Optional trim so fast rates never overlap, with a short fade on the trimmed ends.
+--   Volume shaping across the burst: Start and End level, a Curve, and Random variation, with
+--   a bar graph of each shot's level.
+--   Preset tabs: each tab keeps its own rate, trim and volume settings; click a tab to preview it.
+--   Accent color (gear button) for the Apply button, sliders, checkmarks and volume bars.
 -- @about
 --   # GunKit RPM
 --
@@ -13,11 +17,11 @@
 --   an automatic weapon. Each folder item moves together with everything inside it (the items
 --   on its child tracks), and the first shot stays where it is.
 --
---   The timeline previews the new spacing live while you change the rate; nothing is kept until
---   you click Apply (one undo point). Revert, or closing the window, puts everything back.
+--   The timeline previews every change live; nothing is kept until you click Apply (one undo
+--   point). Revert, or closing the window, puts everything back.
 --
---   "Trim so shots don't overlap" shortens each shot (and its child items) where the next shot
---   starts, with a short fade-out on the cut, so fast rates never overlap.
+--   Options: trim so fast rates never overlap (with a fade on the cut), and a volume shape
+--   across the burst (Start, End, Curve, Random). Preset tabs keep sets of settings.
 --
 --   Only folder items count as shots, so NVK Folder Items' auto-select (which selects the child
 --   items too) can stay on. With no folder items selected, the selected items themselves are
@@ -52,16 +56,72 @@ local function ext_get(key, default)
   return v
 end
 
-local opt = {
-  trim = ext_get("trim", "0") == "1",
-  fade_ms = tonumber(ext_get("fade_ms", "5")) or 5,
-  rpm = tonumber(ext_get("rpm", "600")) or 600, -- used when the selection has a single shot
-}
+-- Preset tabs: each tab holds a full set of options. Saved for every project (ExtState).
+local FIELDS = { "rpm", "trim", "fade_ms", "vol", "vol_start", "vol_end", "vol_curve", "vol_rand" }
+local DEFAULTS = { rpm = 600, trim = false, fade_ms = 5, vol = false, vol_start = 0, vol_end = -6,
+                   vol_curve = 0, vol_rand = 0 }
 
-local function save_opts()
-  r.SetExtState(EXT, "trim", opt.trim and "1" or "0", true)
-  r.SetExtState(EXT, "fade_ms", tostring(opt.fade_ms), true)
-  r.SetExtState(EXT, "rpm", tostring(opt.rpm), true)
+local function copy_set(src)
+  local t = {}
+  for _, k in ipairs(FIELDS) do
+    local v = src and src[k]
+    if v == nil then v = DEFAULTS[k] end
+    t[k] = v
+  end
+  return t
+end
+
+-- Names may hold anything; | % and line breaks are escaped so one line = one tab.
+local function enc(str) return (str:gsub("[%%|\r\n]", function(c) return string.format("%%%02X", c:byte()) end)) end
+local function dec(str) return (str:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)) end
+
+local tabs = { list = {}, active = 1, next_id = 1 }
+
+local function load_tabs()
+  local raw = ext_get("tabs", "")
+  for line in raw:gmatch("[^\n]+") do
+    local f = {}
+    for v in (line .. "|"):gmatch("([^|]*)|") do f[#f + 1] = v end
+    if #f >= 2 + #FIELDS then
+      local set = {}
+      for i, k in ipairs(FIELDS) do
+        local v = f[2 + i]
+        if type(DEFAULTS[k]) == "boolean" then set[k] = v == "1" else set[k] = tonumber(v) end
+      end
+      tabs.list[#tabs.list + 1] = { id = tabs.next_id, name = dec(f[1]), color = tonumber(f[2]), s = copy_set(set) }
+      tabs.next_id = tabs.next_id + 1
+    end
+  end
+  if #tabs.list == 0 then
+    tabs.list[1] = { id = tabs.next_id, name = "Default", s = copy_set(nil) }
+    tabs.next_id = tabs.next_id + 1
+  end
+  tabs.active = math.max(1, math.min(#tabs.list, tonumber(ext_get("active", "1")) or 1))
+end
+
+local function save_tabs()
+  local lines = {}
+  for _, t in ipairs(tabs.list) do
+    local f = { enc(t.name), t.color and tostring(t.color) or "" }
+    for _, k in ipairs(FIELDS) do
+      local v = t.s[k]
+      if type(v) == "boolean" then v = v and "1" or "0" end
+      f[#f + 1] = tostring(v)
+    end
+    lines[#lines + 1] = table.concat(f, "|")
+  end
+  r.SetExtState(EXT, "tabs", table.concat(lines, "\n"), true)
+  r.SetExtState(EXT, "active", tostring(tabs.active), true)
+end
+
+load_tabs()
+local P = tabs.list[tabs.active].s -- the active tab's options
+
+-- Accent color (0xRRGGBB) for the Apply button, the sliders, checkmarks and the volume bars.
+local ACCENT_DEFAULT = 0x1A7F37
+local accent = tonumber(ext_get("accent", ""))
+local function save_accent()
+  if accent then r.SetExtState(EXT, "accent", tostring(accent), true) else r.DeleteExtState(EXT, "accent", true) end
 end
 
 ------------------------------------------------------------------------------------------------
@@ -101,14 +161,23 @@ end
 -- If such an item still has the length we gave it, the layout works from its full length, so a
 -- slower rate after an Apply lets the shots ring out again.
 local cut_items = {}
+-- Same idea for volume: items whose volume this window set on Apply { set_vol, vol = before }, so
+-- shaping again starts from the volume they had before, instead of stacking on top of it.
+local vol_items = {}
+-- Each shot's random volume share, kept for the whole session so the preview doesn't jump around.
+local rnd_of = {}
 
 local function snap(item)
   local pos = r.GetMediaItemInfo_Value(item, "D_POSITION")
   local len = r.GetMediaItemInfo_Value(item, "D_LENGTH")
   local fade = r.GetMediaItemInfo_Value(item, "D_FADEOUTLEN")
-  local rec = { item = item, pos = pos, len = len, fade = fade, full = len, full_fade = fade }
+  local rec = { item = item, pos = pos, len = len, fade = fade, full = len, full_fade = fade,
+                vol = r.GetMediaItemInfo_Value(item, "D_VOL") }
+  rec.base_vol = rec.vol
   local c = cut_items[item]
   if c and math.abs(c.set_len - len) < 1e-9 then rec.full, rec.full_fade = c.len, c.fade end
+  local v = vol_items[item]
+  if v and math.abs(v.set_vol - rec.vol) < 1e-9 then rec.base_vol = v.vol end
   return rec
 end
 
@@ -204,6 +273,8 @@ local function capture()
     end
     local s = snap(it)
     s.kids = {}
+    rnd_of[it] = rnd_of[it] or (math.random() * 2 - 1)
+    s.rnd = rnd_of[it] -- this shot's share of the random volume spread
     g.shots[#g.shots + 1] = s
   end
   for _, g in ipairs(S.groups) do
@@ -212,9 +283,7 @@ local function capture()
     S.n_shots = S.n_shots + #g.shots
   end
   S.n_tracks = #S.groups
-  local rate = current_rpm()
-  S.rpm = rate and math.floor(rate * 10 + 0.5) / 10 or opt.rpm
-  S.typed = S.rpm
+  S.now_rpm = current_rpm() -- shown next to the slider; the slider keeps the tab's rate
   S.sig = selection_sig()
 end
 
@@ -233,11 +302,12 @@ local function all_valid()
   return true
 end
 
-local function put(rec, pos, len, fade)
+local function put(rec, pos, len, fade, vol)
   if not valid(rec.item) then return end
   r.SetMediaItemInfo_Value(rec.item, "D_POSITION", pos)
   r.SetMediaItemInfo_Value(rec.item, "D_LENGTH", len)
   r.SetMediaItemInfo_Value(rec.item, "D_FADEOUTLEN", fade)
+  r.SetMediaItemInfo_Value(rec.item, "D_VOL", vol or rec.vol)
 end
 
 -- Put every item back where it was captured.
@@ -258,10 +328,17 @@ end
 local function trimmed(start, len, fade, cut)
   if start < cut - EPS and start + len > cut + EPS then
     local l = cut - start
-    local f = opt.fade_ms > 0 and math.min(opt.fade_ms / 1000, l) or 0
+    local f = P.fade_ms > 0 and math.min(P.fade_ms / 1000, l) or 0
     return l, f
   end
   return len, fade
+end
+
+-- Volume shape: dB for position t (0 = first shot, 1 = last). Curve bends the line: above 0 it
+-- holds near Start longer then drops, below 0 it moves toward End right away.
+local function shape_db(t, rnd)
+  local e = 4 ^ (P.vol_curve or 0)
+  return P.vol_start + (P.vol_end - P.vol_start) * (t ^ e) + (rnd or 0) * P.vol_rand
 end
 
 -- Lay the shots out at `rpm` (worked out from the originals every time).
@@ -274,12 +351,15 @@ local function layout(rpm)
     for i, s in ipairs(g.shots) do
       local start = base + (i - 1) * sp
       local d = start - s.pos
-      local cut = (opt.trim and i < n) and (start + sp) or math.huge
+      local cut = (P.trim and i < n) and (start + sp) or math.huge
+      local gain = 1
+      if P.vol then gain = 10 ^ (shape_db(n > 1 and (i - 1) / (n - 1) or 0, s.rnd) / 20) end
       local len, fade = trimmed(start, s.full, s.full_fade, cut)
-      put(s, start, len, fade)
+      -- Folder items: the gain goes on the child items (the audio); plain items get it themselves.
+      put(s, start, len, fade, S.folder and s.base_vol or s.base_vol * gain)
       for _, k in ipairs(s.kids) do
         local klen, kfade = trimmed(k.pos + d, k.full, k.full_fade, cut)
-        put(k, k.pos + d, klen, kfade)
+        put(k, k.pos + d, klen, kfade, k.base_vol * gain)
       end
     end
   end
@@ -289,7 +369,7 @@ end
 
 local function preview()
   if S.n_shots == 0 then return end
-  layout(S.rpm)
+  layout(P.rpm)
   S.dirty = true
   S.last_msg = nil
 end
@@ -305,8 +385,8 @@ local function apply()
   if not (S.dirty and S.n_shots > 0) then return end
   restore()
   r.Undo_BeginBlock2(S.proj)
-  layout(S.rpm)
-  r.Undo_EndBlock2(S.proj, string.format("GunKit RPM: respace %d shots to %g RPM", S.n_shots, S.rpm), -1)
+  layout(P.rpm)
+  r.Undo_EndBlock2(S.proj, string.format("GunKit RPM: respace %d shots to %g RPM", S.n_shots, P.rpm), -1)
   -- Remember the full length of anything the trim shortened (see cut_items).
   local function note(rec)
     if not valid(rec.item) then return end
@@ -316,6 +396,12 @@ local function apply()
     else
       cut_items[rec.item] = nil
     end
+    local vol = r.GetMediaItemInfo_Value(rec.item, "D_VOL")
+    if math.abs(vol - rec.base_vol) > 1e-9 then
+      vol_items[rec.item] = { set_vol = vol, vol = rec.base_vol }
+    else
+      vol_items[rec.item] = nil
+    end
   end
   for _, g in ipairs(S.groups) do
     for _, s in ipairs(g.shots) do
@@ -323,9 +409,8 @@ local function apply()
       for _, k in ipairs(s.kids) do note(k) end
     end
   end
-  opt.rpm = S.rpm
-  save_opts()
-  local applied = S.rpm
+  save_tabs()
+  local applied = P.rpm
   capture() -- the applied layout is the new starting point
   S.last_msg = string.format("Applied %g RPM to %d shot%s.", applied, S.n_shots, S.n_shots == 1 and "" or "s")
 end
@@ -547,12 +632,81 @@ local function draw_question(dl, x1, y1, size, fg)
 end
 
 
+
+------------------------------------------------------------------------------------------------
+-- ACCENT COLOR
+------------------------------------------------------------------------------------------------
+
+local function accent_rgb() return accent or ACCENT_DEFAULT end
+-- Lighter (f > 0) or darker (f < 0) version of a 0xRRGGBB color.
+local function shade(rgb, f)
+  local function ch(v)
+    v = f >= 0 and (v + (255 - v) * f) or (v * (1 + f))
+    return math.max(0, math.min(255, math.floor(v + 0.5)))
+  end
+  return (ch((rgb >> 16) & 0xFF) << 16) | (ch((rgb >> 8) & 0xFF) << 8) | ch(rgb & 0xFF)
+end
+local function luminance(rgb)
+  return (0.299 * ((rgb >> 16) & 0xFF) + 0.587 * ((rgb >> 8) & 0xFF) + 0.114 * (rgb & 0xFF)) / 255
+end
+local function rgba(rgb, a) return (rgb << 8) | (a or 0xFF) end
+
+-- Accent on checkmarks and slider grabs; pushed around the whole window. Returns the pop count.
+local function push_accent()
+  local a = accent_rgb()
+  ImGui.PushStyleColor(ctx, ImGui.Col_CheckMark, rgba(shade(a, 0.35)))
+  ImGui.PushStyleColor(ctx, ImGui.Col_SliderGrab, rgba(shade(a, 0.1)))
+  ImGui.PushStyleColor(ctx, ImGui.Col_SliderGrabActive, rgba(shade(a, 0.3)))
+  return 3
+end
+
+-- Accent-colored button (Apply). Returns the pop count.
+local function push_accent_button()
+  local a = accent_rgb()
+  ImGui.PushStyleColor(ctx, ImGui.Col_Button, rgba(a))
+  ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered, rgba(shade(a, 0.15)))
+  ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, rgba(shade(a, -0.2)))
+  ImGui.PushStyleColor(ctx, ImGui.Col_Text, luminance(a) > 0.62 and 0x111111FF or 0xFFFFFFFF)
+  return 4
+end
+
+-- Slider with the accent: grab in the accent color and the part left of the grab filled with it.
+local function accent_slider(id, v, lo, hi, fmt)
+  local changed, nv = ImGui.SliderDouble(ctx, id, v, lo, hi, fmt)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  local x2, y2 = ImGui.GetItemRectMax(ctx)
+  local t = math.max(0, math.min(1, (nv - lo) / (hi - lo)))
+  if t > 0 and x2 > x1 then
+    local fx = x1 + (x2 - x1) * t
+    ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), x1, y1, fx, y2,
+      rgba(accent_rgb(), 0x55), UI.FRAME_ROUNDING)
+  end
+  return changed, nv
+end
+
 ------------------------------------------------------------------------------------------------
 -- WINDOW PARTS
 ------------------------------------------------------------------------------------------------
 
 local close_clicked = false
 local win_docked = false
+local open_look = false
+
+local function draw_gear(dl, x1, y1, size, col)
+  local cx, cy = x1 + size / 2, y1 + size / 2
+  local ro, ri = size * 0.34, size * 0.255
+  local th = math.max(1.2, size * 0.065)
+  local step = math.pi / 4
+  for i = 0, 7 do
+    local a = i * step - math.pi / 2
+    local pts = { { ri, a - 0.27 }, { ro, a - 0.17 }, { ro, a + 0.17 }, { ri, a + 0.27 } }
+    for _, pt in ipairs(pts) do
+      ImGui.DrawList_PathLineTo(dl, cx + math.cos(pt[2]) * pt[1], cy + math.sin(pt[2]) * pt[1])
+    end
+  end
+  ImGui.DrawList_PathStroke(dl, col, ImGui.DrawFlags_Closed, th)
+  ImGui.DrawList_AddCircle(dl, cx, cy, size * 0.115, col, 0, th)
+end
 
 -- Status in the title bar: { text, color (nil = normal), tooltip }, and the dot's color.
 local function status_items()
@@ -572,7 +726,6 @@ local function status_items()
   return t, UI.COLOR_OK
 end
 
--- Status dot and text, right-aligned to right_x and centered on a row of height h at top.
 local function title_status(right_x, top, h)
   local items, dot_col = status_items()
   local sp = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
@@ -591,7 +744,7 @@ local function title_status(right_x, top, h)
   end
 end
 
--- Floating window: big bold title on the left; status, ? and X on the right, drawn over the
+-- Floating window: big bold title on the left; status, gear, ? and X on the right, drawn over the
 -- (taller) title bar. Called last in the window so it draws on top.
 local function title_bar()
   local size, m = close_size(), close_margin()
@@ -609,6 +762,10 @@ local function title_bar()
   ImGui.SetCursorScreenPos(ctx, x, wy + m)
   if title_icon_button("##guide_t", size, draw_question) then open_url(UI.GUIDE_URL) end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Open the GunKit RPM guide on GitHub") end
+  x = x - gap - size
+  ImGui.SetCursorScreenPos(ctx, x, wy + m)
+  if title_icon_button("##look_t", size, draw_gear) then open_look = true end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Accent color") end
   title_status(x - gap * 2, wy + m, size)
   local big = UI.title_font and pcall(ImGui.PushFont, ctx, UI.title_font)
   local _, th = ImGui.CalcTextSize(ctx, "GunKit RPM")
@@ -618,116 +775,358 @@ local function title_bar()
   ImGui.PopClipRect(ctx)
 end
 
--- Docked (no title bar): status and ? on one row at the top, right-aligned.
+-- Docked (no title bar): status, gear and ? on one row at the top, right-aligned.
 local function docked_header()
   local size = ImGui.GetFrameHeight(ctx)
   local x0, y0 = ImGui.GetCursorScreenPos(ctx)
   local aw = ImGui.GetContentRegionAvail(ctx)
   local gap = 6
-  title_status(x0 + aw - size - gap * 2, y0, size)
+  title_status(x0 + aw - 2 * size - gap * 3, y0, size)
+  ImGui.SetCursorScreenPos(ctx, x0 + aw - 2 * size - gap, y0)
+  if title_icon_button("##look_d", size, draw_gear) then open_look = true end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Accent color") end
   ImGui.SetCursorScreenPos(ctx, x0 + aw - size, y0)
   if title_icon_button("##guide_d", size, draw_question) then open_url(UI.GUIDE_URL) end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Open the GunKit RPM guide on GitHub") end
 end
 
-local function form_label(text)
+-- Gear popup: the accent color.
+local function look_popup()
+  if open_look then ImGui.OpenPopup(ctx, "look"); open_look = false end
+  if ImGui.BeginPopup(ctx, "look") then
+    ImGui.AlignTextToFramePadding(ctx)
+    ImGui.Text(ctx, "Accent color")
+    ImGui.SameLine(ctx)
+    local ch, rgb = ImGui.ColorEdit3(ctx, "##accent", accent_rgb(),
+      ImGui.ColorEditFlags_NoInputs | ImGui.ColorEditFlags_NoAlpha)
+    if ch then accent = rgb; save_accent() end
+    tip("Apply button, sliders, checkmarks and volume bars.")
+    ImGui.SameLine(ctx)
+    local is_default = accent == nil -- decided once for the Begin/EndDisabled pair
+    if is_default then ImGui.BeginDisabled(ctx) end
+    if ImGui.Button(ctx, "Reset") then accent = nil; save_accent() end
+    if is_default then ImGui.EndDisabled(ctx) end
+    ImGui.EndPopup(ctx)
+  end
+end
+
+------------------------------------------------------------------------------------------------
+-- PRESET TABS
+------------------------------------------------------------------------------------------------
+
+local tab_select_pending = true
+local tab_edit, tab_edit_text, open_tab_edit = nil, "", false
+
+local TAB_COLS = {
+  { imgui_const("Col_Tab"), 0xA0 },
+  { imgui_const("Col_TabHovered"), 0xE0 },
+  { imgui_const("Col_TabSelected", "Col_TabActive"), 0xFF },
+  { imgui_const("Col_TabDimmed", "Col_TabUnfocused"), 0x80 },
+  { imgui_const("Col_TabDimmedSelected", "Col_TabUnfocusedActive"), 0xD0 },
+}
+local function push_tab_color(rgb)
+  if not rgb then return 0 end
+  local n = 0
+  for _, c in ipairs(TAB_COLS) do
+    if c[1] then ImGui.PushStyleColor(ctx, c[1], (rgb << 8) | c[2]); n = n + 1 end
+  end
+  ImGui.PushStyleColor(ctx, ImGui.Col_Text, luminance(rgb) > 0.62 and 0x111111FF or 0xFFFFFFFF)
+  return n + 1
+end
+
+-- Show tab i: its options become the live ones and (if shots are selected) the timeline previews them.
+local function show_tab(i)
+  tabs.active = i
+  P = tabs.list[i].s
+  tab_select_pending = true
+  save_tabs()
+  if S.n_shots > 0 then preview() end
+end
+
+local function new_tab_name(base)
+  local used = {}
+  for _, t in ipairs(tabs.list) do used[t.name:lower()] = true end
+  if base and not used[base:lower()] then return base end
+  local n = base and 2 or #tabs.list + 1
+  local function name(k) return base and (base .. " " .. k) or ("Preset " .. k) end
+  while used[name(n):lower()] do n = n + 1 end
+  return name(n)
+end
+
+local function add_tab(from, at, name)
+  local src = tabs.list[from]
+  local tab = { id = tabs.next_id, name = name, color = src.color, s = copy_set(src.s) }
+  tabs.next_id = tabs.next_id + 1
+  table.insert(tabs.list, at, tab)
+  if at <= tabs.active then tabs.active = tabs.active + 1 end
+  show_tab(at)
+end
+
+local function close_tab(i)
+  if #tabs.list < 2 or not tabs.list[i] then return end
+  table.remove(tabs.list, i)
+  if i == tabs.active then
+    show_tab(math.min(i, #tabs.list))
+  else
+    if i < tabs.active then tabs.active = tabs.active - 1 end
+    tab_select_pending = true
+    save_tabs()
+  end
+end
+
+local function move_tab(i, d)
+  local j = i + d
+  if not tabs.list[i] or not tabs.list[j] then return end
+  tabs.list[i], tabs.list[j] = tabs.list[j], tabs.list[i]
+  if tabs.active == i then tabs.active = j elseif tabs.active == j then tabs.active = i end
+  -- ImGui keeps a tab bar's order once tabs exist; new ids make it lay them out in our order.
+  for _, k in ipairs({ i, j }) do tabs.list[k].id = tabs.next_id; tabs.next_id = tabs.next_id + 1 end
+  tab_select_pending = true
+  save_tabs()
+end
+
+local function section_tabs()
+  local action
+  if ImGui.BeginTabBar(ctx, "presets", ImGui.TabBarFlags_FittingPolicyScroll) then
+    for i, tab in ipairs(tabs.list) do
+      local flags = (tab_select_pending and i == tabs.active) and ImGui.TabItemFlags_SetSelected or ImGui.TabItemFlags_None
+      local pushed = push_tab_color(tab.color)
+      local sel = ImGui.BeginTabItem(ctx, tab.name .. "###tab" .. tab.id, nil, flags)
+      if pushed > 0 then ImGui.PopStyleColor(ctx, pushed) end
+      if ImGui.IsItemHovered(ctx) and ImGui.IsMouseDoubleClicked(ctx, ImGui.MouseButton_Left) then action = { "edit", i } end
+      if ImGui.IsItemClicked(ctx, ImGui.MouseButton_Right) then action = { "edit", i } end
+      if sel then
+        -- While a switch is pending ImGui may still report the old tab for a frame: ignore it.
+        if i == tabs.active then tab_select_pending = false
+        elseif not tab_select_pending then action = action or { "show", i } end
+        ImGui.EndTabItem(ctx)
+      end
+    end
+    if ImGui.TabItemButton(ctx, "+", ImGui.TabItemFlags_Trailing | ImGui.TabItemFlags_NoTooltip) then action = { "add" } end
+    if ImGui.IsItemHovered(ctx) then
+      ImGui.SetTooltip(ctx, "New preset, starting as a copy of this one.\n" ..
+        "Each tab keeps its own rate, trim and volume settings.\nRight-click or double-click a tab to rename, color, duplicate, reorder or close it.")
+    end
+    ImGui.EndTabBar(ctx)
+  end
+
+  if action then
+    local a, i = action[1], action[2]
+    if a == "show" then show_tab(i)
+    elseif a == "add" then add_tab(tabs.active, #tabs.list + 1, new_tab_name())
+    elseif a == "edit" then tab_edit, tab_edit_text = tabs.list[i], tabs.list[i].name; open_tab_edit = true end
+  end
+
+  -- Tab popup: color, name, close; reset color, duplicate, order.
+  if open_tab_edit then ImGui.OpenPopup(ctx, "tabedit"); open_tab_edit = false end
+  if ImGui.BeginPopup(ctx, "tabedit") then
+    local i
+    for k, t in ipairs(tabs.list) do if t == tab_edit then i = k end end
+    if not i then ImGui.CloseCurrentPopup(ctx)
+    else
+      local tab = tab_edit
+      local default_rgb = 0x3C3C3C
+      local ch, rgb = ImGui.ColorEdit3(ctx, "##tabcolor", tab.color or default_rgb,
+        ImGui.ColorEditFlags_NoInputs | ImGui.ColorEditFlags_NoAlpha)
+      if ch then tab.color = rgb; save_tabs() end
+      tip("Tab color")
+      ImGui.SameLine(ctx)
+      ImGui.SetNextItemWidth(ctx, 180)
+      if ImGui.IsWindowAppearing(ctx) then ImGui.SetKeyboardFocusHere(ctx) end
+      ch, tab_edit_text = ImGui.InputText(ctx, "##tabeditname", tab_edit_text)
+      if ch then
+        local name = tab_edit_text:match("^%s*(.-)%s*$")
+        if name ~= "" then tab.name = name; save_tabs() end
+      end
+      local enter = ImGui.IsItemDeactivatedAfterEdit(ctx) and ImGui.IsKeyPressed(ctx, ImGui.Key_Enter)
+      ImGui.SameLine(ctx)
+      local can_close = #tabs.list > 1 -- decided once for the Begin/EndDisabled pair
+      if not can_close then ImGui.BeginDisabled(ctx) end
+      ImGui.PushStyleColor(ctx, ImGui.Col_Button, 0x8E2A2AFF)
+      ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered, 0xB23636FF)
+      ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, 0x6E1F1FFF)
+      local close_clicked_tab = ImGui.Button(ctx, "Close tab")
+      ImGui.PopStyleColor(ctx, 3)
+      if not can_close then ImGui.EndDisabled(ctx) end
+      if close_clicked_tab and can_close then close_tab(i); ImGui.CloseCurrentPopup(ctx) end
+
+      local no_color = not tab.color -- decided once: Reset clears it
+      if no_color then ImGui.BeginDisabled(ctx) end
+      if ImGui.Button(ctx, "Reset color") then tab.color = nil; save_tabs() end
+      if no_color then ImGui.EndDisabled(ctx) end
+      ImGui.SameLine(ctx)
+      if ImGui.Button(ctx, "Duplicate") then
+        add_tab(i, i + 1, new_tab_name(tab.name .. " copy")); ImGui.CloseCurrentPopup(ctx)
+      end
+      ImGui.SameLine(ctx)
+      ImGui.AlignTextToFramePadding(ctx)
+      dim("Order:")
+      ImGui.SameLine(ctx)
+      local first, last = i == 1, i == #tabs.list -- decided once
+      if first then ImGui.BeginDisabled(ctx) end
+      local left = ImGui.ArrowButton(ctx, "##tableft", ImGui.Dir_Left)
+      if first then ImGui.EndDisabled(ctx) end
+      ImGui.SameLine(ctx)
+      if last then ImGui.BeginDisabled(ctx) end
+      local right = ImGui.ArrowButton(ctx, "##tabright", ImGui.Dir_Right)
+      if last then ImGui.EndDisabled(ctx) end
+      if left and not first then move_tab(i, -1) elseif right and not last then move_tab(i, 1) end
+      if enter then ImGui.CloseCurrentPopup(ctx) end
+    end
+    ImGui.EndPopup(ctx)
+  end
+end
+
+------------------------------------------------------------------------------------------------
+-- RATE AND VOLUME
+------------------------------------------------------------------------------------------------
+
+-- Label in a fixed first column (wide enough for the longest label).
+local function form_label(text, col_w)
   ImGui.AlignTextToFramePadding(ctx)
   ImGui.Text(ctx, text)
-  ImGui.SameLine(ctx, math.floor(ImGui.GetFontSize(ctx) * 7))
+  ImGui.SameLine(ctx, col_w)
 end
+local function label_col() return math.floor(ImGui.CalcTextSize(ctx, "Rounds/min") + ImGui.GetFontSize(ctx) * 1.2) end
 
-local function section_shots()
-  section_title("Shots")
-  if S.n_shots == 0 then
-    dim("Select the folder items to respace.")
-    dim("Their child items move with them.")
-    return
-  end
-  local what = S.folder and "folder item" or "item"
-  ImGui.Text(ctx, string.format("%d %s%s%s", S.n_shots, what, S.n_shots == 1 and "" or "s",
-    S.n_tracks > 1 and string.format(" on %d tracks", S.n_tracks) or ""))
-  if S.folder then
-    tip("Each folder item moves with everything on its child tracks that starts inside it.")
-  else
-    tip("No folder items are selected, so the selected items themselves are the shots.")
-  end
-  if S.dirty then
-    dim("Selection is locked while previewing.")
-    tip("Apply or Revert to pick other items.")
-  else
-    dim("The first shot of each track stays where it is.")
-  end
-end
-
-local function set_rpm(v)
-  v = math.max(RPM_MIN, math.min(RPM_MAX, v))
-  if v ~= S.rpm or not S.dirty then
-    S.rpm = v
-    preview()
-  end
+-- Something changed an option: save it and update the preview.
+local function option_changed()
+  save_tabs()
+  if S.n_shots > 0 then preview() end
 end
 
 local function section_rate()
   section_title("Rate")
-  local can = S.n_shots > 0 -- worked out once: Begin/EndDisabled below must match
-  if not can then ImGui.BeginDisabled(ctx) end
+  if S.n_shots == 0 then
+    dim("Select the folder items to respace.")
+  else
+    local what = S.folder and "folder item" or "item"
+    ImGui.Text(ctx, string.format("%d %s%s%s", S.n_shots, what, S.n_shots == 1 and "" or "s",
+      S.n_tracks > 1 and string.format(" on %d tracks", S.n_tracks) or ""))
+    if S.dirty then
+      tip("Selection is locked while previewing. Apply or Revert to pick other items.")
+    elseif S.now_rpm then
+      ImGui.SameLine(ctx)
+      dim(string.format("(now %.0f RPM)", S.now_rpm))
+      tip("The rate the selected shots are at right now. Nothing moves until you change something.")
+    end
+  end
+  ImGui.Dummy(ctx, 0, 2)
 
-  form_label("Rounds/min")
-  local field_w = math.floor(ImGui.GetFontSize(ctx) * 5)
+  local col = label_col()
+  local field_w = math.floor(ImGui.GetFontSize(ctx) * 4.5)
   local sp_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
+
+  form_label("Rounds/min", col)
   ImGui.SetNextItemWidth(ctx, -(field_w + sp_x))
-  local changed, v = ImGui.SliderDouble(ctx, "##rpm", S.rpm, SLIDER_MIN, SLIDER_MAX, "%.0f RPM")
-  if changed then set_rpm(v) end
+  local changed, v = accent_slider("##rpm", P.rpm, SLIDER_MIN, SLIDER_MAX, "%.0f RPM")
+  if changed then P.rpm = math.max(RPM_MIN, math.min(RPM_MAX, v)); option_changed() end
   tip("Drag to change the rate; the timeline follows live. Ctrl+click to type any value.")
   ImGui.SameLine(ctx)
   ImGui.SetNextItemWidth(ctx, field_w)
-  if not S.typing then S.typed = S.rpm end
+  if not S.typing then S.typed = P.rpm end
   local _, tv = ImGui.InputDouble(ctx, "##rpmtyped", S.typed, 0, 0, "%.1f")
   S.typed = tv
   S.typing = ImGui.IsItemActive(ctx)
-  if ImGui.IsItemDeactivatedAfterEdit(ctx) then set_rpm(S.typed) end
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then
+    P.rpm = math.max(RPM_MIN, math.min(RPM_MAX, S.typed)); option_changed()
+  end
   tip(string.format("Type a rate (%d to %d) and press Enter.", RPM_MIN, RPM_MAX))
 
-  form_label("Spacing")
-  ImGui.Text(ctx, string.format("%.1f ms", 60000 / S.rpm))
-  local was = current_rpm()
-  if was and not S.dirty then
-    ImGui.SameLine(ctx)
-    dim("(as they are now)")
-  end
+  form_label("Spacing", col)
+  ImGui.Text(ctx, string.format("%.1f ms", 60000 / P.rpm))
   tip("Start-to-start time between shots.")
 
-  ImGui.Dummy(ctx, 0, 2)
-  local c1, t = ImGui.Checkbox(ctx, "Trim so shots don't overlap", opt.trim)
-  if c1 then
-    opt.trim = t
-    save_opts()
-    if S.n_shots > 0 then preview() end
-  end
+  ImGui.Dummy(ctx, 0, 4)
+  local c1, t = ImGui.Checkbox(ctx, "Trim so shots don't overlap", P.trim)
+  if c1 then P.trim = t; option_changed() end
   tip("When the spacing is shorter than a shot, cut each shot (and its child items) where the next one starts.")
-  if opt.trim then
-    ImGui.Indent(ctx)
-    form_label("Fade on cut")
-    ImGui.SetNextItemWidth(ctx, field_w)
-    local _, fv = ImGui.InputDouble(ctx, "##fade", opt.fade_ms, 0, 0, "%.0f")
-    if ImGui.IsItemDeactivatedAfterEdit(ctx) then
-      opt.fade_ms = math.max(0, math.min(500, fv))
-      save_opts()
-      if S.dirty then preview() end
-    end
-    tip("Fade-out on each trimmed end so the cut doesn't click. 0 = no fade.")
-    ImGui.SameLine(ctx)
-    ImGui.AlignTextToFramePadding(ctx)
-    dim("ms")
-    ImGui.Unindent(ctx)
+  local trim_on = P.trim -- decided once for the Begin/EndDisabled pair
+  if not trim_on then ImGui.BeginDisabled(ctx) end
+  ImGui.Indent(ctx)
+  ImGui.AlignTextToFramePadding(ctx)
+  ImGui.Text(ctx, "Fade on cut")
+  ImGui.SameLine(ctx)
+  ImGui.SetNextItemWidth(ctx, field_w)
+  local _, fv = ImGui.InputDouble(ctx, "##fade", P.fade_ms, 0, 0, "%.0f")
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then
+    P.fade_ms = math.max(0, math.min(500, fv)); option_changed()
   end
-
-  if not can then ImGui.EndDisabled(ctx) end
+  tip("Fade-out on each trimmed end so the cut doesn't click. 0 = no fade.")
+  ImGui.SameLine(ctx)
+  ImGui.AlignTextToFramePadding(ctx)
+  dim("ms")
+  ImGui.Unindent(ctx)
+  if not trim_on then ImGui.EndDisabled(ctx) end
 
   if S.last_msg then
     ImGui.Dummy(ctx, 0, 2)
     ImGui.TextColored(ctx, UI.COLOR_OK, S.last_msg)
   end
+end
+
+-- Bars showing each shot's volume (for the largest group, or 12 sample shots with none selected).
+local function volume_graph(h)
+  local n = 12
+  local g_rnd
+  for _, g in ipairs(S.groups) do
+    if not g_rnd or #g.shots > #g_rnd then g_rnd = g.shots end
+  end
+  if g_rnd and #g_rnd >= 2 then n = math.min(#g_rnd, 64) end
+  local x0, y0 = ImGui.GetCursorScreenPos(ctx)
+  local w = ImGui.GetContentRegionAvail(ctx)
+  ImGui.Dummy(ctx, w, h)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  ImGui.DrawList_AddRectFilled(dl, x0, y0, x0 + w, y0 + h, 0x222222FF, UI.FRAME_ROUNDING)
+  local lo, hi = -36, 12
+  local function y_of(db) return y0 + h - 3 - (h - 6) * (math.max(lo, math.min(hi, db)) - lo) / (hi - lo) end
+  ImGui.DrawList_AddLine(dl, x0 + 4, y_of(0), x0 + w - 4, y_of(0), 0x3A3A3AFF, 1) -- 0 dB line
+  local a = accent_rgb()
+  local on = P.vol
+  local pad = 6
+  local bw = (w - pad * 2) / n
+  for i = 1, n do
+    local t = n > 1 and (i - 1) / (n - 1) or 0
+    local rnd = g_rnd and g_rnd[i] and g_rnd[i].rnd or 0
+    local db = on and shape_db(t, rnd) or 0
+    local bx = x0 + pad + (i - 1) * bw
+    ImGui.DrawList_AddRectFilled(dl, bx + 1, y_of(db), bx + math.max(2, bw - 2), y0 + h - 3,
+      rgba(on and shade(a, 0.1) or 0x555555, on and 0xFF or 0x90), 2)
+  end
+  if ImGui.IsItemHovered(ctx) then
+    local mx = ImGui.GetMousePos(ctx)
+    local i = math.max(1, math.min(n, math.floor((mx - x0 - pad) / bw) + 1))
+    local t = n > 1 and (i - 1) / (n - 1) or 0
+    local rnd = g_rnd and g_rnd[i] and g_rnd[i].rnd or 0
+    ImGui.SetTooltip(ctx, string.format("Shot %d: %+.1f dB", i, on and shape_db(t, rnd) or 0))
+  end
+end
+
+local function db_slider(label, key, lo, hi, col, help)
+  form_label(label, col)
+  ImGui.SetNextItemWidth(ctx, -1)
+  local ch, v = accent_slider("##" .. key, P[key], lo, hi, key == "vol_curve" and "%.2f" or "%+.1f dB")
+  if ch then P[key] = v; option_changed() end
+  tip(help .. "\nCtrl+click to type a value.")
+end
+
+local function section_volume()
+  section_title("Volume")
+  local c, v = ImGui.Checkbox(ctx, "Shape the volume across the burst", P.vol)
+  if c then P.vol = v; option_changed() end
+  tip("Sets each shot's volume from Start (first shot) to End (last shot).\nFolder items: the gain goes on their child items.")
+  local on = P.vol -- decided once for the Begin/EndDisabled pair
+  if not on then ImGui.BeginDisabled(ctx) end
+  local col = label_col()
+  db_slider("Start", "vol_start", -24, 6, col, "Volume of the first shot.")
+  db_slider("End", "vol_end", -24, 6, col, "Volume of the last shot.")
+  db_slider("Curve", "vol_curve", -1, 1, col,
+    "Bends the line from Start to End.\nAbove 0: holds near Start, then drops late.\nBelow 0: moves toward End right away.")
+  db_slider("Random", "vol_rand", 0, 6, col, "Each shot gets up to this much extra up or down, so the burst sounds less mechanical.")
+  if not on then ImGui.EndDisabled(ctx) end
+  ImGui.Dummy(ctx, 0, 2)
+  local _, avail_h = ImGui.GetContentRegionAvail(ctx)
+  volume_graph(math.max(40, math.min(110, avail_h - 4)))
 end
 
 -- First shot's position (to start playback from), or nil.
@@ -740,27 +1139,39 @@ local function first_shot_pos()
   return p
 end
 
--- Bottom row: green Apply on the left, then Revert and Play.
+-- Play / stop button: a real transport icon drawn on a normal button.
+local function transport_button(playing, w, h)
+  local clicked = ImGui.Button(ctx, "##play", w, h)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  local x2, y2 = ImGui.GetItemRectMax(ctx)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+  local s = math.floor((y2 - y1) * 0.36)
+  local col = ImGui.GetColor(ctx, ImGui.Col_Text)
+  if playing then
+    ImGui.DrawList_AddRectFilled(dl, cx - s * 0.75, cy - s * 0.75, cx + s * 0.75, cy + s * 0.75, col, 2)
+  else
+    ImGui.DrawList_AddTriangleFilled(dl, cx - s * 0.7, cy - s, cx - s * 0.7, cy + s, cx + s, cy, col)
+  end
+  return clicked
+end
+
+-- Bottom row: accent Apply on the left, then Revert and Play.
 local function footer()
   local can_apply = S.dirty and S.n_shots > 0 -- worked out once for the pairs below
   local sp_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
   local small_w = math.floor(ImGui.GetFontSize(ctx) * 6)
+  local play_w = UI.APPLY_H + 16
   local avail = ImGui.GetContentRegionAvail(ctx)
-  local apply_w = math.max(80, avail - 2 * (small_w + sp_x))
+  local apply_w = math.max(80, avail - small_w - play_w - 2 * sp_x)
 
-  if can_apply then
-    ImGui.PushStyleColor(ctx, ImGui.Col_Button, 0x1A7F37FF)
-    ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered, 0x2C974BFF)
-    ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, 0x166A2EFF)
-    ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0xFFFFFFFF)
-  else
-    ImGui.BeginDisabled(ctx)
-  end
+  local pushed = 0
+  if can_apply then pushed = push_accent_button() else ImGui.BeginDisabled(ctx) end
   local apply_clicked = ImGui.Button(ctx, "Apply##apply", apply_w, UI.APPLY_H)
-  if can_apply then ImGui.PopStyleColor(ctx, 4) else ImGui.EndDisabled(ctx) end
+  if can_apply then ImGui.PopStyleColor(ctx, pushed) else ImGui.EndDisabled(ctx) end
   if apply_clicked and can_apply then S.apply_queued = true end
   if S.n_shots == 0 then tip("Select some folder items first.")
-  elseif not S.dirty then tip("Change the rate first; the timeline previews it, then Apply keeps it.")
+  elseif not S.dirty then tip("Change something first; the timeline previews it, then Apply keeps it.")
   else tip("Keep the new spacing (one undo point).") end
 
   ImGui.SameLine(ctx)
@@ -775,7 +1186,7 @@ local function footer()
   local playing = (r.GetPlayState() & 1) == 1
   local can_play = S.n_shots > 0 or playing
   if not can_play then ImGui.BeginDisabled(ctx) end
-  local play_clicked = ImGui.Button(ctx, (playing and "Stop" or "Play") .. "##play", small_w, UI.APPLY_H)
+  local play_clicked = transport_button(playing, play_w, UI.APPLY_H)
   if not can_play then ImGui.EndDisabled(ctx) end
   if play_clicked and can_play then
     if playing then
@@ -786,7 +1197,7 @@ local function footer()
       r.OnPlayButton()
     end
   end
-  tip(playing and "Stop playback." or "Play from the first shot. Keep changing the rate while it plays.")
+  tip(playing and "Stop" or "Play from the first shot. Keep changing settings while it plays.")
 end
 
 ------------------------------------------------------------------------------------------------
@@ -794,8 +1205,8 @@ end
 ------------------------------------------------------------------------------------------------
 
 local function loop_body()
-  ImGui.SetNextWindowSize(ctx, 520, 330, ImGui.Cond_FirstUseEver)
-  ImGui.SetNextWindowSizeConstraints(ctx, 440, 300, 4000, 4000)
+  ImGui.SetNextWindowSize(ctx, 720, 400, ImGui.Cond_FirstUseEver)
+  ImGui.SetNextWindowSizeConstraints(ctx, 600, 360, 4000, 4000)
   local main_font = UI.main_font and pcall(ImGui.PushFont, ctx, UI.main_font)
   ImGui.SetNextWindowCollapsed(ctx, false, ImGui.Cond_Always)
   local own_bg = not win_docked
@@ -807,6 +1218,7 @@ local function loop_body()
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
   local theme_n = push_grey_theme()
+  local accent_n = push_accent()
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, UI.FRAME_ROUNDING)
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_GrabRounding, UI.FRAME_ROUNDING)
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_PopupRounding, UI.FRAME_ROUNDING)
@@ -823,6 +1235,7 @@ local function loop_body()
   if open == nil then open = true end
   if visible then
     local round_n = UI.push_rounding()
+    ImGui.PushStyleVar(ctx, ImGui.StyleVar_GrabMinSize, 14) -- a wider slider grab
     if own_bg then
       local wx, wy = ImGui.GetWindowPos(ctx)
       local ww, wh = ImGui.GetWindowSize(ctx)
@@ -836,22 +1249,31 @@ local function loop_body()
     win_docked = ImGui.IsWindowDocked(ctx)
     if win_docked then docked_header() end
 
+    section_tabs()
+
     local _, sp_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
     local footer_h = UI.APPLY_H + sp_y
-    if ImGui.BeginChild(ctx, "body", 0, -footer_h, ImGui.ChildFlags_Border) then
-      section_shots()
-      ImGui.Dummy(ctx, 0, 4)
+    local avail_w = ImGui.GetContentRegionAvail(ctx)
+    local left_w = math.floor(avail_w * 0.52)
+    if ImGui.BeginChild(ctx, "rate", left_w, -footer_h, ImGui.ChildFlags_Border) then
       section_rate()
       ImGui.EndChild(ctx)
     end
+    ImGui.SameLine(ctx)
+    if ImGui.BeginChild(ctx, "volume", 0, -footer_h, ImGui.ChildFlags_Border) then
+      section_volume()
+      ImGui.EndChild(ctx)
+    end
     footer()
+    look_popup()
 
     if not win_docked then title_bar() end
+    ImGui.PopStyleVar(ctx, 1)
     if round_n > 0 then ImGui.PopStyleVar(ctx, round_n) end
     ImGui.End(ctx)
   end
   ImGui.PopStyleVar(ctx, 3)
-  ImGui.PopStyleColor(ctx, 4 + theme_n)
+  ImGui.PopStyleColor(ctx, 4 + theme_n + accent_n)
   if main_font then ImGui.PopFont(ctx) end
   if close_clicked then open = false end
   return open
@@ -867,13 +1289,13 @@ local function finish()
   if finished then return end
   finished = true
   if S.dirty then restore(); S.dirty = false end
-  save_opts()
+  save_tabs()
 end
 
 local function loop()
   watch_selection()
   local open = loop_body()
-  -- Timeline changes from the buttons run between frames, never inside the ImGui window.
+  -- Apply / Revert run between frames, never inside the ImGui window.
   if S.apply_queued then S.apply_queued = false; apply() end
   if S.revert_queued then S.revert_queued = false; revert() end
   if open then r.defer(loop) else finish() end
