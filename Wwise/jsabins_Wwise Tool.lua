@@ -22,8 +22,10 @@
 --   title and the same close X.
 --   New Settings > Appearance page: title, text, dim text and background colors, window and
 --   button corner rounding, and the font (family and sizes; applies when the window reopens).
+--   Right-click any of them to reset just that one to its default.
 --   Title-bar buttons (?, Settings, X) are flat and only show their box on hover (X red), and
 --   the Settings gear is a thin outline cog.
+--   The window title is bolder and 1px bigger (15px).
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -137,12 +139,12 @@ do
   if ok and f and pcall(ImGui.Attach, ctx, f) then section_font = f end
 end
 -- Big bold "Wwise Tool" title at the top of the window (the title bar itself shows no text).
-local title_font = nil -- bold, same size as the section titles
+local title_font = nil -- bold, 1px bigger than the section titles
 do
   local okb, bold = pcall(function() return ImGui.FontFlags_Bold end)
   local flags = (okb and type(bold) == "number") and bold or 0
-  local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.SECTION_FONT_SIZE, flags)
-  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.SECTION_FONT_SIZE) end
+  local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.SECTION_FONT_SIZE + 1, flags)
+  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.SECTION_FONT_SIZE + 1) end
   if ok and f and pcall(ImGui.Attach, ctx, f) then title_font = f end
 end
 -- "Ghost" buttons for the Wwise structure rows: no background and dim text until the row is
@@ -152,6 +154,11 @@ UI.ghost_push = function(ghost)
   ImGui.PushStyleColor(ctx, ImGui.Col_Button, 0x00000000)
   ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0x8A8A8AFF)
   return 2
+end
+-- The big window title, drawn twice a pixel apart so it's extra bold.
+UI.draw_title = function(dl, x, y, col, text)
+  ImGui.DrawList_AddText(dl, x, y, col, text)
+  ImGui.DrawList_AddText(dl, x + 1, y, col, text)
 end
 local function section_title(text)
   local big = section_font and pcall(ImGui.PushFont, ctx, section_font)
@@ -629,7 +636,7 @@ local function title_close_button()
   -- Big bold "Wwise Tool" at the left of the title bar, centered on the buttons' row.
   local big = title_font and pcall(ImGui.PushFont, ctx, title_font)
   local _, th = ImGui.CalcTextSize(ctx, "Wwise Tool")
-  ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2 + 3, -- a little lower than the buttons' centre: more room above
+  UI.draw_title(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2 + 3, -- a little lower than the buttons' centre: more room above
     UI.look.title or ImGui.GetColor(ctx, ImGui.Col_Text), "Wwise Tool")
   if big then ImGui.PopFont(ctx) end
   ImGui.PopClipRect(ctx)
@@ -1961,8 +1968,19 @@ end
 
 -- Settings > Appearance: title and text colors, background, corner rounding and font.
 local function settings_appearance()
-  local L = UI.look
-  local cflags = ImGui.ColorEditFlags_NoInputs | ImGui.ColorEditFlags_NoAlpha
+  local L, D = UI.look, UI.LOOK_DEFAULTS
+  -- NoOptions: right-click is our "Reset to default" menu, not ImGui's color options.
+  local cflags = ImGui.ColorEditFlags_NoInputs | ImGui.ColorEditFlags_NoAlpha | (ImGui.ColorEditFlags_NoOptions or 0)
+  -- Right-click the control just drawn for "Reset to default" (reset() puts the value back).
+  local function reset_menu(id, reset)
+    if ImGui.BeginPopupContextItem(ctx, "##reset_" .. id) then
+      if ImGui.Selectable(ctx, "Reset to default") then reset(); save_view() end
+      ImGui.EndPopup(ctx)
+    end
+  end
+  local function hover_tip(tip)
+    if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, (tip and (tip .. "\n") or "") .. "Right-click to reset to default.") end
+  end
   local function color_row(label, key, def, tip)
     local ch, rgb = ImGui.ColorEdit3(ctx, label .. "##look_" .. key, (L[key] or def) >> 8, cflags)
     if ch then
@@ -1971,7 +1989,11 @@ local function settings_appearance()
       if key == "dim" then COLOR_DIM = L.dim or UI.DEFAULT_DIM end
       view_dirty = true
     end
-    if tip and ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, tip) end
+    hover_tip(tip)
+    reset_menu(key, function()
+      L[key] = nil
+      if key == "dim" then COLOR_DIM = UI.DEFAULT_DIM end
+    end)
   end
   ImGui.SeparatorText(ctx, "Colors")
   if ImGui.BeginTable(ctx, "lookcolors", 2) then
@@ -1993,10 +2015,16 @@ local function settings_appearance()
   c, v = ImGui.SliderInt(ctx, "Window corners", L.win_round, 0, 20, "%d px")
   if c then L.win_round = v; UI.WINDOW_ROUNDING = v end
   if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  hover_tip()
+  reset_menu("win_round", function() L.win_round = D.win_round; UI.WINDOW_ROUNDING = D.win_round end)
   ImGui.SetNextItemWidth(ctx, 200)
   c, v = ImGui.SliderInt(ctx, "Buttons, fields and panels", L.frame_round, 0, 10, "%d px")
   if c then L.frame_round = v; UI.FRAME_ROUNDING = v; UI.TABLE_ROUNDING = v + 1 end
   if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  hover_tip()
+  reset_menu("frame_round", function()
+    L.frame_round = D.frame_round; UI.FRAME_ROUNDING = D.frame_round; UI.TABLE_ROUNDING = D.frame_round + 1
+  end)
   ImGui.Dummy(ctx, 0, 6)
 
   ImGui.SeparatorText(ctx, "Font")
@@ -2004,14 +2032,20 @@ local function settings_appearance()
   for i, n in ipairs(UI.FONT_CHOICES) do fonts[i] = n end
   c, v = combo("Font##lookfont", fonts, L.font, 200)
   if c then L.font = v; save_view() end
+  hover_tip()
+  reset_menu("font", function() L.font = D.font end)
   ImGui.SetNextItemWidth(ctx, 200)
   c, v = ImGui.SliderInt(ctx, "Text size", L.size, 9, 18, "%d px")
   if c then L.size = v end
   if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  hover_tip()
+  reset_menu("size", function() L.size = D.size end)
   ImGui.SetNextItemWidth(ctx, 200)
-  c, v = ImGui.SliderInt(ctx, "Title and heading size", L.head, 10, 24, "%d px")
+  c, v = ImGui.SliderInt(ctx, "Heading size", L.head, 10, 24, "%d px")
   if c then L.head = v end
   if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  hover_tip("Section headings. The window title is 1px bigger.")
+  reset_menu("head", function() L.head = D.head end)
   if L.font ~= UI.FONT or L.size ~= UI.FONT_SIZE or L.head ~= UI.SECTION_FONT_SIZE then
     ImGui.TextColored(ctx, 0xF4D35EFF, "Close and reopen Wwise Tool to see the new font.")
   else
@@ -2206,7 +2240,7 @@ local function settings_window()
     if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Close Settings") end
     local big = title_font and pcall(ImGui.PushFont, ctx, title_font)
     local _, th = ImGui.CalcTextSize(ctx, "Settings")
-    ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2 + 3,
+    UI.draw_title(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2 + 3,
       UI.look.title or ImGui.GetColor(ctx, ImGui.Col_Text), "Settings")
     if big then ImGui.PopFont(ctx) end
     ImGui.PopClipRect(ctx)
