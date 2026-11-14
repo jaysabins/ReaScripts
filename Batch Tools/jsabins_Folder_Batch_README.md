@@ -1,7 +1,7 @@
-# Folder Batch Processor v2.0
+# Folder Batch Processor v2.1
 
 **Written by:** Daniel Petras and Jay Sabins  
-**GUI:** ReaImGui (ported from Lokasenna GUI v2)
+**GUI:** ReaImGui (ported from Lokasenna GUI v2), styled to match Wwise Tool
 
 ---
 
@@ -50,51 +50,48 @@ MyProject/
 
 ## Running the Script
 
-1. Open your REAPER project (`.rpp` file)
-2. Run `jsabins_Folder_Batch_ImGui.lua` from the REAPER Actions list or Scripts menu
-3. The script window opens with three tabs:
+1. Open your REAPER project (`.rpp` file). It has to be saved, since the script works from the project's folder.
+2. Run `jsabins_Folder_Batch.lua` from the REAPER Actions list (it shows up as **Folder Batch Processor**)
+3. The window has the same look as Wwise Tool: a dark window with rounded corners, a bold **Folder Batch** title, and flat **?** (opens this guide) and **X** buttons in the top-right corner. Next to them it shows the project's name and how many languages were found.
 
-### Tab 1 — Global Settings
+Everything is on one screen: project and render settings on the left, the languages on the right, and the **Batch** button at the bottom left.
 
-Configure your render settings here. These apply to all languages unless overridden.
+### Project
+
+Shows the project's `_Raw` folder. Click **Scan _Raw folder** to find the language folders; it shows how many it found.
+
+### Render settings
+
+These apply to every language unless the language has its own settings (see Languages below).
 
 | Setting | Description |
 |---|---|
-| **Sample Rate** | 22050 / 44100 / 48000 / 96000 Hz |
+| **Sample rate** | 22050 / 44100 / 48000 / 96000 Hz |
 | **Channels** | Mono or Stereo |
 | **Format** | WAV, MP3, FLAC, or AIFF |
-| **Fade-In Length (ms)** | Fade-in duration applied to each rendered item |
-| **Fade-In Shape** | Curve type for the fade-in |
-| **Fade-Out Length (ms)** | Fade-out duration applied to each rendered item |
-| **Fade-Out Shape** | Curve type for the fade-out |
-| **End Marker Offset (ms)** | Places a take marker named `end` this many ms before each item's end point. Set to `0` to disable. |
-| **Tail Length (ms)** | Extra silence rendered after each item |
-| **Delete items after render** | If checked, removes source items from the timeline after rendering |
+| **Fade-in** | Fade-in length in ms, and its shape (the dropdown next to it) |
+| **Fade-out** | Fade-out length in ms, and its shape |
+| **End marker** | Places a take marker named `end` this many ms before each item's end point. Set to `0` to disable. |
+| **Tail** | Extra time rendered after each item, in ms |
+| **Delete items after render** | If checked, removes the imported items from the timeline after rendering |
 
-4. Click **Scan _Raw Folder for Languages** — the script will detect all language subfolders and display the count
-5. Click **BATCH!** to start processing
+### Languages
 
-> The Batch button is disabled until you scan the folder at least once.
+After scanning, every language folder is listed with:
 
----
+- **Files**: how many files are in its `_Raw` folder
+- **Track**: **Found** if there's a track with exactly the same name, **Missing** if not (a missing language is skipped)
+- **Settings**: **Global** (uses the render settings on the left) or **Own**
 
-### Tab 2 — Language Overrides
+Click a language to open its settings underneath the list. Tick **Use its own render settings** to give it its own sample rate, format, fades and so on, for example a language that needs a different format. Click it again to close it.
 
-After scanning, each detected language appears here as a collapsible section.
+### Batch
 
-- **Enable override** for a language to give it completely independent render settings
-- Disabled languages fall back to the Global Settings
-- Useful for languages that need a different sample rate, format, or fade behavior
+Click **Batch** to import each language's files onto its track, render them and write the CSV log. It's greyed out until the project is saved and the `_Raw` folder has been scanned; hover it to see why. While rendering, the button reads **Rendering...**, and when it's done the result appears under **Last batch** on the right (and in the button's tooltip).
 
----
+### Matching look
 
-### Tab 3 — Progress
-
-Shows the current batch status:
-- Progress bar and current language being processed
-- Completion message with total languages processed and elapsed time
-
-> Because REAPER's Lua environment is single-threaded, the progress bar updates after the batch completes rather than live during rendering. The tab will always reflect the correct final state.
+Folder Batch uses Wwise Tool's look. If you've changed Wwise Tool's **Settings > Appearance** (font, sizes, colors, corner rounding), Folder Batch picks up the same look the next time it opens.
 
 ---
 
