@@ -22,6 +22,8 @@
 --   title and the same close X.
 --   New Settings > Appearance page: title, text, dim text and background colors, window and
 --   button corner rounding, and the font (family and sizes; applies when the window reopens).
+--   Title-bar buttons (?, Settings, X) are flat and only show their box on hover (X red), and
+--   the Settings gear is a thin outline cog.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -466,20 +468,20 @@ end
 
 -- Square button with a gear drawn on it (no icon font needed).
 local function draw_gear(dl, x1, y1, size, col)
+  -- Thin outline cog (8 teeth) with a round hole, drawn as one closed path.
   local cx, cy = x1 + size / 2, y1 + size / 2
-  local ring, thick = size * 0.20, size * 0.12
-  local r_in, r_out, half_w = ring, size * 0.34, size * 0.075
-  ImGui.DrawList_AddCircle(dl, cx, cy, ring, col, 0, thick)
+  local ro, ri = size * 0.34, size * 0.255
+  local th = math.max(1.2, size * 0.065)
+  local step = math.pi / 4
   for i = 0, 7 do
-    local a = i * math.pi / 4
-    local dx, dy = math.cos(a), math.sin(a)
-    local px, py = -dy * half_w, dx * half_w
-    ImGui.DrawList_AddQuadFilled(dl,
-      cx + dx * r_in + px, cy + dy * r_in + py,
-      cx + dx * r_out + px, cy + dy * r_out + py,
-      cx + dx * r_out - px, cy + dy * r_out - py,
-      cx + dx * r_in - px, cy + dy * r_in - py, col)
+    local a = i * step - math.pi / 2
+    local pts = { { ri, a - 0.27 }, { ro, a - 0.17 }, { ro, a + 0.17 }, { ri, a + 0.27 } }
+    for _, pt in ipairs(pts) do
+      ImGui.DrawList_PathLineTo(dl, cx + math.cos(pt[2]) * pt[1], cy + math.sin(pt[2]) * pt[1])
+    end
   end
+  ImGui.DrawList_PathStroke(dl, col, ImGui.DrawFlags_Closed, th)
+  ImGui.DrawList_AddCircle(dl, cx, cy, size * 0.115, col, 0, th)
 end
 local function gear_button(id, size)
   local pressed = ImGui.Button(ctx, id, size, size)
@@ -497,9 +499,11 @@ local function close_button(id, size)
   local hovered, held = ImGui.IsItemHovered(ctx), ImGui.IsItemActive(ctx)
   local x1, y1 = ImGui.GetItemRectMin(ctx)
   local dl = ImGui.GetWindowDrawList(ctx)
-  local bg = held and 0xB8323AFF or (hovered and 0xE04048FF or 0x2A2A2AFF)
+  -- Flat until hovered: no box, just the X; red box on hover.
   local fg = hovered and 0xFFFFFFFF or ImGui.GetColor(ctx, ImGui.Col_Text)
-  ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, bg, size * 0.22)
+  if hovered or held then
+    ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, held and 0xB8323AFF or 0xE04048FF, size * 0.22)
+  end
   -- ImGui nudges lines half a pixel right and down (pixel centres), so start half a pixel back
   -- to keep the X exactly centred in the square.
   local m, th = size * 0.30, math.max(2, size * 0.08)
@@ -518,9 +522,11 @@ local function title_icon_button(id, size, draw)
   local hovered, held = ImGui.IsItemHovered(ctx), ImGui.IsItemActive(ctx)
   local x1, y1 = ImGui.GetItemRectMin(ctx)
   local dl = ImGui.GetWindowDrawList(ctx)
-  local bg = held and 0x5E5E5EFF or (hovered and 0x4C4C4CFF or 0x2A2A2AFF)
+  -- Flat until hovered: just the icon; a grey box appears on hover.
   local fg = hovered and 0xFFFFFFFF or ImGui.GetColor(ctx, ImGui.Col_Text)
-  ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, bg, size * 0.22)
+  if hovered or held then
+    ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, held and 0x5E5E5EFF or 0x4C4C4CFF, size * 0.22)
+  end
   draw(dl, x1, y1, size, fg)
   return pressed
 end
