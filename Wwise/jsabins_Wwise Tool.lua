@@ -28,6 +28,8 @@
 --   The window title is bolder and 1px bigger (15px).
 --   Removed the note under Source for Folder items (the dropdown's tooltip still explains it).
 --   Fixed: the preview table's rounded corners showed through tooltips and popups.
+--   A thin, lighter outline around the whole window (and Settings), with its own color in
+--   Settings > Appearance.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -90,6 +92,7 @@ local UI = {}
 UI.FONT_CHOICES = { "Verdana", "Tahoma", "Segoe UI", "Arial", "Calibri", "Consolas" }
 UI.LOOK_DEFAULTS = { font = "Verdana", size = 12, head = 14, win_round = 14, frame_round = 3 }
 UI.DEFAULT_TEXT, UI.DEFAULT_DIM, UI.DEFAULT_BG = 0xFFFFFFFF, 0x9A9A9AFF, 0x191919FF
+UI.DEFAULT_OUTLINE = 0x505050FF -- thin line around each floating window
 UI.look = {}
 -- Copy valid values from a saved table into UI.look (in place), defaults for the rest.
 UI.read_look = function(t)
@@ -105,7 +108,7 @@ UI.read_look = function(t)
   L.head = num(t.head, 10, 24, d.head)
   L.win_round = num(t.win_round, 0, 20, d.win_round)
   L.frame_round = num(t.frame_round, 0, 10, d.frame_round)
-  for _, k in ipairs({ "title", "text", "dim", "bg" }) do
+  for _, k in ipairs({ "title", "text", "dim", "bg", "outline" }) do
     L[k] = type(t[k]) == "number" and (math.floor(t[k]) | 0xFF) or nil
   end
 end
@@ -2014,6 +2017,8 @@ local function settings_appearance()
     color_row("Dim text", "dim", UI.DEFAULT_DIM, "Help text, hints and \"Auto\" values")
     ImGui.TableNextColumn(ctx)
     color_row("Window background", "bg", UI.DEFAULT_BG)
+    ImGui.TableNextRow(ctx); ImGui.TableNextColumn(ctx)
+    color_row("Window outline", "outline", UI.DEFAULT_OUTLINE, "The thin line around the window (while it's floating)")
     ImGui.EndTable(ctx)
   end
   ImGui.Dummy(ctx, 0, 6)
@@ -2204,7 +2209,7 @@ local function settings_window()
     local dl = ImGui.GetWindowDrawList(ctx)
     ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + wh, false)
     ImGui.DrawList_AddRectFilled(dl, wx, wy, wx + ww, wy + wh, bg_rgba, UI.WINDOW_ROUNDING)
-    ImGui.DrawList_AddRect(dl, wx + 0.5, wy + 0.5, wx + ww - 0.5, wy + wh - 0.5, 0x2E2E2EFF, UI.WINDOW_ROUNDING, 0, 1)
+    ImGui.DrawList_AddRect(dl, wx + 0.5, wy + 0.5, wx + ww - 0.5, wy + wh - 0.5, UI.look.outline or UI.DEFAULT_OUTLINE, UI.WINDOW_ROUNDING, 0, 1)
     ImGui.PopClipRect(ctx)
   end
   local round_n = UI.push_rounding()
@@ -2699,7 +2704,7 @@ loop_body = function()
     local dl = ImGui.GetWindowDrawList(ctx)
     ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + wh, false)
     ImGui.DrawList_AddRectFilled(dl, wx, wy, wx + ww, wy + wh, bg_col, UI.WINDOW_ROUNDING)
-    ImGui.DrawList_AddRect(dl, wx + 0.5, wy + 0.5, wx + ww - 0.5, wy + wh - 0.5, 0x2E2E2EFF, UI.WINDOW_ROUNDING, 0, 1)
+    ImGui.DrawList_AddRect(dl, wx + 0.5, wy + 0.5, wx + ww - 0.5, wy + wh - 0.5, UI.look.outline or UI.DEFAULT_OUTLINE, UI.WINDOW_ROUNDING, 0, 1)
     ImGui.PopClipRect(ctx)
   end
   if visible then
