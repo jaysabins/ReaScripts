@@ -18,6 +18,8 @@
 --   stay faint until you hover the row.
 --   The preview's Source column is hidden by default (right-click a column header to show it).
 --   A little more room under the section titles. Checkbox ticks take the showing tab's color.
+--   The Settings window looks like the main window: big rounded corners, a big "Settings"
+--   title and the same close X.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -2018,16 +2020,37 @@ local function settings_window()
   if not UI.settings_open then return end
   ImGui.SetNextWindowSize(ctx, 720, 460, ImGui.Cond_FirstUseEver)
   ImGui.SetNextWindowSizeConstraints(ctx, 520, 300, 3000, 3000)
-  ImGui.SetNextWindowBgAlpha(ctx, 1) -- solid, whatever the main window's opacity
-  -- Solid background and a dark title bar (the main window's title-bar colors are see-through).
-  ImGui.PushStyleColor(ctx, ImGui.Col_WindowBg, 0x202020FF)
-  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, 0x0F0F0FFF)
-  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, 0x0F0F0FFF)
-  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, 0x0F0F0FFF)
-  local visible, open = ImGui.Begin(ctx, SETTINGS_ID, true, ImGui.WindowFlags_NoCollapse)
-  ImGui.PopStyleColor(ctx, 4)
+  -- Same look as the main window when floating: big rounded corners, one solid #191919 shape
+  -- with a thin border (painted by us right after Begin), a taller title bar with a big
+  -- "Settings" title and the same close X. Solid, whatever the main window's opacity.
+  -- Docked: ImGui's own background and title tab, with its normal X.
+  local own_bg = not UI.settings_docked
+  ImGui.SetNextWindowBgAlpha(ctx, own_bg and 0 or 1)
+  local title_bg = own_bg and 0x19191900 or 0x191919FF
+  ImGui.PushStyleColor(ctx, ImGui.Col_WindowBg, 0x191919FF)
+  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, title_bg)
+  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
+  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
+  local col_n = 4
+  if own_bg then ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0x00000000); col_n = 5 end -- title drawn by us
+  local fp_x, fp_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FramePadding, fp_x, math.max(fp_y, (title_bar_size() - ImGui.GetFontSize(ctx)) / 2))
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowRounding, UI.WINDOW_ROUNDING)
+  local visible, open = ImGui.Begin(ctx, SETTINGS_ID, (not own_bg) and true or nil, ImGui.WindowFlags_NoCollapse)
+  ImGui.PopStyleVar(ctx, 2)
+  ImGui.PopStyleColor(ctx, col_n)
   if open == false then UI.settings_open = false end
   if not visible then return end
+  UI.settings_docked = ImGui.IsWindowDocked(ctx)
+  local wx, wy = ImGui.GetWindowPos(ctx)
+  local ww, wh = ImGui.GetWindowSize(ctx)
+  if own_bg then
+    local dl = ImGui.GetWindowDrawList(ctx)
+    ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + wh, false)
+    ImGui.DrawList_AddRectFilled(dl, wx, wy, wx + ww, wy + wh, 0x191919FF, UI.WINDOW_ROUNDING)
+    ImGui.DrawList_AddRect(dl, wx + 0.5, wy + 0.5, wx + ww - 0.5, wy + wh - 0.5, 0x2E2E2EFF, UI.WINDOW_ROUNDING, 0, 1)
+    ImGui.PopClipRect(ctx)
+  end
   local round_n = UI.push_rounding()
 
   local footer_h = ImGui.GetFrameHeightWithSpacing(ctx) + 8
@@ -2059,6 +2082,22 @@ local function settings_window()
   local esc = ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows)
     and not ImGui.IsAnyItemActive(ctx) and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape)
   if ImGui.Button(ctx, "Close", w) or esc then UI.settings_open = false end
+  if own_bg then
+    -- Title bar: big "Settings" on the left, the close X in the top-right corner (same size and
+    -- margins as the main window's). Last item in the window; the cursor isn't moved back.
+    local size, m = close_size(), close_margin()
+    local gap = math.floor(m * 0.6 + 0.5)
+    ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + title_bar_size(), false)
+    ImGui.SetCursorScreenPos(ctx, wx + ww - size - m - gap, wy + m)
+    if close_button("##closesettings", size) then UI.settings_open = false end
+    if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Close Settings") end
+    local big = title_font and pcall(ImGui.PushFont, ctx, title_font)
+    local _, th = ImGui.CalcTextSize(ctx, "Settings")
+    ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2 + 3,
+      ImGui.GetColor(ctx, ImGui.Col_Text), "Settings")
+    if big then ImGui.PopFont(ctx) end
+    ImGui.PopClipRect(ctx)
+  end
   if round_n > 0 then ImGui.PopStyleVar(ctx, round_n) end
   ImGui.End(ctx)
 end
