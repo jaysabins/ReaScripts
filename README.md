@@ -24,7 +24,7 @@ https://github.com/jaysabins/reascripts/raw/main/index.xml
 ## Scripts
 
 **Batch Tools**
-- **Folder Batch Processor**: batch-renders multi-language VO from a structured project folder (`_Raw` to `_Processed`), with per-language overrides and CSV logging. Requires SWS and ReaImGui. Written with Daniel Petras.
+- **Folder Batch Processor**: batch-renders multi-language VO from a structured project folder (`_Raw` to `_Processed`), with per-language overrides and CSV logging. One screen with render settings on the left and the languages on the right (each with its file count, whether its track was found, and whether it has its own settings), and the same look as Wwise Tool (dark rounded window, Verdana, bold title, flat ? and X buttons; it follows Wwise Tool's Appearance settings too). Requires SWS and ReaImGui. Written with Daniel Petras. Guide: [Folder Batch README](Batch%20Tools/jsabins_Folder_Batch_README.md).
 
 **FX**
 - **Screenshot track FX chain to Docs folder**: saves a PNG of every plugin on the selected track, numbered in chain order, into `Docs\<Track name>` in the project folder. Requires js_ReaScriptAPI.
