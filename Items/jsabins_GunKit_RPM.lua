@@ -8,7 +8,10 @@
 --   Optional trim so fast rates never overlap, with a short fade on the trimmed ends.
 --   Volume shaping across the burst: Start and End level, a Curve, and Random variation, with
 --   a bar graph of each shot's level.
---   Preset tabs: each tab keeps its own rate, trim and volume settings; click a tab to preview it.
+--   Burst fire: bursts of 2 or more shots spaced by the rate, with a gap you set between bursts.
+--   Sculpt: accent the first shot (or the first shot of every burst).
+--   Preset tabs: each tab keeps its own rate, burst, trim and sculpt settings; click a tab to
+--   preview it.
 --   Accent color (gear button) for the Apply button, sliders, checkmarks and volume bars.
 -- @about
 --   # GunKit RPM
@@ -20,8 +23,9 @@
 --   The timeline previews every change live; nothing is kept until you click Apply (one undo
 --   point). Revert, or closing the window, puts everything back.
 --
---   Options: trim so fast rates never overlap (with a fade on the cut), and a volume shape
---   across the burst (Start, End, Curve, Random). Preset tabs keep sets of settings.
+--   Options: burst fire (shots per burst and the gap between bursts), trim so fast rates never
+--   overlap (with a fade on the cut), and Sculpt: a volume shape across the shots (Start, End,
+--   Curve, Random) and a first-shot accent. Preset tabs keep sets of settings.
 --
 --   Only folder items count as shots, so NVK Folder Items' auto-select (which selects the child
 --   items too) can stay on. With no folder items selected, the selected items themselves are
@@ -57,9 +61,12 @@ local function ext_get(key, default)
 end
 
 -- Preset tabs: each tab holds a full set of options. Saved for every project (ExtState).
-local FIELDS = { "rpm", "trim", "fade_ms", "vol", "vol_start", "vol_end", "vol_curve", "vol_rand" }
+-- New fields go at the end, so tabs saved by an older version still load (missing = default).
+local FIELDS = { "rpm", "trim", "fade_ms", "vol", "vol_start", "vol_end", "vol_curve", "vol_rand",
+                 "first_on", "first_db", "burst", "burst_n", "burst_gap_ms" }
 local DEFAULTS = { rpm = 600, trim = false, fade_ms = 5, vol = false, vol_start = 0, vol_end = -6,
-                   vol_curve = 0, vol_rand = 0 }
+                   vol_curve = 0, vol_rand = 0, first_on = false, first_db = 3, burst = false,
+                   burst_n = 3, burst_gap_ms = 250 }
 
 local function copy_set(src)
   local t = {}
@@ -82,11 +89,12 @@ local function load_tabs()
   for line in raw:gmatch("[^\n]+") do
     local f = {}
     for v in (line .. "|"):gmatch("([^|]*)|") do f[#f + 1] = v end
-    if #f >= 2 + #FIELDS then
+    if #f >= 3 then
       local set = {}
       for i, k in ipairs(FIELDS) do
         local v = f[2 + i]
-        if type(DEFAULTS[k]) == "boolean" then set[k] = v == "1" else set[k] = tonumber(v) end
+        if v == nil or v == "" then set[k] = nil
+        elseif type(DEFAULTS[k]) == "boolean" then set[k] = v == "1" else set[k] = tonumber(v) end
       end
       tabs.list[#tabs.list + 1] = { id = tabs.next_id, name = dec(f[1]), color = tonumber(f[2]), s = copy_set(set) }
       tabs.next_id = tabs.next_id + 1
@@ -341,6 +349,36 @@ local function shape_db(t, rnd)
   return P.vol_start + (P.vol_end - P.vol_start) * (t ^ e) + (rnd or 0) * P.vol_rand
 end
 
+-- Burst size in use (1 = no bursts).
+local function burst_size()
+  return P.burst and math.max(1, math.floor(P.burst_n or 1)) or 1
+end
+
+-- Start offset of shot i (1-based) from the first shot. Without bursts every shot is one spacing
+-- after the last. With bursts, the shots inside a burst are one spacing apart and the next burst's
+-- first shot comes the burst gap after the previous burst's last shot.
+local function shot_offset(i, sp)
+  local k = burst_size()
+  if k <= 1 then return (i - 1) * sp end
+  local b, j = (i - 1) // k, (i - 1) % k
+  return b * ((k - 1) * sp + math.max(0, P.burst_gap_ms) / 1000) + j * sp
+end
+
+-- Is shot i the first of its burst (or the very first shot without bursts)?
+local function first_of_burst(i)
+  local k = burst_size()
+  if k <= 1 then return i == 1 end
+  return (i - 1) % k == 0
+end
+
+-- Total gain in dB for shot i of n: the volume shape plus the first-shot accent.
+local function shot_db(i, n, rnd)
+  local db = 0
+  if P.vol then db = shape_db(n > 1 and (i - 1) / (n - 1) or 0, rnd) end
+  if P.first_on and first_of_burst(i) then db = db + (P.first_db or 0) end
+  return db
+end
+
 -- Lay the shots out at `rpm` (worked out from the originals every time).
 local function layout(rpm)
   rpm = math.max(RPM_MIN, math.min(RPM_MAX, rpm))
@@ -349,11 +387,10 @@ local function layout(rpm)
   for _, g in ipairs(S.groups) do
     local base, n = g.shots[1].pos, #g.shots
     for i, s in ipairs(g.shots) do
-      local start = base + (i - 1) * sp
+      local start = base + shot_offset(i, sp)
       local d = start - s.pos
-      local cut = (P.trim and i < n) and (start + sp) or math.huge
-      local gain = 1
-      if P.vol then gain = 10 ^ (shape_db(n > 1 and (i - 1) / (n - 1) or 0, s.rnd) / 20) end
+      local cut = (P.trim and i < n) and (base + shot_offset(i + 1, sp)) or math.huge
+      local gain = 10 ^ (shot_db(i, n, s.rnd) / 20)
       local len, fade = trimmed(start, s.full, s.full_fade, cut)
       -- Folder items: the gain goes on the child items (the audio); plain items get it themselves.
       put(s, start, len, fade, S.folder and s.base_vol or s.base_vol * gain)
@@ -1035,7 +1072,32 @@ local function section_rate()
 
   form_label("Spacing", col)
   ImGui.Text(ctx, string.format("%.1f ms", 60000 / P.rpm))
-  tip("Start-to-start time between shots.")
+  tip(P.burst and "Start-to-start time between the shots inside a burst." or "Start-to-start time between shots.")
+
+  ImGui.Dummy(ctx, 0, 4)
+  local cb, bv = ImGui.Checkbox(ctx, "Burst fire", P.burst)
+  if cb then P.burst = bv; option_changed() end
+  tip("Group the shots into bursts: the shots in a burst are spaced by the rate above, and each\nburst starts the gap after the last shot of the one before.")
+  local burst_on = P.burst -- decided once for the Begin/EndDisabled pair
+  if not burst_on then ImGui.BeginDisabled(ctx) end
+  ImGui.Indent(ctx)
+  local bcol = math.floor(ImGui.CalcTextSize(ctx, "Shots per burst") + ImGui.GetFontSize(ctx))
+  ImGui.AlignTextToFramePadding(ctx)
+  ImGui.Text(ctx, "Shots per burst")
+  ImGui.SameLine(ctx, bcol)
+  ImGui.SetNextItemWidth(ctx, -1)
+  local chn, nv = ImGui.SliderInt(ctx, "##burst_n", math.floor(P.burst_n), 2, 10, "%d shots")
+  if chn then P.burst_n = math.max(2, math.min(64, nv)); option_changed() end
+  tip("How many shots in each burst. Ctrl+click to type a value.")
+  ImGui.AlignTextToFramePadding(ctx)
+  ImGui.Text(ctx, "Gap")
+  ImGui.SameLine(ctx, bcol)
+  ImGui.SetNextItemWidth(ctx, -1)
+  local chg, gv = accent_slider("##burst_gap", P.burst_gap_ms, 20, 1000, "%.0f ms")
+  if chg then P.burst_gap_ms = math.max(0, math.min(10000, gv)); option_changed() end
+  tip("Time from the last shot of a burst to the first shot of the next. Ctrl+click to type a value.")
+  ImGui.Unindent(ctx)
+  if not burst_on then ImGui.EndDisabled(ctx) end
 
   ImGui.Dummy(ctx, 0, 4)
   local c1, t = ImGui.Checkbox(ctx, "Trim so shots don't overlap", P.trim)
@@ -1065,7 +1127,8 @@ local function section_rate()
   end
 end
 
--- Bars showing each shot's volume (for the largest group, or 12 sample shots with none selected).
+-- Bars showing each shot's level (the largest group, or 12 sample shots with none selected).
+-- With burst fire, the bursts are drawn as groups with a gap between them.
 local function volume_graph(h)
   local n = 12
   local g_rnd
@@ -1082,23 +1145,27 @@ local function volume_graph(h)
   local function y_of(db) return y0 + h - 3 - (h - 6) * (math.max(lo, math.min(hi, db)) - lo) / (hi - lo) end
   ImGui.DrawList_AddLine(dl, x0 + 4, y_of(0), x0 + w - 4, y_of(0), 0x3A3A3AFF, 1) -- 0 dB line
   local a = accent_rgb()
-  local on = P.vol
+  local on = P.vol or P.first_on
+  local k = burst_size()
+  local n_gaps = k > 1 and math.ceil(n / k) - 1 or 0
   local pad = 6
-  local bw = (w - pad * 2) / n
+  local slots = n + n_gaps * 0.8 -- a burst gap is 0.8 of a bar wide
+  local bw = (w - pad * 2) / slots
+  local xs = {}
   for i = 1, n do
-    local t = n > 1 and (i - 1) / (n - 1) or 0
+    local gaps_before = k > 1 and (i - 1) // k or 0
+    xs[i] = x0 + pad + ((i - 1) + gaps_before * 0.8) * bw
     local rnd = g_rnd and g_rnd[i] and g_rnd[i].rnd or 0
-    local db = on and shape_db(t, rnd) or 0
-    local bx = x0 + pad + (i - 1) * bw
-    ImGui.DrawList_AddRectFilled(dl, bx + 1, y_of(db), bx + math.max(2, bw - 2), y0 + h - 3,
+    local db = shot_db(i, n, rnd)
+    ImGui.DrawList_AddRectFilled(dl, xs[i] + 1, y_of(db), xs[i] + math.max(2, bw - 2), y0 + h - 3,
       rgba(on and shade(a, 0.1) or 0x555555, on and 0xFF or 0x90), 2)
   end
   if ImGui.IsItemHovered(ctx) then
     local mx = ImGui.GetMousePos(ctx)
-    local i = math.max(1, math.min(n, math.floor((mx - x0 - pad) / bw) + 1))
-    local t = n > 1 and (i - 1) / (n - 1) or 0
-    local rnd = g_rnd and g_rnd[i] and g_rnd[i].rnd or 0
-    ImGui.SetTooltip(ctx, string.format("Shot %d: %+.1f dB", i, on and shape_db(t, rnd) or 0))
+    local hit = 1
+    for i = 1, n do if mx >= xs[i] then hit = i end end
+    local rnd = g_rnd and g_rnd[hit] and g_rnd[hit].rnd or 0
+    ImGui.SetTooltip(ctx, string.format("Shot %d: %+.1f dB", hit, shot_db(hit, n, rnd)))
   end
 end
 
@@ -1111,10 +1178,10 @@ local function db_slider(label, key, lo, hi, col, help)
 end
 
 local function section_volume()
-  section_title("Volume")
+  section_title("Sculpt")
   local c, v = ImGui.Checkbox(ctx, "Shape the volume across the burst", P.vol)
   if c then P.vol = v; option_changed() end
-  tip("Sets each shot's volume from Start (first shot) to End (last shot).\nFolder items: the gain goes on their child items.")
+  tip("Sets each shot's volume from Start (first shot) to End (last shot), across all the shots.\nFolder items: the gain goes on their child items.")
   local on = P.vol -- decided once for the Begin/EndDisabled pair
   if not on then ImGui.BeginDisabled(ctx) end
   local col = label_col()
@@ -1124,6 +1191,15 @@ local function section_volume()
     "Bends the line from Start to End.\nAbove 0: holds near Start, then drops late.\nBelow 0: moves toward End right away.")
   db_slider("Random", "vol_rand", 0, 6, col, "Each shot gets up to this much extra up or down, so the burst sounds less mechanical.")
   if not on then ImGui.EndDisabled(ctx) end
+
+  ImGui.Dummy(ctx, 0, 2)
+  local cf, fv = ImGui.Checkbox(ctx, "Accent the first shot", P.first_on)
+  if cf then P.first_on = fv; option_changed() end
+  tip("Makes the first shot louder (or quieter) than the rest.\nWith burst fire, the first shot of every burst.")
+  local first_on = P.first_on -- decided once for the Begin/EndDisabled pair
+  if not first_on then ImGui.BeginDisabled(ctx) end
+  db_slider("Accent", "first_db", -12, 12, col, "Extra level on the first shot (on top of the volume shape).")
+  if not first_on then ImGui.EndDisabled(ctx) end
   ImGui.Dummy(ctx, 0, 2)
   local _, avail_h = ImGui.GetContentRegionAvail(ctx)
   volume_graph(math.max(40, math.min(110, avail_h - 4)))
@@ -1205,8 +1281,8 @@ end
 ------------------------------------------------------------------------------------------------
 
 local function loop_body()
-  ImGui.SetNextWindowSize(ctx, 720, 400, ImGui.Cond_FirstUseEver)
-  ImGui.SetNextWindowSizeConstraints(ctx, 600, 360, 4000, 4000)
+  ImGui.SetNextWindowSize(ctx, 740, 470, ImGui.Cond_FirstUseEver)
+  ImGui.SetNextWindowSizeConstraints(ctx, 620, 440, 4000, 4000)
   local main_font = UI.main_font and pcall(ImGui.PushFont, ctx, UI.main_font)
   ImGui.SetNextWindowCollapsed(ctx, false, ImGui.Cond_Always)
   local own_bg = not win_docked
