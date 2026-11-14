@@ -16,6 +16,8 @@
 --   The Wwise structure list is calmer ("Quiet rows"): no table lines or header, grey fields,
 --   each level's type shown as a colored dot and name, and the $, template and + / - buttons
 --   stay faint until you hover the row.
+--   The preview's Source column is hidden by default (right-click a column header to show it).
+--   A little more room under the section titles. Checkbox ticks take the showing tab's color.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -118,6 +120,7 @@ local function section_title(text)
   local big = section_font and pcall(ImGui.PushFont, ctx, section_font)
   ImGui.SeparatorText(ctx, text)
   if big then ImGui.PopFont(ctx) end
+  ImGui.Dummy(ctx, 0, 0) -- a little more room under the title (one item spacing)
 end
 local function push_header_font()
   if header_font and pcall(ImGui.PushFont, ctx, header_font) then return true end
@@ -144,12 +147,19 @@ local function read_view(t)
     end
     if t.delay_unit == "ms" then view.delay_unit = "ms" end
     if type(t.size_v) == "number" then view.size_v = t.size_v end
+    if type(t.cols_v) == "number" then view.cols_v = t.cols_v end
   end
 end
 do
   local v = r.GetExtState(core.EXT, "view")
   local ok, t = pcall(core.json.decode, v ~= "" and v or "{}")
   if ok then read_view(t) end
+  -- 1.22.0: the preview's Source column starts hidden (right-click a header to show it again).
+  -- Done once, also for windows saved by older versions.
+  if (view.cols_v or 0) < 1 then
+    view.hidden.Audio = true; view.cols_v = 1
+    r.SetExtState(core.EXT, "view", core.json.encode(view), true)
+  end
 end
 local function save_view() r.SetExtState(core.EXT, "view", core.json.encode(view), true) end
 local view_dirty = false -- type colors changed; saved once the color picker is let go
@@ -1571,6 +1581,7 @@ end
 local function section_preview()
   local n = #plan.entries
   ImGui.SeparatorText(ctx, string.format("Preview in Wwise (%d Sound%s)", n, n == 1 and "" or "s"))
+  ImGui.Dummy(ctx, 0, 0) -- same room under the title as the left column's sections
   local problems = core.validate(S)
   for _, p in ipairs(problems) do ImGui.TextColored(ctx, COLOR_BAD, "- " .. p) end
   for _, p in ipairs(plan.errors or {}) do ImGui.TextColored(ctx, COLOR_BAD, "- " .. p) end
@@ -2448,6 +2459,11 @@ loop_body = function()
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
   local theme_n = push_grey_theme()
+  -- Checkbox ticks (and radio dots) take the showing tab's color, when it has one.
+  do
+    local at = tabs.list[tabs.active]
+    if at and at.color then ImGui.PushStyleColor(ctx, ImGui.Col_CheckMark, (at.color << 8) | 0xFF); theme_n = theme_n + 1 end
+  end
   -- No p_open: ImGui's small title-bar X is replaced by our big X in the same corner, and the
   -- title bar is made taller to fit it. When docked there's no title bar, so the dock tab gets
   -- ImGui's normal X instead (main_win_docked is from the last frame).
