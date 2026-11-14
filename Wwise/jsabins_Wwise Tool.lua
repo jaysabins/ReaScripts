@@ -1,36 +1,10 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.22.0
+-- @version 1.22.1
 -- @changelog
---   Verdana is the window's font, at 12px; the title and section
---   headings are 14px.
---   Settings is its own window now: the main window no longer greys out while it's open, and
---   you can keep using both. Close it with its X, the Close button or Esc.
---   Settings pages are listed down the left side instead of as tabs across the top.
---   Buttons, fields, dropdowns, tabs, panels, scrollbars and the preview table get slightly
---   rounded corners everywhere (both windows), instead of hard right angles. The Wwise
---   structure table uses the same small corners as the preview table.
---   The text next to Transfer to Wwise is gone (its messages show in the button's tooltip), and
---   the preview now runs down to the bottom of the window, level with the button.
---   Fixed: Reset color on a tab stopped the script with an ImGui error.
---   The Wwise structure list is calmer ("Quiet rows"): no table lines or header, grey fields,
---   each level's type shown as a colored dot and name, and the $, template and + / - buttons
---   stay faint until you hover the row.
---   The preview's Source column is hidden by default (right-click a column header to show it).
---   A little more room under the section titles. Checkbox ticks take the showing tab's color.
---   The Settings window looks like the main window: big rounded corners, a big "Settings"
---   title and the same close X.
---   New Settings > Appearance page: title, text, dim text and background colors, window and
---   button corner rounding, and the font (family and sizes; applies when the window reopens).
---   Right-click any of them to reset just that one to its default.
---   Title-bar buttons (?, Settings, X) are flat and only show their box on hover (X red), and
---   the Settings gear is a thin outline cog.
---   The window title is bolder and 1px bigger (15px).
---   Removed the note under Source for Folder items (the dropdown's tooltip still explains it).
---   Fixed: the preview table's rounded corners showed through tooltips and popups.
---   A thin, lighter outline around the whole window (and Settings), with its own color in
---   Settings > Appearance.
---   The preview's Streaming column is now called Stream.
+--   Buttons, fields and panels are rounder by default (8px instead of 3px). If you never
+--   changed that setting, you get the new default.
+--   Transfer to Wwise follows the Settings > Appearance "Buttons, fields and panels" slider.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -91,7 +65,7 @@ local UI = {}
 -- view.look). Colors are 0xRRGGBBAA; nil means the built-in default. Fonts are made once at
 -- startup, so font changes apply the next time the window opens; everything else applies live.
 UI.FONT_CHOICES = { "Verdana", "Tahoma", "Segoe UI", "Arial", "Calibri", "Consolas" }
-UI.LOOK_DEFAULTS = { font = "Verdana", size = 12, head = 14, win_round = 14, frame_round = 3 }
+UI.LOOK_DEFAULTS = { font = "Verdana", size = 12, head = 14, win_round = 14, frame_round = 8 }
 UI.DEFAULT_TEXT, UI.DEFAULT_DIM, UI.DEFAULT_BG = 0xFFFFFFFF, 0x9A9A9AFF, 0x191919FF
 UI.DEFAULT_OUTLINE = 0x505050FF -- thin line around each floating window
 UI.look = {}
@@ -109,6 +83,9 @@ UI.read_look = function(t)
   L.head = num(t.head, 10, 24, d.head)
   L.win_round = num(t.win_round, 0, 20, d.win_round)
   L.frame_round = num(t.frame_round, 0, 10, d.frame_round)
+  -- 1.22.1: the default went from 3 to 8px; a saved 3 from 1.22.0 was the old default.
+  if (t.look_v or 0) < 1 and t.frame_round == 3 then L.frame_round = d.frame_round end
+  L.look_v = 1
   for _, k in ipairs({ "title", "text", "dim", "bg", "outline" }) do
     L[k] = type(t[k]) == "number" and (math.floor(t[k]) | 0xFF) or nil
   end
@@ -551,9 +528,7 @@ local function draw_question(dl, x1, y1, size, fg)
 end
 
 UI.WINDOW_ROUNDING = UI.look.win_round   -- window corners (Settings > Appearance)
--- The "Transfer to Wwise" button sits in the window's bottom-left corner, inset by the window
--- padding on both sides, with corners concentric to the window's: radius = window radius - inset.
-UI.FRAME_ROUNDING = UI.look.frame_round -- dropdowns, fields, buttons, checkboxes, tabs, panels: just softened
+UI.FRAME_ROUNDING = UI.look.frame_round -- dropdowns, fields, buttons (Transfer too), checkboxes, tabs, panels
 -- Softly rounded corners for everything ImGui draws square by default. Pushed right after a
 -- window's Begin and popped (UI.pop_rounding) right before its End, on every path.
 UI.ROUNDING_VARS = { "StyleVar_FrameRounding", "StyleVar_GrabRounding", "StyleVar_PopupRounding",
@@ -1770,10 +1745,8 @@ local function section_transfer(bw)
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, 0x166A2EFF)
     ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0xFFFFFFFF)
   end
-  local inset = ImGui.GetStyleVar(ctx, ImGui.StyleVar_WindowPadding)
-  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FrameRounding, math.max(2, UI.WINDOW_ROUNDING - inset))
+  -- Same corners as the other buttons (Settings > Appearance > Buttons, fields and panels).
   if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", bw, UI.TRANSFER_H) and not transfer_task then do_transfer() end
-  ImGui.PopStyleVar(ctx)
   if busy then ImGui.EndDisabled(ctx) else ImGui.PopStyleColor(ctx, 4) end
   -- Tooltip: the latest message (transfer progress, a preset or folder problem), then why it's greyed out.
   local tip = (status_line ~= "" and why and status_line ~= why) and (status_line .. "\n" .. why) or
