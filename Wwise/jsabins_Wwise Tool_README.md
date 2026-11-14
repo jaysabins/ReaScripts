@@ -211,7 +211,7 @@ The right side shows what the transfer will create, laid out like Wwise's Projec
     - **Folder item**: a folder item, rendered with everything under it mixed in.
     - **Project render**: the file comes from REAPER's render settings (regions, stems...), rendered first.
   - **Channels** shows whether a Sound will be mono or stereo, and lets you change it. See [Mono and stereo](#mono-and-stereo).
-  - **Streaming** shows whether a Sound will be set to stream in Wwise, and lets you change it. See [Streaming](#streaming).
+  - **Stream** shows whether a Sound will be set to stream in Wwise, and lets you change it. See [Streaming](#streaming).
   - **Loop** shows whether a Sound will be set to loop, and lets you change it. See [Loop](#loop).
   - **Originals file** is the file name Wwise will keep in Originals. Hover for the full path.
   - **Initial delay** shows the layer timing delays, in seconds by default (0.042 s, as Wwise shows it). Right-click a value to switch to milliseconds (42 ms), or change it in **Settings > Interface**.
@@ -245,7 +245,7 @@ The check only reads WAV files. With other render formats (MP3, OGG...), Auto le
 
 Long files such as music and ambience loops usually stream from disk in Wwise instead of loading into memory. Wwise Tool can turn on **Stream** on the Sounds it imports:
 
-- Click a row in the preview's **Streaming** column and pick **Stream**, **No stream** or **Auto**. It works like the Channels column: on a container it counts for every Sound inside, a choice on a Sound wins over its container's, and you can drag, Shift+click or Ctrl+click to set many rows at once.
+- Click a row in the preview's **Stream** column and pick **Stream**, **No stream** or **Auto**. It works like the Channels column: on a container it counts for every Sound inside, a choice on a Sound wins over its container's, and you can drag, Shift+click or Ctrl+click to set many rows at once.
 - **Auto streaming** (Settings > Stream & loop, off by default) streams every Sound at least as long as the length you set (10 seconds to start with). The column then shows **Auto: stream** for those Sounds, and hovering shows each Sound's length. Selected items use the item length. With **Source: Render settings** the length isn't known until the files are rendered, so the column shows **Auto** and the check happens during the transfer.
 - **Auto** with Auto streaming off, or a Sound shorter than the length, leaves streaming as Wwise or your property template has it. **No stream** turns it off.
 - In Settings you can also have **Zero latency** and **Non-cachable** turned on for every Sound that's set to stream. The Prefetch length stays as Wwise has it.
@@ -254,7 +254,7 @@ Streaming is written after the property templates, so a template can't undo it. 
 
 ### Loop
 
-Click a row in the preview's **Loop** column and pick **Loop**, **No loop** or **Auto**. It works like the Streaming column: on a container it counts for every Sound inside, a choice on a Sound wins over its container's, and drag, Shift+click or Ctrl+click set many rows at once.
+Click a row in the preview's **Loop** column and pick **Loop**, **No loop** or **Auto**. It works like the Stream column: on a container it counts for every Sound inside, a choice on a Sound wins over its container's, and drag, Shift+click or Ctrl+click set many rows at once.
 
 - **Loop** turns on Loop with **Infinite** on the Sound.
 - **No loop** turns Loop off.
@@ -286,7 +286,7 @@ The gear button opens **Settings** in its own window. The main window stays usab
   - **Keep rendered files in:** by default, item renders go to a temporary folder that's deleted after the transfer. Type a folder to keep them, such as `Renders` or `Renders\$project`. Relative paths start in the REAPER project folder, and wildcards are allowed. A file there with the same name as a new render is replaced.
 - **Channels:** **Auto channels: make a Sound mono when left and right are the same.** On by default. See [Mono and stereo](#mono-and-stereo). When you've set any Mono/Stereo choices in the preview, **Clear channel overrides** appears here.
 - **Transfer:** paste templates onto all objects or new objects only, and whether imported Sounds are selected in Wwise afterwards.
-- **Stream & loop:** **Auto streaming** for Sounds at least a set number of seconds long, and whether Zero latency and Non-cachable come along with streaming. See [Streaming](#streaming). When you've set any choices in the Streaming column, **Clear streaming overrides** appears here, and **Clear loop overrides** when you've set any in the Loop column.
+- **Stream & loop:** **Auto streaming** for Sounds at least a set number of seconds long, and whether Zero latency and Non-cachable come along with streaming. See [Streaming](#streaming). When you've set any choices in the Stream column, **Clear streaming overrides** appears here, and **Clear loop overrides** when you've set any in the Loop column.
 - **Interface:**
   - **Window:** background opacity, for when the window is floating (not docked), and whether the preview's Initial delay column shows seconds or milliseconds.
   - **Type colors:** a color picker for each Wwise type (Actor-Mixer, Random, Sequence, Switch and Blend Containers, Virtual Folder, Work Unit, Physical Folder, Sound, Destination). These colors are used for the structure rows and the preview's tags. **Reset colors to defaults** brings back the built-in scheme.

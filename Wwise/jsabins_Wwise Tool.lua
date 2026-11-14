@@ -30,6 +30,7 @@
 --   Fixed: the preview table's rounded corners showed through tooltips and popups.
 --   A thin, lighter outline around the whole window (and Settings), with its own color in
 --   Settings > Appearance.
+--   The preview's Streaming column is now called Stream.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -54,7 +55,7 @@
 --     Mono or Stereo for a Sound or a whole container, or drag/Shift/Ctrl+click
 --     to set many rows at once.
 --   - Streaming: turn on Stream per Sound or container from the preview's
---     Streaming column, or automatically for Sounds longer than a set length.
+--     Stream column, or automatically for Sounds longer than a set length.
 --   - Loop: set Sounds to loop (infinite) from the preview's Loop column.
 --   - Fast: untouched WAV items import without rendering; edited items render
 --     in one pass; everything is imported in one Wwise call.
@@ -1603,7 +1604,7 @@ local PREVIEW_COLS = {
       "Folder item: a folder item, rendered with what's under it.\n" ..
       "Project render: made by REAPER's render settings (regions, stems...)." },
   { id = "Channels", w = 80 },
-  { id = "Streaming", w = 90 },
+  { id = "Streaming", label = "Stream", w = 70 }, -- id kept so saved column choices still apply
   { id = "Loop", w = 70 },
   { id = "Originals file", stretch = true, w = 3 },
   { id = "Initial delay", w = 80 },
@@ -1903,7 +1904,7 @@ local function settings_streaming()
   help("Turns on Stream in Wwise for every Sound that long or longer. Shorter Sounds are left\n" ..
     "as Wwise or their template has them. Selected items use the item length; files from\n" ..
     "REAPER's render settings are measured after rendering.\n" ..
-    "Click a Sound or container in the preview's Streaming column to force Stream or No stream.")
+    "Click a Sound or container in the preview's Stream column to force Stream or No stream.")
   dim_label("When a Sound is set to stream, also turn on:")
   c, S.stream_zero_latency = ImGui.Checkbox(ctx, "Zero latency", S.stream_zero_latency)
   if c then settings_changed() end
@@ -1917,7 +1918,7 @@ local function settings_streaming()
     local n = core.count_stream_overrides(S)
     if n > 0 then
       if ImGui.SmallButton(ctx, string.format("Clear streaming overrides (%d)", n)) then S.streaming = {}; settings_changed() end
-      help("Removes every Stream/No stream choice made in the preview's Streaming column (this project).")
+      help("Removes every Stream/No stream choice made in the preview's Stream column (this project).")
     end
   end
   ImGui.Dummy(ctx, 0, 6)
