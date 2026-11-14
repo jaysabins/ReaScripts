@@ -27,6 +27,7 @@
 --   the Settings gear is a thin outline cog.
 --   The window title is bolder and 1px bigger (15px).
 --   Removed the note under Source for Folder items (the dropdown's tooltip still explains it).
+--   Fixed: the preview table's rounded corners showed through tooltips and popups.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -1683,12 +1684,23 @@ local function section_preview()
     if tree and #tree.children > 0 then draw_node(tree, 0) end
     ImGui.EndTable(ctx)
     -- Soften the preview's square corners (header row included). The table scrolls, so it sits
-    -- in its own child window drawn over this one: paint the corners on the foreground list.
-    local ok_fg, fg = pcall(ImGui.GetForegroundDrawList, ctx)
-    if ok_fg and fg then
-      local x0, y0 = ImGui.GetItemRectMin(ctx)
-      local x1, y1 = ImGui.GetItemRectMax(ctx)
-      round_table_corners(x0, y0, x1, y1, fg)
+    -- in its own child window drawn over this one. The corners are painted in a see-through,
+    -- click-through child laid over the table: above the table, but below tooltips and popups
+    -- (the foreground draw list would cover those too).
+    local x0, y0 = ImGui.GetItemRectMin(ctx)
+    local x1, y1 = ImGui.GetItemRectMax(ctx)
+    if x1 > x0 and y1 > y0 then
+      ImGui.SetCursorScreenPos(ctx, x0, y0)
+      local wflags = ImGui.WindowFlags_NoInputs | ImGui.WindowFlags_NoBackground | ImGui.WindowFlags_NoScrollbar |
+        ImGui.WindowFlags_NoScrollWithMouse | (ImGui.WindowFlags_NoNav or 0)
+      if ImGui.BeginChild(ctx, "##previewcorners", x1 - x0, y1 - y0, 0, wflags) then
+        -- Clip to the whole child: a child's own clip area is inset by half its padding.
+        local cdl = ImGui.GetWindowDrawList(ctx)
+        ImGui.DrawList_PushClipRect(cdl, x0, y0, x1, y1, false)
+        round_table_corners(x0, y0, x1, y1, cdl)
+        ImGui.DrawList_PopClipRect(cdl)
+        ImGui.EndChild(ctx)
+      end
     end
   end
   pick_menu()
