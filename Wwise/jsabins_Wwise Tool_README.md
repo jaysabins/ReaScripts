@@ -146,7 +146,7 @@ This sets the containers that are created above each Sound, from the top down:
 - Click a row's **+** to add a level right below it (the **+** on the Sound row adds one just above the Sound), then choose its type: Actor-Mixer, Random Container, Sequence Container, Switch Container, Blend Container, Virtual Folder, Work Unit or Physical Folder.
 - Name each level. Names can use REAPER wildcards, and the **$** button inserts one. Every item gets its own name from the wildcard, so `$region` puts each item in a container named after its region.
 - The last row is the **Sound** itself. Choose **Sound SFX** or **Sound Voice** (pick a language for Voice). In Wwise 2025.1 and later both are simply called Sound. Leave its name empty to use the item's name.
-- Each row (type dropdown, name, **$** and template buttons) is colored by its type, the same color its tag uses in the preview: orange for Random Containers, purple for Blend Containers, blue for Sounds, and so on. You can pick your own colors in **Settings > Interface > Type colors**.
+- Each row's type dropdown shows a colored dot and the type name in its color, the same color its tag uses in the preview. The **$**, template and **+** / **-** buttons stay faint until you point at the row. Colors: orange for Random Containers, purple for Blend Containers, blue for Sounds, and so on. You can pick your own colors in **Settings > Interface > Type colors**.
 - Click a row's **-** to remove that level. The **+** and **-** buttons sit on each row, so you always see which level they act on.
 - To move a level, drag the handle (three lines) at the left of its row onto another level.
 - Each row's clipboard button holds its property template. The clipboard is dim when no template is set and turns amber when one is. See [Property templates](#property-templates).
@@ -205,13 +205,13 @@ The right side shows what the transfer will create, laid out like Wwise's Projec
 - The top row is the import destination, and its tag shows what that object is in Wwise: `[WU]` for a Work Unit, `[VF]` for a Virtual Folder, `[RND]`, `[SEQ]`, `[SW]`, `[BLD]` for containers, `[AM]` for an Actor-Mixer (`[PC]` for a Property Container in Wwise 2025.1 and later), and so on. It shows `[DEST]` while Wwise isn't connected or the destination doesn't exist yet.
 - Hover over a name to see its full Wwise path and Originals subfolder.
 - **Columns:**
-  - **Source** says where the audio file Wwise imports comes from (hover the header or a value for a reminder):
+  - **Source** (hidden by default; right-click a header to show it) says where the audio file Wwise imports comes from (hover the header or a value for a reminder):
     - **Original WAV**: the item's own WAV file is imported as is, no render. Only for untouched items (whole file, no fades, FX, volume, pitch or rate changes).
     - **Item**: the item has edits (or isn't a WAV), so it's rendered first and the render is imported.
     - **Folder item**: a folder item, rendered with everything under it mixed in.
     - **Project render**: the file comes from REAPER's render settings (regions, stems...), rendered first.
   - **Channels** shows whether a Sound will be mono or stereo, and lets you change it. See [Mono and stereo](#mono-and-stereo).
-  - **Streaming** shows whether a Sound will be set to stream in Wwise, and lets you change it. See [Streaming](#streaming).
+  - **Stream** shows whether a Sound will be set to stream in Wwise, and lets you change it. See [Streaming](#streaming).
   - **Loop** shows whether a Sound will be set to loop, and lets you change it. See [Loop](#loop).
   - **Originals file** is the file name Wwise will keep in Originals. Hover for the full path.
   - **Initial delay** shows the layer timing delays, in seconds by default (0.042 s, as Wwise shows it). Right-click a value to switch to milliseconds (42 ms), or change it in **Settings > Interface**.
@@ -245,7 +245,7 @@ The check only reads WAV files. With other render formats (MP3, OGG...), Auto le
 
 Long files such as music and ambience loops usually stream from disk in Wwise instead of loading into memory. Wwise Tool can turn on **Stream** on the Sounds it imports:
 
-- Click a row in the preview's **Streaming** column and pick **Stream**, **No stream** or **Auto**. It works like the Channels column: on a container it counts for every Sound inside, a choice on a Sound wins over its container's, and you can drag, Shift+click or Ctrl+click to set many rows at once.
+- Click a row in the preview's **Stream** column and pick **Stream**, **No stream** or **Auto**. It works like the Channels column: on a container it counts for every Sound inside, a choice on a Sound wins over its container's, and you can drag, Shift+click or Ctrl+click to set many rows at once.
 - **Auto streaming** (Settings > Stream & loop, off by default) streams every Sound at least as long as the length you set (10 seconds to start with). The column then shows **Auto: stream** for those Sounds, and hovering shows each Sound's length. Selected items use the item length. With **Source: Render settings** the length isn't known until the files are rendered, so the column shows **Auto** and the check happens during the transfer.
 - **Auto** with Auto streaming off, or a Sound shorter than the length, leaves streaming as Wwise or your property template has it. **No stream** turns it off.
 - In Settings you can also have **Zero latency** and **Non-cachable** turned on for every Sound that's set to stream. The Prefetch length stays as Wwise has it.
@@ -254,7 +254,7 @@ Streaming is written after the property templates, so a template can't undo it. 
 
 ### Loop
 
-Click a row in the preview's **Loop** column and pick **Loop**, **No loop** or **Auto**. It works like the Streaming column: on a container it counts for every Sound inside, a choice on a Sound wins over its container's, and drag, Shift+click or Ctrl+click set many rows at once.
+Click a row in the preview's **Loop** column and pick **Loop**, **No loop** or **Auto**. It works like the Stream column: on a container it counts for every Sound inside, a choice on a Sound wins over its container's, and drag, Shift+click or Ctrl+click set many rows at once.
 
 - **Loop** turns on Loop with **Infinite** on the Sound.
 - **No loop** turns Loop off.
@@ -264,7 +264,7 @@ Looping is written after the property templates, so a template can't undo it. Ch
 
 ### Transfer
 
-**Transfer to Wwise** (bottom left of the window) runs the whole transfer as one Wwise undo step. When the button is greyed out, the text next to it (and its tooltip) says why, for example "Select one or more items in REAPER".
+**Transfer to Wwise** (bottom left of the window) runs the whole transfer as one Wwise undo step. When the button is greyed out, hover over it: the tooltip says why, for example "Select one or more items in REAPER".
 
 Afterwards a summary shows the destination, the number of files imported, objects created, templates applied, Sounds set to stream and delays set, how long each step took, and any problems. **Copy details** copies the problems so you can paste them somewhere. If **Select imported Sounds in Wwise afterwards** is on, Wwise jumps to the new Sounds.
 
@@ -274,7 +274,9 @@ Afterwards a summary shows the destination, the number of files imported, object
 
 ## Settings
 
-The gear button opens **Settings**, split into tabs. The window keeps its size as you switch tabs; drag its corner to make it bigger, and a long tab scrolls.
+The gear button opens **Settings** in its own window. The main window stays usable while Settings is open (it doesn't grey out), so you can change an option and watch the preview update. Settings' pages are listed down the left side; click one to show it on the right. The window keeps its size as you switch pages; drag its corner to make it bigger, and a long page scrolls. Close it with its **X**, the **Close** button or Esc.
+
+**Settings > Appearance** changes the window's look: the color of the big title, the text, the dim help text and the window background; how rounded the window corners and the buttons, fields and panels are; and the font (Verdana by default), its text size and the title and heading size. Colors and corners change right away; a new font shows the next time you open Wwise Tool. **Reset appearance** goes back to the defaults. The appearance applies to every project and is included in **Export configuration**.
 
 - **Connection:** the WAAPI HTTP port (8090 by default, must match Wwise) and **Reconnect**.
 - **Rendering** (for Source: Selected items or Folder items):
@@ -284,7 +286,7 @@ The gear button opens **Settings**, split into tabs. The window keeps its size a
   - **Keep rendered files in:** by default, item renders go to a temporary folder that's deleted after the transfer. Type a folder to keep them, such as `Renders` or `Renders\$project`. Relative paths start in the REAPER project folder, and wildcards are allowed. A file there with the same name as a new render is replaced.
 - **Channels:** **Auto channels: make a Sound mono when left and right are the same.** On by default. See [Mono and stereo](#mono-and-stereo). When you've set any Mono/Stereo choices in the preview, **Clear channel overrides** appears here.
 - **Transfer:** paste templates onto all objects or new objects only, and whether imported Sounds are selected in Wwise afterwards.
-- **Stream & loop:** **Auto streaming** for Sounds at least a set number of seconds long, and whether Zero latency and Non-cachable come along with streaming. See [Streaming](#streaming). When you've set any choices in the Streaming column, **Clear streaming overrides** appears here, and **Clear loop overrides** when you've set any in the Loop column.
+- **Stream & loop:** **Auto streaming** for Sounds at least a set number of seconds long, and whether Zero latency and Non-cachable come along with streaming. See [Streaming](#streaming). When you've set any choices in the Stream column, **Clear streaming overrides** appears here, and **Clear loop overrides** when you've set any in the Loop column.
 - **Interface:**
   - **Window:** background opacity, for when the window is floating (not docked), and whether the preview's Initial delay column shows seconds or milliseconds.
   - **Type colors:** a color picker for each Wwise type (Actor-Mixer, Random, Sequence, Switch and Blend Containers, Virtual Folder, Work Unit, Physical Folder, Sound, Destination). These colors are used for the structure rows and the preview's tags. **Reset colors to defaults** brings back the built-in scheme.
@@ -316,7 +318,7 @@ Result: `Pistol` holds three Random Containers (`Muzzle`, `Mech`, `Tail`), each 
 - **Red dot, "Couldn't reach Wwise".** Wwise isn't open, WAAPI is off, or the HTTP port doesn't match. Check the Wwise setup above, then click **Reconnect** in Settings.
 - **"Wwise refused the connection (HTTP 404)".** Set **Allow connections from** to `127.0.0.1,::1` in Wwise's User Preferences, make sure the WAMP and HTTP ports are different, and restart Wwise.
 - **"Wwise is busy and didn't answer in time".** Wwise is still loading or working on something. Wait a moment; the preview updates on its own.
-- **Transfer is greyed out.** Read the text next to the button. Usually nothing is selected in REAPER or in Wwise, or a structure level has no name.
+- **Transfer is greyed out.** Hover over the button to see why. Usually nothing is selected in REAPER or in Wwise, or a structure level has no name.
 - **"Save the REAPER project first".** The REAPER project has never been saved, and the transfer needs to render. Save it (**File > Save project**) and transfer again. Items sent as they are (no render) work without saving.
 - **"REAPER didn't render a file for it".** REAPER ran the render but the file for that Sound wasn't where Wwise Tool expected it. Check that the **Keep rendered files in** folder can be written to, and try again.
 - **"A wildcard in the hierarchy didn't resolve to a single name".** A wildcard came out empty for some items, for example `$region` on an item that's outside every region.

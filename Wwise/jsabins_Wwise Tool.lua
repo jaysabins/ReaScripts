@@ -1,12 +1,36 @@
 -- @description Wwise Tool (send REAPER audio to Wwise)
 -- @author Jay Sabins
--- @version 1.21.0
+-- @version 1.22.0
 -- @changelog
---   Actor-Mixers are called Property Containers when Wwise 2025.1 or newer is connected (the
---   name Wwise itself uses now), with a [PC] tag in the preview. Older Wwise keeps Actor-Mixer.
---   Saved setups and presets work with both.
---   Wwise Tool is made for Wwise 2022.1 and newer. An older Wwise still connects, with an
---   "(untested)" note next to its version.
+--   Verdana is the window's font, at 12px; the title and section
+--   headings are 14px.
+--   Settings is its own window now: the main window no longer greys out while it's open, and
+--   you can keep using both. Close it with its X, the Close button or Esc.
+--   Settings pages are listed down the left side instead of as tabs across the top.
+--   Buttons, fields, dropdowns, tabs, panels, scrollbars and the preview table get slightly
+--   rounded corners everywhere (both windows), instead of hard right angles. The Wwise
+--   structure table uses the same small corners as the preview table.
+--   The text next to Transfer to Wwise is gone (its messages show in the button's tooltip), and
+--   the preview now runs down to the bottom of the window, level with the button.
+--   Fixed: Reset color on a tab stopped the script with an ImGui error.
+--   The Wwise structure list is calmer ("Quiet rows"): no table lines or header, grey fields,
+--   each level's type shown as a colored dot and name, and the $, template and + / - buttons
+--   stay faint until you hover the row.
+--   The preview's Source column is hidden by default (right-click a column header to show it).
+--   A little more room under the section titles. Checkbox ticks take the showing tab's color.
+--   The Settings window looks like the main window: big rounded corners, a big "Settings"
+--   title and the same close X.
+--   New Settings > Appearance page: title, text, dim text and background colors, window and
+--   button corner rounding, and the font (family and sizes; applies when the window reopens).
+--   Right-click any of them to reset just that one to its default.
+--   Title-bar buttons (?, Settings, X) are flat and only show their box on hover (X red), and
+--   the Settings gear is a thin outline cog.
+--   The window title is bolder and 1px bigger (15px).
+--   Removed the note under Source for Folder items (the dropdown's tooltip still explains it).
+--   Fixed: the preview table's rounded corners showed through tooltips and popups.
+--   A thin, lighter outline around the whole window (and Settings), with its own color in
+--   Settings > Appearance.
+--   The preview's Streaming column is now called Stream.
 -- @provides
 --   [main] jsabins_Wwise Tool - Quick send.lua
 --   [nomain] jsabins_WwiseTool_core.lua
@@ -31,7 +55,7 @@
 --     Mono or Stereo for a Sound or a whole container, or drag/Shift/Ctrl+click
 --     to set many rows at once.
 --   - Streaming: turn on Stream per Sound or container from the preview's
---     Streaming column, or automatically for Sounds longer than a set length.
+--     Stream column, or automatically for Sounds longer than a set length.
 --   - Loop: set Sounds to loop (infinite) from the preview's Loop column.
 --   - Fast: untouched WAV items import without rendering; edited items render
 --     in one pass; everything is imported in one Wwise call.
@@ -63,36 +87,90 @@ local ctx = ImGui.CreateContext("Wwise Tool")
 -- If the font can't be made, the header just uses the normal font.
 -- Layout constants live in one table: the main chunk is at Lua's 200-locals limit.
 local UI = {}
-UI.HEADER_FONT_SIZE = 15
+-- Look of the window, set in Settings > Appearance (saved with the other window settings, in
+-- view.look). Colors are 0xRRGGBBAA; nil means the built-in default. Fonts are made once at
+-- startup, so font changes apply the next time the window opens; everything else applies live.
+UI.FONT_CHOICES = { "Verdana", "Tahoma", "Segoe UI", "Arial", "Calibri", "Consolas" }
+UI.LOOK_DEFAULTS = { font = "Verdana", size = 12, head = 14, win_round = 14, frame_round = 3 }
+UI.DEFAULT_TEXT, UI.DEFAULT_DIM, UI.DEFAULT_BG = 0xFFFFFFFF, 0x9A9A9AFF, 0x191919FF
+UI.DEFAULT_OUTLINE = 0x505050FF -- thin line around each floating window
+UI.look = {}
+-- Copy valid values from a saved table into UI.look (in place), defaults for the rest.
+UI.read_look = function(t)
+  local L, d = UI.look, UI.LOOK_DEFAULTS
+  t = type(t) == "table" and t or {}
+  local function num(v, lo, hi, def)
+    return type(v) == "number" and math.max(lo, math.min(hi, math.floor(v))) or def
+  end
+  local font = d.font
+  for _, n in ipairs(UI.FONT_CHOICES) do if t.font == n then font = n end end
+  L.font = font
+  L.size = num(t.size, 9, 18, d.size)
+  L.head = num(t.head, 10, 24, d.head)
+  L.win_round = num(t.win_round, 0, 20, d.win_round)
+  L.frame_round = num(t.frame_round, 0, 10, d.frame_round)
+  for _, k in ipairs({ "title", "text", "dim", "bg", "outline" }) do
+    L[k] = type(t[k]) == "number" and (math.floor(t[k]) | 0xFF) or nil
+  end
+end
+do
+  local v = r.GetExtState(core.EXT, "view")
+  local ok, t = pcall(core.json.decode, v ~= "" and v or "{}")
+  UI.read_look(ok and type(t) == "table" and t.look or nil)
+end
+UI.bg_rgb = function() return (UI.look.bg or UI.DEFAULT_BG) >> 8 end
+-- Main font (Verdana 12 by default; falls back to ImGui's own font if it can't be made).
+UI.FONT, UI.FONT_SIZE = UI.look.font, UI.look.size
+-- The header line keeps its old proportion to a 13px main font.
+UI.font_px = function(px13) return math.floor(px13 * UI.FONT_SIZE / 13 + 0.5) end
+do
+  local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.FONT_SIZE)
+  if ok and f and pcall(ImGui.Attach, ctx, f) then UI.main_font = f end
+end
+UI.HEADER_FONT_SIZE = UI.font_px(15)
 local header_font = nil
 do
-  local ok, f = pcall(ImGui.CreateFont, "sans-serif", UI.HEADER_FONT_SIZE)
+  local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.HEADER_FONT_SIZE)
   if ok and f and pcall(ImGui.Attach, ctx, f) then header_font = f end
 end
 -- Bigger, matching titles for the left column's sections (Source, Wwise destination,
 -- Wwise structure). Falls back to the normal font if it can't be made.
-UI.SECTION_FONT_SIZE = 16
+UI.SECTION_FONT_SIZE = UI.look.head
 local section_font = nil
 do
   local okb, bold = pcall(function() return ImGui.FontFlags_Bold end)
   local flags = (okb and type(bold) == "number") and bold or 0
-  local ok, f = pcall(ImGui.CreateFont, "sans-serif", UI.SECTION_FONT_SIZE, flags)
-  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, "sans-serif", UI.SECTION_FONT_SIZE) end
+  local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.SECTION_FONT_SIZE, flags)
+  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.SECTION_FONT_SIZE) end
   if ok and f and pcall(ImGui.Attach, ctx, f) then section_font = f end
 end
 -- Big bold "Wwise Tool" title at the top of the window (the title bar itself shows no text).
-local title_font = nil -- 21px bold (the main chunk is near Lua's 200-locals limit, so no size constant)
+local title_font = nil -- bold, 1px bigger than the section titles
 do
   local okb, bold = pcall(function() return ImGui.FontFlags_Bold end)
   local flags = (okb and type(bold) == "number") and bold or 0
-  local ok, f = pcall(ImGui.CreateFont, "sans-serif", 21, flags)
-  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, "sans-serif", 21) end
+  local ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.SECTION_FONT_SIZE + 1, flags)
+  if not (ok and f) then ok, f = pcall(ImGui.CreateFont, UI.FONT, UI.SECTION_FONT_SIZE + 1) end
   if ok and f and pcall(ImGui.Attach, ctx, f) then title_font = f end
+end
+-- "Ghost" buttons for the Wwise structure rows: no background and dim text until the row is
+-- hovered (ghost = true); hovering the button itself still shows its normal hover color.
+UI.ghost_push = function(ghost)
+  if not ghost then return 0 end
+  ImGui.PushStyleColor(ctx, ImGui.Col_Button, 0x00000000)
+  ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0x8A8A8AFF)
+  return 2
+end
+-- The big window title, drawn twice a pixel apart so it's extra bold.
+UI.draw_title = function(dl, x, y, col, text)
+  ImGui.DrawList_AddText(dl, x, y, col, text)
+  ImGui.DrawList_AddText(dl, x + 1, y, col, text)
 end
 local function section_title(text)
   local big = section_font and pcall(ImGui.PushFont, ctx, section_font)
   ImGui.SeparatorText(ctx, text)
   if big then ImGui.PopFont(ctx) end
+  ImGui.Dummy(ctx, 0, 0) -- a little more room under the title (one item spacing)
 end
 local function push_header_font()
   if header_font and pcall(ImGui.PushFont, ctx, header_font) then return true end
@@ -119,12 +197,21 @@ local function read_view(t)
     end
     if t.delay_unit == "ms" then view.delay_unit = "ms" end
     if type(t.size_v) == "number" then view.size_v = t.size_v end
+    if type(t.cols_v) == "number" then view.cols_v = t.cols_v end
+    if t.look ~= nil then UI.read_look(t.look) end
   end
+  view.look = UI.look
 end
 do
   local v = r.GetExtState(core.EXT, "view")
   local ok, t = pcall(core.json.decode, v ~= "" and v or "{}")
   if ok then read_view(t) end
+  -- 1.22.0: the preview's Source column starts hidden (right-click a header to show it again).
+  -- Done once, also for windows saved by older versions.
+  if (view.cols_v or 0) < 1 then
+    view.hidden.Audio = true; view.cols_v = 1
+    r.SetExtState(core.EXT, "view", core.json.encode(view), true)
+  end
 end
 local function save_view() r.SetExtState(core.EXT, "view", core.json.encode(view), true) end
 local view_dirty = false -- type colors changed; saved once the color picker is let go
@@ -161,7 +248,7 @@ local open_settings = false
 
 local COLOR_OK = 0x6BCB77FF
 local COLOR_BAD = 0xFF6B6BFF
-local COLOR_DIM = 0x9A9A9AFF
+local COLOR_DIM = UI.look.dim or UI.DEFAULT_DIM -- Settings > Appearance can change it
 local COLOR_NEW = 0x6BCB77FF     -- green: will be created
 local COLOR_EXISTS = 0xF5A524FF  -- orange: already in Wwise
 
@@ -350,9 +437,11 @@ local function input(label, value, hint, width)
   return v
 end
 
-local function wildcard_menu(id, apply)
+local function wildcard_menu(id, apply, ghost, size)
   ImGui.SameLine(ctx)
-  if ImGui.Button(ctx, "$##wc" .. id) then ImGui.OpenPopup(ctx, "wcpop" .. id) end
+  local gn = UI.ghost_push(ghost)
+  if ImGui.Button(ctx, "$##wc" .. id, size or 0, size or 0) then ImGui.OpenPopup(ctx, "wcpop" .. id) end
+  if gn > 0 then ImGui.PopStyleColor(ctx, gn) end
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Insert a REAPER wildcard") end
   if ImGui.BeginPopup(ctx, "wcpop" .. id) then
     for _, w in ipairs(WILDCARDS) do
@@ -392,20 +481,20 @@ end
 
 -- Square button with a gear drawn on it (no icon font needed).
 local function draw_gear(dl, x1, y1, size, col)
+  -- Thin outline cog (8 teeth) with a round hole, drawn as one closed path.
   local cx, cy = x1 + size / 2, y1 + size / 2
-  local ring, thick = size * 0.20, size * 0.12
-  local r_in, r_out, half_w = ring, size * 0.34, size * 0.075
-  ImGui.DrawList_AddCircle(dl, cx, cy, ring, col, 0, thick)
+  local ro, ri = size * 0.34, size * 0.255
+  local th = math.max(1.2, size * 0.065)
+  local step = math.pi / 4
   for i = 0, 7 do
-    local a = i * math.pi / 4
-    local dx, dy = math.cos(a), math.sin(a)
-    local px, py = -dy * half_w, dx * half_w
-    ImGui.DrawList_AddQuadFilled(dl,
-      cx + dx * r_in + px, cy + dy * r_in + py,
-      cx + dx * r_out + px, cy + dy * r_out + py,
-      cx + dx * r_out - px, cy + dy * r_out - py,
-      cx + dx * r_in - px, cy + dy * r_in - py, col)
+    local a = i * step - math.pi / 2
+    local pts = { { ri, a - 0.27 }, { ro, a - 0.17 }, { ro, a + 0.17 }, { ri, a + 0.27 } }
+    for _, pt in ipairs(pts) do
+      ImGui.DrawList_PathLineTo(dl, cx + math.cos(pt[2]) * pt[1], cy + math.sin(pt[2]) * pt[1])
+    end
   end
+  ImGui.DrawList_PathStroke(dl, col, ImGui.DrawFlags_Closed, th)
+  ImGui.DrawList_AddCircle(dl, cx, cy, size * 0.115, col, 0, th)
 end
 local function gear_button(id, size)
   local pressed = ImGui.Button(ctx, id, size, size)
@@ -423,9 +512,11 @@ local function close_button(id, size)
   local hovered, held = ImGui.IsItemHovered(ctx), ImGui.IsItemActive(ctx)
   local x1, y1 = ImGui.GetItemRectMin(ctx)
   local dl = ImGui.GetWindowDrawList(ctx)
-  local bg = held and 0xB8323AFF or (hovered and 0xE04048FF or 0x2A2A2AFF)
+  -- Flat until hovered: no box, just the X; red box on hover.
   local fg = hovered and 0xFFFFFFFF or ImGui.GetColor(ctx, ImGui.Col_Text)
-  ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, bg, size * 0.22)
+  if hovered or held then
+    ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, held and 0xB8323AFF or 0xE04048FF, size * 0.22)
+  end
   -- ImGui nudges lines half a pixel right and down (pixel centres), so start half a pixel back
   -- to keep the X exactly centred in the square.
   local m, th = size * 0.30, math.max(2, size * 0.08)
@@ -444,9 +535,11 @@ local function title_icon_button(id, size, draw)
   local hovered, held = ImGui.IsItemHovered(ctx), ImGui.IsItemActive(ctx)
   local x1, y1 = ImGui.GetItemRectMin(ctx)
   local dl = ImGui.GetWindowDrawList(ctx)
-  local bg = held and 0x5E5E5EFF or (hovered and 0x4C4C4CFF or 0x2A2A2AFF)
+  -- Flat until hovered: just the icon; a grey box appears on hover.
   local fg = hovered and 0xFFFFFFFF or ImGui.GetColor(ctx, ImGui.Col_Text)
-  ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, bg, size * 0.22)
+  if hovered or held then
+    ImGui.DrawList_AddRectFilled(dl, x1, y1, x1 + size, y1 + size, held and 0x5E5E5EFF or 0x4C4C4CFF, size * 0.22)
+  end
   draw(dl, x1, y1, size, fg)
   return pressed
 end
@@ -457,10 +550,22 @@ local function draw_question(dl, x1, y1, size, fg)
   if big then ImGui.PopFont(ctx) end
 end
 
-UI.WINDOW_ROUNDING = 14   -- main window corners
+UI.WINDOW_ROUNDING = UI.look.win_round   -- window corners (Settings > Appearance)
 -- The "Transfer to Wwise" button sits in the window's bottom-left corner, inset by the window
 -- padding on both sides, with corners concentric to the window's: radius = window radius - inset.
-UI.FRAME_ROUNDING = 4     -- dropdowns, fields, buttons, checkboxes (softened, not pill-shaped)
+UI.FRAME_ROUNDING = UI.look.frame_round -- dropdowns, fields, buttons, checkboxes, tabs, panels: just softened
+-- Softly rounded corners for everything ImGui draws square by default. Pushed right after a
+-- window's Begin and popped (UI.pop_rounding) right before its End, on every path.
+UI.ROUNDING_VARS = { "StyleVar_FrameRounding", "StyleVar_GrabRounding", "StyleVar_PopupRounding",
+  "StyleVar_ChildRounding", "StyleVar_TabRounding", "StyleVar_ScrollbarRounding" }
+UI.push_rounding = function()
+  local n = 0
+  for _, k in ipairs(UI.ROUNDING_VARS) do
+    local ok, v = pcall(function() return ImGui[k] end)
+    if ok and type(v) == "number" then ImGui.PushStyleVar(ctx, v, UI.FRAME_ROUNDING); n = n + 1 end
+  end
+  return n
+end
 UI.TRANSFER_H = 34        -- "Transfer to Wwise" button height
 -- Close button: twice the font size each way (about 4x the area of ImGui's own X), with an even
 -- margin from the window's top and right edges. The title bar is made taller (FramePadding pushed
@@ -537,8 +642,8 @@ local function title_close_button()
   -- Big bold "Wwise Tool" at the left of the title bar, centered on the buttons' row.
   local big = title_font and pcall(ImGui.PushFont, ctx, title_font)
   local _, th = ImGui.CalcTextSize(ctx, "Wwise Tool")
-  ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2 + 3, -- a little lower than the buttons' centre: more room above
-    ImGui.GetColor(ctx, ImGui.Col_Text), "Wwise Tool")
+  UI.draw_title(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2 + 3, -- a little lower than the buttons' centre: more room above
+    UI.look.title or ImGui.GetColor(ctx, ImGui.Col_Text), "Wwise Tool")
   if big then ImGui.PopFont(ctx) end
   ImGui.PopClipRect(ctx)
   -- Don't move the cursor back afterwards: ImGui errors in End() when the cursor is moved
@@ -663,11 +768,7 @@ local function section_source()
       "are left out, so you can keep auto-select on.\n" ..
       "Render settings: whatever REAPER's render dialog is set to produce.")
   end
-  if S.source == "folders" then
-    ImGui.PushTextWrapPos(ctx, 0)
-    dim_label("Only folder items are sent. Selected items inside them are ignored, so NVK auto-select can stay on.")
-    ImGui.PopTextWrapPos(ctx)
-  elseif S.source == "render" then
+  if S.source == "render" then
     if ImGui.Button(ctx, "Render settings...") then r.Main_OnCommand(40015, 0) end
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Region matrix...") then r.Main_OnCommand(41888, 0) end
@@ -821,10 +922,12 @@ end
 -- Clipboard icon (Wwise's "paste properties" look) drawn over a button, no icon font needed.
 -- Dim outline when the level has no property template, amber and filled in when it has one.
 local COLOR_TEMPLATE = 0xF5C542FF
-local function template_button(id, has)
+local function template_button(id, has, size, ghost)
   local h = ImGui.GetFrameHeight(ctx)
-  local w = ImGui.GetContentRegionAvail(ctx)
+  local w = size or ImGui.GetContentRegionAvail(ctx)
+  local gn = UI.ghost_push(ghost)
   local pressed = ImGui.Button(ctx, id, w > 0 and w or h, h)
+  if gn > 0 then ImGui.PopStyleColor(ctx, gn) end
   local x1, y1 = ImGui.GetItemRectMin(ctx)
   local x2, y2 = ImGui.GetItemRectMax(ctx)
   local dl = ImGui.GetWindowDrawList(ctx)
@@ -852,9 +955,9 @@ local function template_button(id, has)
 end
 
 -- Per-level property template: the clipboard button opens a popup to set it.
-local function level_options(id, get_t, set_t)
+local function level_options(id, get_t, set_t, size, ghost)
   local has = (get_t() or "") ~= ""
-  if template_button("##opt" .. id, has) then ImGui.OpenPopup(ctx, "lvlopt" .. id) end
+  if template_button("##opt" .. id, has, size, ghost) then ImGui.OpenPopup(ctx, "lvlopt" .. id) end
   if ImGui.IsItemHovered(ctx) then
     ImGui.SetTooltip(ctx, has and ("Property template: " .. get_t() .. "\nClick to change it.")
       or "Property template (none). Click to set one.")
@@ -899,11 +1002,13 @@ local function grip_handle(id, w, h)
 end
 
 -- Square + / - button with the symbol drawn bigger than the font's "+" and "-".
-local function pm_button(id, plus, size)
+local function pm_button(id, plus, size, ghost)
+  local gn = UI.ghost_push(ghost)
   local pressed = ImGui.Button(ctx, id, size, size)
+  if gn > 0 then ImGui.PopStyleColor(ctx, gn) end
   local x1, y1 = ImGui.GetItemRectMin(ctx)
   local dl = ImGui.GetWindowDrawList(ctx)
-  local col = ImGui.GetColor(ctx, ImGui.Col_Text)
+  local col = ghost and 0x8A8A8AFF or ImGui.GetColor(ctx, ImGui.Col_Text)
   -- 2px lines on whole pixels (ImGui adds half a pixel to lines, so take it back off).
   local c = math.floor(size / 2 + 0.5)
   local cx, cy = math.floor(x1 + 0.5) + c - 0.5, math.floor(y1 + 0.5) + c - 0.5
@@ -929,13 +1034,46 @@ end
 
 -- Round a table's corners: ImGui tables are square, so paint the window background over the
 -- corners with a rounded-rect stroke whose inner edge is the rounded outline (radius r).
-UI.TABLE_ROUNDING, UI.MAP_CELL_PAD, UI.PM_GAP = 6, { 6, 3 }, 3 -- PM_GAP: between + and -
-local function round_table_corners(x0, y0, x1, y1)
-  local r = UI.TABLE_ROUNDING
+-- Both tables (Wwise structure and preview) share one small radius, a touch more than the buttons'.
+UI.TABLE_ROUNDING, UI.MAP_CELL_PAD, UI.PM_GAP = UI.FRAME_ROUNDING + 1, { 6, 3 }, 3 -- PM_GAP: between + and -
+local function round_table_corners(x0, y0, x1, y1, dl, r)
+  r = r or UI.TABLE_ROUNDING
   local t = math.ceil(r * 0.5) -- just enough to cover the square corners (needs > 0.414 * r)
-  local col = 0x19191900 | math.floor(view.opacity * 255 + 0.5) -- window background (#191919)
-  ImGui.DrawList_AddRect(ImGui.GetWindowDrawList(ctx), x0 - t / 2, y0 - t / 2, x1 + t / 2, y1 + t / 2,
+  local col = (UI.bg_rgb() << 8) | math.floor(view.opacity * 255 + 0.5) -- window background
+  ImGui.DrawList_AddRect(dl or ImGui.GetWindowDrawList(ctx), x0 - t / 2, y0 - t / 2, x1 + t / 2, y1 + t / 2,
     col, r + t / 2, 0, t)
+end
+
+-- Wwise structure type dropdown: grey frame with a colored dot and the type name in its color
+-- drawn over it (the combo's own preview is left empty). Each choice in the list is in its color.
+UI.type_combo = function(id, items, value, w, color_of)
+  local x, y = ImGui.GetCursorScreenPos(ctx)
+  local h = ImGui.GetFrameHeight(ctx)
+  local label = ""
+  for _, it in ipairs(items) do if it[1] == value then label = it[2] end end
+  local changed, new = false, value
+  ImGui.SetNextItemWidth(ctx, w)
+  if ImGui.BeginCombo(ctx, id, "") then
+    for _, it in ipairs(items) do
+      local ic = color_of(it[1])
+      if ic then ImGui.PushStyleColor(ctx, ImGui.Col_Text, ic) end
+      if ImGui.Selectable(ctx, it[2], it[1] == value) and it[1] ~= value then changed, new = true, it[1] end
+      if ic then ImGui.PopStyleColor(ctx) end
+    end
+    ImGui.EndCombo(ctx)
+  end
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
+  local col = color_of(new) or ImGui.GetColor(ctx, ImGui.Col_Text)
+  local r = math.max(2.5, math.floor(h * 0.17 + 0.5))
+  local cx, cy = x + pad_x + r, y + h / 2
+  ImGui.DrawList_AddCircleFilled(dl, cx, cy, r, col)
+  for _, it in ipairs(items) do if it[1] == new then label = it[2] end end
+  local _, th = ImGui.CalcTextSize(ctx, label)
+  ImGui.DrawList_PushClipRect(dl, x, y, x + w - h, y + h, true)
+  ImGui.DrawList_AddText(dl, cx + r + 5, y + (h - th) / 2, col, label)
+  ImGui.DrawList_PopClipRect(dl)
+  return changed, new
 end
 
 local function section_hierarchy()
@@ -944,93 +1082,90 @@ local function section_hierarchy()
   dim_label("Levels created under the destination, top to bottom. Names can use wildcards.")
   ImGui.PopTextWrapPos(ctx)
 
+  -- "Quiet rows": no table lines or header. Grey fields; each level's type is a colored dot and
+  -- colored name in its dropdown. $, template and +/- are faint until the row is hovered.
   local sq = ImGui.GetFrameHeight(ctx)
-  local sp, sp_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
-  -- PadOuterX: the same padding at the table's left and right edges as between cells, so the
-  -- drag handle is centred in its column and the - button isn't against the edge.
-  local flags = ImGui.TableFlags_RowBg | ImGui.TableFlags_BordersInnerV | (ImGui.TableFlags_PadOuterX or 0)
+  local sp = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
   local act = {}
-  -- A little room between the fields and the cell edges (guarded: skipped if the name is missing).
-  local cell_pad = ImGui.StyleVar_CellPadding and 1 or 0
-  if cell_pad == 1 then ImGui.PushStyleVar(ctx, ImGui.StyleVar_CellPadding, UI.MAP_CELL_PAD[1], UI.MAP_CELL_PAD[2]) end
-  local tx0, ty0 = ImGui.GetCursorScreenPos(ctx)
-  local tx1 = tx0 + ImGui.GetContentRegionAvail(ctx)
-  local map_open = ImGui.BeginTable(ctx, "map", 5, flags)
-  if map_open then
-    ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, 12)
-    ImGui.TableSetupColumn(ctx, "Type", ImGui.TableColumnFlags_WidthFixed, 150)
-    ImGui.TableSetupColumn(ctx, "Name", ImGui.TableColumnFlags_WidthStretch)
-    ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, 30)
-    ImGui.TableSetupColumn(ctx, "", ImGui.TableColumnFlags_WidthFixed, sq * 2 + UI.PM_GAP)
-    ImGui.TableHeadersRow(ctx)
-
-    for i, row in ipairs(S.rows) do
-      ImGui.PushID(ctx, tostring(i))
-      ImGui.TableNextRow(ctx)
-      ImGui.TableNextColumn(ctx)
-      grip_handle("##grip", 12, sq)
-      if ImGui.IsItemHovered(ctx) and not ImGui.IsItemActive(ctx) then ImGui.SetTooltip(ctx, "Drag onto another level to move it") end
-      if ImGui.BeginDragDropSource(ctx) then
-        ImGui.SetDragDropPayload(ctx, "WT_LEVEL", tostring(i))
-        ImGui.Text(ctx, "Move: " .. ((row.name or "") ~= "" and row.name or row.type))
-        ImGui.EndDragDropSource(ctx)
-      end
-      level_drop_target(i, act)
-      ImGui.TableNextColumn(ctx)
-      local c
-      push_row_colors(row.type)
-      local type_list = {}
-      for k, t in ipairs(core.CONTAINER_TYPES) do type_list[k] = { t, core.type_label(t) } end
-      c, row.type = combo("##type", type_list, row.type, -1)
-      if c then settings_changed(); pop_row_colors(); push_row_colors(row.type) end
-      level_drop_target(i, act)
-      ImGui.TableNextColumn(ctx)
-      ImGui.SetNextItemWidth(ctx, -28)
-      local ch, v = ImGui.InputTextWithHint(ctx, "##name", "e.g. $region", row.name or "")
-      if ch then row.name = v; settings_changed() end
-      wildcard_menu("r" .. i, function(w) row.name = (row.name or "") .. w end)
-      ImGui.TableNextColumn(ctx)
-      level_options("r" .. i, function() return row.template end, function(t) row.template = t end)
-      pop_row_colors()
-      ImGui.TableNextColumn(ctx)
-      if pm_button("##add", true, sq) then act.add = i + 1 end
-      if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Add level below this one") end
-      ImGui.SameLine(ctx, 0, UI.PM_GAP)
-      if pm_button("##rem", false, sq) then act.remove = i end
-      if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Remove this level") end
-      ImGui.PopID(ctx)
+  local avail = ImGui.GetContentRegionAvail(ctx)
+  local type_w = 150
+  local name_w = math.max(60, avail - 12 - type_w - sq * 4 - UI.PM_GAP - sp * 5)
+  local hover_next = nil
+  local mx, my = ImGui.GetMousePos(ctx)
+  local win_hovered = ImGui.IsWindowHovered(ctx, ImGui.HoveredFlags_AllowWhenBlockedByActiveItem or 0)
+  -- Starts a row: paints last frame's hover background behind it. Returns ghost (not hovered).
+  local function row_begin(key)
+    local x0, y0 = ImGui.GetCursorScreenPos(ctx)
+    if win_hovered and mx >= x0 - 3 and mx < x0 + avail + 3 and my >= y0 - 2 and my < y0 + sq + 2 then hover_next = key end
+    local hovered = UI.map_hover == key
+    if hovered then
+      ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), x0 - 3, y0 - 2, x0 + avail + 3, y0 + sq + 2,
+        0x232323FF, UI.FRAME_ROUNDING + 1)
     end
-
-    -- Leaf (the Sound itself)
-    ImGui.PushID(ctx, "leaf")
-    ImGui.TableNextRow(ctx)
-    ImGui.TableNextColumn(ctx)
-    ImGui.TableNextColumn(ctx)
-    local c
-    push_row_colors("Sound")
-    c, S.leaf.voice = combo("##leaftype", { { false, "Sound SFX" }, { true, "Sound Voice" } }, S.leaf.voice, -1)
-    if c then
-      settings_changed()
-      if S.leaf.voice and S.leaf.language == "" and conn and conn.languages[1] then S.leaf.language = conn.languages[1] end
-    end
-    ImGui.TableNextColumn(ctx)
-    ImGui.SetNextItemWidth(ctx, -28)
-    local ch, v = ImGui.InputTextWithHint(ctx, "##leafname", S.source ~= "render" and "(item name)" or "(rendered file name)", S.leaf.name)
-    if ch then S.leaf.name = v; settings_changed() end
-    wildcard_menu("leaf", function(w) S.leaf.name = S.leaf.name .. w end)
-    ImGui.TableNextColumn(ctx)
-    level_options("leaf", function() return S.leaf.template end, function(t) S.leaf.template = t end)
-    pop_row_colors()
-    ImGui.TableNextColumn(ctx)
-    if pm_button("##add", true, sq) then act.add = #S.rows + 1 end
-    if ImGui.IsItemHovered(ctx) then
-      ImGui.SetTooltip(ctx, #S.rows == 0 and "Add level above the Sound" or "Add level just above the Sound")
-    end
-    ImGui.PopID(ctx)
-    ImGui.EndTable(ctx)
+    return not hovered
   end
-  if cell_pad == 1 then ImGui.PopStyleVar(ctx) end
-  if map_open then round_table_corners(tx0, ty0, tx1, select(2, ImGui.GetCursorScreenPos(ctx)) - sp_y) end
+  local type_list = {}
+  for k, t in ipairs(core.CONTAINER_TYPES) do type_list[k] = { t, core.type_label(t) } end
+
+  for i, row in ipairs(S.rows) do
+    ImGui.PushID(ctx, tostring(i))
+    local ghost = row_begin(i)
+    grip_handle("##grip", 12, sq)
+    if ImGui.IsItemHovered(ctx) and not ImGui.IsItemActive(ctx) then ImGui.SetTooltip(ctx, "Drag onto another level to move it") end
+    if ImGui.BeginDragDropSource(ctx) then
+      ImGui.SetDragDropPayload(ctx, "WT_LEVEL", tostring(i))
+      ImGui.Text(ctx, "Move: " .. ((row.name or "") ~= "" and row.name or row.type))
+      ImGui.EndDragDropSource(ctx)
+    end
+    level_drop_target(i, act)
+    ImGui.SameLine(ctx)
+    local c
+    c, row.type = UI.type_combo("##type", type_list, row.type, type_w, type_color)
+    if c then settings_changed() end
+    level_drop_target(i, act)
+    ImGui.SameLine(ctx)
+    ImGui.SetNextItemWidth(ctx, name_w)
+    local ch, v = ImGui.InputTextWithHint(ctx, "##name", "e.g. $region", row.name or "")
+    if ch then row.name = v; settings_changed() end
+    level_drop_target(i, act)
+    wildcard_menu("r" .. i, function(w) row.name = (row.name or "") .. w end, ghost, sq)
+    ImGui.SameLine(ctx)
+    level_options("r" .. i, function() return row.template end, function(t) row.template = t end, sq, ghost)
+    ImGui.SameLine(ctx)
+    if pm_button("##add", true, sq, ghost) then act.add = i + 1 end
+    if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Add level below this one") end
+    ImGui.SameLine(ctx, 0, UI.PM_GAP)
+    if pm_button("##rem", false, sq, ghost) then act.remove = i end
+    if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Remove this level") end
+    ImGui.PopID(ctx)
+  end
+
+  -- Leaf (the Sound itself): no drag handle and no remove button.
+  ImGui.PushID(ctx, "leaf")
+  local ghost = row_begin("leaf")
+  ImGui.Dummy(ctx, 12, sq)
+  ImGui.SameLine(ctx)
+  local c
+  c, S.leaf.voice = UI.type_combo("##leaftype", { { false, "Sound SFX" }, { true, "Sound Voice" } }, S.leaf.voice, type_w,
+    function() return type_color("Sound") end)
+  if c then
+    settings_changed()
+    if S.leaf.voice and S.leaf.language == "" and conn and conn.languages[1] then S.leaf.language = conn.languages[1] end
+  end
+  ImGui.SameLine(ctx)
+  ImGui.SetNextItemWidth(ctx, name_w)
+  local ch, v = ImGui.InputTextWithHint(ctx, "##leafname", S.source ~= "render" and "(item name)" or "(rendered file name)", S.leaf.name)
+  if ch then S.leaf.name = v; settings_changed() end
+  wildcard_menu("leaf", function(w) S.leaf.name = S.leaf.name .. w end, ghost, sq)
+  ImGui.SameLine(ctx)
+  level_options("leaf", function() return S.leaf.template end, function(t) S.leaf.template = t end, sq, ghost)
+  ImGui.SameLine(ctx)
+  if pm_button("##add", true, sq, ghost) then act.add = #S.rows + 1 end
+  if ImGui.IsItemHovered(ctx) then
+    ImGui.SetTooltip(ctx, #S.rows == 0 and "Add level above the Sound" or "Add level just above the Sound")
+  end
+  ImGui.PopID(ctx)
+  UI.map_hover = hover_next
 
   if act.remove then table.remove(S.rows, act.remove); settings_changed()
   elseif act.add then new_level(act.add)
@@ -1469,7 +1604,7 @@ local PREVIEW_COLS = {
       "Folder item: a folder item, rendered with what's under it.\n" ..
       "Project render: made by REAPER's render settings (regions, stems...)." },
   { id = "Channels", w = 80 },
-  { id = "Streaming", w = 90 },
+  { id = "Streaming", label = "Stream", w = 70 }, -- id kept so saved column choices still apply
   { id = "Loop", w = 70 },
   { id = "Originals file", stretch = true, w = 3 },
   { id = "Initial delay", w = 80 },
@@ -1498,6 +1633,7 @@ end
 local function section_preview()
   local n = #plan.entries
   ImGui.SeparatorText(ctx, string.format("Preview in Wwise (%d Sound%s)", n, n == 1 and "" or "s"))
+  ImGui.Dummy(ctx, 0, 0) -- same room under the title as the left column's sections
   local problems = core.validate(S)
   for _, p in ipairs(problems) do ImGui.TextColored(ctx, COLOR_BAD, "- " .. p) end
   for _, p in ipairs(plan.errors or {}) do ImGui.TextColored(ctx, COLOR_BAD, "- " .. p) end
@@ -1551,6 +1687,25 @@ local function section_preview()
     sync_columns()
     if tree and #tree.children > 0 then draw_node(tree, 0) end
     ImGui.EndTable(ctx)
+    -- Soften the preview's square corners (header row included). The table scrolls, so it sits
+    -- in its own child window drawn over this one. The corners are painted in a see-through,
+    -- click-through child laid over the table: above the table, but below tooltips and popups
+    -- (the foreground draw list would cover those too).
+    local x0, y0 = ImGui.GetItemRectMin(ctx)
+    local x1, y1 = ImGui.GetItemRectMax(ctx)
+    if x1 > x0 and y1 > y0 then
+      ImGui.SetCursorScreenPos(ctx, x0, y0)
+      local wflags = ImGui.WindowFlags_NoInputs | ImGui.WindowFlags_NoBackground | ImGui.WindowFlags_NoScrollbar |
+        ImGui.WindowFlags_NoScrollWithMouse | (ImGui.WindowFlags_NoNav or 0)
+      if ImGui.BeginChild(ctx, "##previewcorners", x1 - x0, y1 - y0, 0, wflags) then
+        -- Clip to the whole child: a child's own clip area is inset by half its padding.
+        local cdl = ImGui.GetWindowDrawList(ctx)
+        ImGui.DrawList_PushClipRect(cdl, x0, y0, x1, y1, false)
+        round_table_corners(x0, y0, x1, y1, cdl)
+        ImGui.DrawList_PopClipRect(cdl)
+        ImGui.EndChild(ctx)
+      end
+    end
   end
   pick_menu()
   if open_delay_menu then ImGui.OpenPopup(ctx, "delayunit"); open_delay_menu = false end
@@ -1604,14 +1759,8 @@ local function section_transfer(bw)
   elseif core.plan_needs_render(S, plan) and not core.project_saved() then why = core.UNSAVED_MSG
   end
   local can = why == nil
-  local text = status_line
-  if text == "" and why then text = why end
-  if text == "" then
-    local n = #plan.entries
-    text = string.format("%d Sound%s  ->  %s", n, n == 1 and "" or "s", current_destination() ~= "" and current_destination() or "(no destination)")
-  end
-  -- Button at the bottom left, status text to its right (vertically centered on the button).
-  local y0 = ImGui.GetCursorPosY(ctx)
+  -- Just the button, under the left panel (no status text next to it: why it's greyed out is
+  -- in its tooltip, and the preview sits to its right).
   local busy = not can or transfer_task
   if busy then ImGui.BeginDisabled(ctx)
   else
@@ -1626,12 +1775,10 @@ local function section_transfer(bw)
   if ImGui.Button(ctx, transfer_task and "Transferring..." or "Transfer to Wwise", bw, UI.TRANSFER_H) and not transfer_task then do_transfer() end
   ImGui.PopStyleVar(ctx)
   if busy then ImGui.EndDisabled(ctx) else ImGui.PopStyleColor(ctx, 4) end
-  if why and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then ImGui.SetTooltip(ctx, why) end
-  ImGui.SameLine(ctx, 0, 14)
-  ImGui.SetCursorPosY(ctx, y0 + math.max(0, (UI.TRANSFER_H - ImGui.GetTextLineHeight(ctx)) / 2))
-  ImGui.PushTextWrapPos(ctx, 0)
-  ImGui.TextColored(ctx, (why and status_line == "") and 0xF4D35EFF or COLOR_DIM, text)
-  ImGui.PopTextWrapPos(ctx)
+  -- Tooltip: the latest message (transfer progress, a preset or folder problem), then why it's greyed out.
+  local tip = (status_line ~= "" and why and status_line ~= why) and (status_line .. "\n" .. why) or
+    (status_line ~= "" and status_line or why)
+  if tip and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled) then ImGui.SetTooltip(ctx, tip) end
 end
 
 local function summary_popup()
@@ -1757,7 +1904,7 @@ local function settings_streaming()
   help("Turns on Stream in Wwise for every Sound that long or longer. Shorter Sounds are left\n" ..
     "as Wwise or their template has them. Selected items use the item length; files from\n" ..
     "REAPER's render settings are measured after rendering.\n" ..
-    "Click a Sound or container in the preview's Streaming column to force Stream or No stream.")
+    "Click a Sound or container in the preview's Stream column to force Stream or No stream.")
   dim_label("When a Sound is set to stream, also turn on:")
   c, S.stream_zero_latency = ImGui.Checkbox(ctx, "Zero latency", S.stream_zero_latency)
   if c then settings_changed() end
@@ -1771,7 +1918,7 @@ local function settings_streaming()
     local n = core.count_stream_overrides(S)
     if n > 0 then
       if ImGui.SmallButton(ctx, string.format("Clear streaming overrides (%d)", n)) then S.streaming = {}; settings_changed() end
-      help("Removes every Stream/No stream choice made in the preview's Streaming column (this project).")
+      help("Removes every Stream/No stream choice made in the preview's Stream column (this project).")
     end
   end
   ImGui.Dummy(ctx, 0, 6)
@@ -1829,6 +1976,105 @@ local function settings_interface()
   if next(view.colors) and ImGui.SmallButton(ctx, "Reset colors to defaults") then
     view.colors = {}; view_dirty = true
   end
+  if view_dirty and not ImGui.IsAnyItemActive(ctx) then save_view(); view_dirty = false end
+end
+
+-- Settings > Appearance: title and text colors, background, corner rounding and font.
+local function settings_appearance()
+  local L, D = UI.look, UI.LOOK_DEFAULTS
+  -- NoOptions: right-click is our "Reset to default" menu, not ImGui's color options.
+  local cflags = ImGui.ColorEditFlags_NoInputs | ImGui.ColorEditFlags_NoAlpha | (ImGui.ColorEditFlags_NoOptions or 0)
+  -- Right-click the control just drawn for "Reset to default" (reset() puts the value back).
+  local function reset_menu(id, reset)
+    if ImGui.BeginPopupContextItem(ctx, "##reset_" .. id) then
+      if ImGui.Selectable(ctx, "Reset to default") then reset(); save_view() end
+      ImGui.EndPopup(ctx)
+    end
+  end
+  local function hover_tip(tip)
+    if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, (tip and (tip .. "\n") or "") .. "Right-click to reset to default.") end
+  end
+  local function color_row(label, key, def, tip)
+    local ch, rgb = ImGui.ColorEdit3(ctx, label .. "##look_" .. key, (L[key] or def) >> 8, cflags)
+    if ch then
+      local v = ((rgb & 0xFFFFFF) << 8) | 0xFF
+      L[key] = (v ~= def) and v or nil
+      if key == "dim" then COLOR_DIM = L.dim or UI.DEFAULT_DIM end
+      view_dirty = true
+    end
+    hover_tip(tip)
+    reset_menu(key, function()
+      L[key] = nil
+      if key == "dim" then COLOR_DIM = UI.DEFAULT_DIM end
+    end)
+  end
+  ImGui.SeparatorText(ctx, "Colors")
+  if ImGui.BeginTable(ctx, "lookcolors", 2) then
+    ImGui.TableNextRow(ctx); ImGui.TableNextColumn(ctx)
+    color_row("Title", "title", UI.DEFAULT_TEXT, "The big \"Wwise Tool\" and \"Settings\" titles")
+    ImGui.TableNextColumn(ctx)
+    color_row("Text", "text", UI.DEFAULT_TEXT)
+    ImGui.TableNextRow(ctx); ImGui.TableNextColumn(ctx)
+    color_row("Dim text", "dim", UI.DEFAULT_DIM, "Help text, hints and \"Auto\" values")
+    ImGui.TableNextColumn(ctx)
+    color_row("Window background", "bg", UI.DEFAULT_BG)
+    ImGui.TableNextRow(ctx); ImGui.TableNextColumn(ctx)
+    color_row("Window outline", "outline", UI.DEFAULT_OUTLINE, "The thin line around the window (while it's floating)")
+    ImGui.EndTable(ctx)
+  end
+  ImGui.Dummy(ctx, 0, 6)
+
+  ImGui.SeparatorText(ctx, "Corners")
+  local c, v
+  ImGui.SetNextItemWidth(ctx, 200)
+  c, v = ImGui.SliderInt(ctx, "Window corners", L.win_round, 0, 20, "%d px")
+  if c then L.win_round = v; UI.WINDOW_ROUNDING = v end
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  hover_tip()
+  reset_menu("win_round", function() L.win_round = D.win_round; UI.WINDOW_ROUNDING = D.win_round end)
+  ImGui.SetNextItemWidth(ctx, 200)
+  c, v = ImGui.SliderInt(ctx, "Buttons, fields and panels", L.frame_round, 0, 10, "%d px")
+  if c then L.frame_round = v; UI.FRAME_ROUNDING = v; UI.TABLE_ROUNDING = v + 1 end
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  hover_tip()
+  reset_menu("frame_round", function()
+    L.frame_round = D.frame_round; UI.FRAME_ROUNDING = D.frame_round; UI.TABLE_ROUNDING = D.frame_round + 1
+  end)
+  ImGui.Dummy(ctx, 0, 6)
+
+  ImGui.SeparatorText(ctx, "Font")
+  local fonts = {}
+  for i, n in ipairs(UI.FONT_CHOICES) do fonts[i] = n end
+  c, v = combo("Font##lookfont", fonts, L.font, 200)
+  if c then L.font = v; save_view() end
+  hover_tip()
+  reset_menu("font", function() L.font = D.font end)
+  ImGui.SetNextItemWidth(ctx, 200)
+  c, v = ImGui.SliderInt(ctx, "Text size", L.size, 9, 18, "%d px")
+  if c then L.size = v end
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  hover_tip()
+  reset_menu("size", function() L.size = D.size end)
+  ImGui.SetNextItemWidth(ctx, 200)
+  c, v = ImGui.SliderInt(ctx, "Heading size", L.head, 10, 24, "%d px")
+  if c then L.head = v end
+  if ImGui.IsItemDeactivatedAfterEdit(ctx) then save_view() end
+  hover_tip("Section headings. The window title is 1px bigger.")
+  reset_menu("head", function() L.head = D.head end)
+  if L.font ~= UI.FONT or L.size ~= UI.FONT_SIZE or L.head ~= UI.SECTION_FONT_SIZE then
+    ImGui.TextColored(ctx, 0xF4D35EFF, "Close and reopen Wwise Tool to see the new font.")
+  else
+    dim_label("Font changes show the next time you open Wwise Tool.")
+  end
+  ImGui.Dummy(ctx, 0, 6)
+  if ImGui.Button(ctx, "Reset appearance") then
+    UI.read_look({})
+    COLOR_DIM = UI.DEFAULT_DIM
+    UI.WINDOW_ROUNDING, UI.FRAME_ROUNDING = UI.look.win_round, UI.look.frame_round
+    UI.TABLE_ROUNDING = UI.FRAME_ROUNDING + 1
+    save_view()
+  end
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Back to Verdana 12, the default colors and corners") end
   if view_dirty and not ImGui.IsAnyItemActive(ctx) then save_view(); view_dirty = false end
 end
 
@@ -1914,35 +2160,79 @@ local SETTINGS_TABS = {
   { "Transfer", settings_transfer },
   { "Stream & loop", settings_streaming },
   { "Interface", settings_interface },
+  { "Appearance", settings_appearance },
   { "Configuration", settings_configuration },
   { "Diagnostics", settings_diagnostics },
 }
 
--- New ID (title still reads "Settings") so the old auto-sized window's saved size
--- doesn't carry over to the tabbed one.
-local SETTINGS_ID = "Settings##tabbed"
+-- Settings is a normal window (not a modal popup), so the main window doesn't grey out and
+-- stays usable while it's open. Pages are listed down the left side; the selected page's
+-- contents sit on the right and scroll when they don't fit; the footer stays put.
+-- New ID (title still reads "Settings") so the old popup's saved size doesn't carry over.
+local SETTINGS_ID = "Settings##settingswin"
+UI.settings_open, UI.settings_page = false, 1
 
-local function settings_popup()
-  if open_settings then ImGui.OpenPopup(ctx, SETTINGS_ID); open_settings = false end
-  ImGui.SetNextWindowSize(ctx, 560, 440, ImGui.Cond_FirstUseEver)
-  ImGui.SetNextWindowSizeConstraints(ctx, 420, 300, 2000, 2000)
-  if not ImGui.BeginPopupModal(ctx, SETTINGS_ID) then return end
+local function settings_window()
+  if open_settings then
+    open_settings = false
+    UI.settings_open = true
+    ImGui.SetNextWindowFocus(ctx) -- clicking the gear again brings it to the front
+  end
+  if not UI.settings_open then return end
+  ImGui.SetNextWindowSize(ctx, 720, 460, ImGui.Cond_FirstUseEver)
+  ImGui.SetNextWindowSizeConstraints(ctx, 520, 300, 3000, 3000)
+  -- Same look as the main window when floating: big rounded corners, one solid #191919 shape
+  -- with a thin border (painted by us right after Begin), a taller title bar with a big
+  -- "Settings" title and the same close X. Solid, whatever the main window's opacity.
+  -- Docked: ImGui's own background and title tab, with its normal X.
+  local own_bg = not UI.settings_docked
+  ImGui.SetNextWindowBgAlpha(ctx, own_bg and 0 or 1)
+  local bg_rgba = (UI.bg_rgb() << 8) | 0xFF
+  local title_bg = own_bg and (bg_rgba & 0xFFFFFF00) or bg_rgba
+  ImGui.PushStyleColor(ctx, ImGui.Col_WindowBg, bg_rgba)
+  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, title_bg)
+  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
+  ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
+  local col_n = 4
+  if own_bg then ImGui.PushStyleColor(ctx, ImGui.Col_Text, 0x00000000); col_n = 5 end -- title drawn by us
+  local fp_x, fp_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FramePadding, fp_x, math.max(fp_y, (title_bar_size() - ImGui.GetFontSize(ctx)) / 2))
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowRounding, UI.WINDOW_ROUNDING)
+  local visible, open = ImGui.Begin(ctx, SETTINGS_ID, (not own_bg) and true or nil, ImGui.WindowFlags_NoCollapse)
+  ImGui.PopStyleVar(ctx, 2)
+  ImGui.PopStyleColor(ctx, col_n)
+  if open == false then UI.settings_open = false end
+  if not visible then return end
+  UI.settings_docked = ImGui.IsWindowDocked(ctx)
+  local wx, wy = ImGui.GetWindowPos(ctx)
+  local ww, wh = ImGui.GetWindowSize(ctx)
+  if own_bg then
+    local dl = ImGui.GetWindowDrawList(ctx)
+    ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + wh, false)
+    ImGui.DrawList_AddRectFilled(dl, wx, wy, wx + ww, wy + wh, bg_rgba, UI.WINDOW_ROUNDING)
+    ImGui.DrawList_AddRect(dl, wx + 0.5, wy + 0.5, wx + ww - 0.5, wy + wh - 0.5, UI.look.outline or UI.DEFAULT_OUTLINE, UI.WINDOW_ROUNDING, 0, 1)
+    ImGui.PopClipRect(ctx)
+  end
+  local round_n = UI.push_rounding()
 
-  -- Fixed-size window: switching tabs doesn't make it jump around. The tab's
-  -- contents scroll when they don't fit; the footer stays put.
   local footer_h = ImGui.GetFrameHeightWithSpacing(ctx) + 8
-  if ImGui.BeginTabBar(ctx, "settingstabs") then
-    for _, t in ipairs(SETTINGS_TABS) do
-      if ImGui.BeginTabItem(ctx, t[1]) then
-        if ImGui.BeginChild(ctx, "##settings_" .. t[1], 0, -footer_h) then
-          ImGui.Dummy(ctx, 0, 2)
-          t[2]()
-          ImGui.EndChild(ctx)
-        end
-        ImGui.EndTabItem(ctx)
-      end
+  -- Left: the page list, as wide as its longest name.
+  local pad_x = ImGui.GetStyleVar(ctx, ImGui.StyleVar_WindowPadding)
+  local side_w = 0
+  for _, t in ipairs(SETTINGS_TABS) do side_w = math.max(side_w, (ImGui.CalcTextSize(ctx, t[1]))) end
+  side_w = math.floor(side_w + pad_x * 2 + 16)
+  if ImGui.BeginChild(ctx, "##settings_nav", side_w, -footer_h, ImGui.ChildFlags_Border) then
+    for i, t in ipairs(SETTINGS_TABS) do
+      if ImGui.Selectable(ctx, t[1] .. "##sp" .. i, UI.settings_page == i) then UI.settings_page = i end
     end
-    ImGui.EndTabBar(ctx)
+    ImGui.EndChild(ctx)
+  end
+  ImGui.SameLine(ctx)
+  -- Right: the selected page. Each page has its own child, so each keeps its own scroll position.
+  local page = SETTINGS_TABS[UI.settings_page] or SETTINGS_TABS[1]
+  if ImGui.BeginChild(ctx, "##settings_" .. page[1], 0, -footer_h) then
+    page[2]()
+    ImGui.EndChild(ctx)
   end
 
   ImGui.Separator(ctx)
@@ -1951,8 +2241,27 @@ local function settings_popup()
   local w = 80
   local avail = ImGui.GetContentRegionAvail(ctx)
   if avail > w then ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + avail - w) end
-  if ImGui.Button(ctx, "Close", w) or ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then ImGui.CloseCurrentPopup(ctx) end
-  ImGui.EndPopup(ctx)
+  local esc = ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows)
+    and not ImGui.IsAnyItemActive(ctx) and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape)
+  if ImGui.Button(ctx, "Close", w) or esc then UI.settings_open = false end
+  if own_bg then
+    -- Title bar: big "Settings" on the left, the close X in the top-right corner (same size and
+    -- margins as the main window's). Last item in the window; the cursor isn't moved back.
+    local size, m = close_size(), close_margin()
+    local gap = math.floor(m * 0.6 + 0.5)
+    ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + title_bar_size(), false)
+    ImGui.SetCursorScreenPos(ctx, wx + ww - size - m - gap, wy + m)
+    if close_button("##closesettings", size) then UI.settings_open = false end
+    if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Close Settings") end
+    local big = title_font and pcall(ImGui.PushFont, ctx, title_font)
+    local _, th = ImGui.CalcTextSize(ctx, "Settings")
+    UI.draw_title(ImGui.GetWindowDrawList(ctx), wx + m + 12, wy + m + (size - th) / 2 + 3,
+      UI.look.title or ImGui.GetColor(ctx, ImGui.Col_Text), "Settings")
+    if big then ImGui.PopFont(ctx) end
+    ImGui.PopClipRect(ctx)
+  end
+  if round_n > 0 then ImGui.PopStyleVar(ctx, round_n) end
+  ImGui.End(ctx)
 end
 
 ----------------------------------------------------------------------
@@ -2040,8 +2349,13 @@ for _, t in ipairs(GREY_THEME) do t[1] = imgui_const(table.unpack(t[1])) end
 local function push_grey_theme()
   local n = 0
   for _, t in ipairs(GREY_THEME) do
-    if t[1] then ImGui.PushStyleColor(ctx, t[1], t[2]); n = n + 1 end
+    if t[1] then
+      ImGui.PushStyleColor(ctx, t[1], t[1] == ImGui.Col_WindowBg and ((UI.bg_rgb() << 8) | 0xFF) or t[2]); n = n + 1
+    end
   end
+  -- Text colors from Settings > Appearance, when changed from the defaults.
+  if UI.look.text then ImGui.PushStyleColor(ctx, ImGui.Col_Text, UI.look.text); n = n + 1 end
+  if UI.look.dim then ImGui.PushStyleColor(ctx, ImGui.Col_TextDisabled, UI.look.dim); n = n + 1 end
   return n
 end
 
@@ -2064,6 +2378,10 @@ apply_imported_config = function(cfg)
   if cfg.view then
     view.hidden, view.colors = {}, {}
     read_view(cfg.view)
+    -- Appearance from the file: colors and corners apply now, the font when the window reopens.
+    COLOR_DIM = UI.look.dim or UI.DEFAULT_DIM
+    UI.WINDOW_ROUNDING, UI.FRAME_ROUNDING = UI.look.win_round, UI.look.frame_round
+    UI.TABLE_ROUNDING = UI.FRAME_ROUNDING + 1
     save_view()
   end
   tabs = cfg.tabs
@@ -2205,9 +2523,12 @@ local function section_tabs()
       end
       ImGui.PopStyleColor(ctx, 3)
       if not can_close then ImGui.EndDisabled(ctx) end
-      if not tab.color then ImGui.BeginDisabled(ctx) end
+      -- Decide once: clicking Reset clears tab.color, and re-checking it for EndDisabled would
+      -- end a Disabled block that was never begun (ImGui error, script stops).
+      local no_color = not tab.color
+      if no_color then ImGui.BeginDisabled(ctx) end
       if ImGui.Button(ctx, "Reset color") then tab.color = nil; settings_changed() end
-      if not tab.color then ImGui.EndDisabled(ctx) end
+      if no_color then ImGui.EndDisabled(ctx) end
       ImGui.SameLine(ctx)
       if ImGui.Button(ctx, "Duplicate") then
         add_tab(i, i + 1, new_tab_name(tab.name .. " copy")); ImGui.CloseCurrentPopup(ctx)
@@ -2328,6 +2649,9 @@ loop_body = function()
   elseif pk_pin then
     ImGui.SetNextWindowPos(ctx, pk_pin[1], pk_pin[2], ImGui.Cond_Always)
   end
+  -- Verdana for both windows (title bars included). Pushed before Begin, popped after the
+  -- last End, so it's never left on a window's stack.
+  local main_font = UI.main_font and pcall(ImGui.PushFont, ctx, UI.main_font)
   -- No collapsing (WindowFlags_NoCollapse), so double-clicking the title bar does nothing.
   -- Older versions could leave the window collapsed (saved by ImGui); always open it.
   ImGui.SetNextWindowCollapsed(ctx, false, ImGui.Cond_Always)
@@ -2337,14 +2661,19 @@ loop_body = function()
   -- anti-aliased edges meet in a faint see-through line; with one shape there's no seam. So
   -- ImGui's own title bar and body backgrounds are made fully transparent. Docked: ImGui's own.
   local own_bg = not main_win_docked
-  local bg_col = 0x19191900 | math.floor(view.opacity * 255 + 0.5) -- #191919 at the window opacity
+  local bg_col = (UI.bg_rgb() << 8) | math.floor(view.opacity * 255 + 0.5) -- background at the window opacity
   ImGui.SetNextWindowBgAlpha(ctx, own_bg and 0 or view.opacity)
   ImGui.PushStyleColor(ctx, ImGui.Col_PopupBg, 0x202020FF) -- solid popups and Settings/summary windows
-  local title_bg = own_bg and 0x19191900 or bg_col
+  local title_bg = own_bg and (UI.bg_rgb() << 8) or bg_col
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBg, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgActive, title_bg)
   ImGui.PushStyleColor(ctx, ImGui.Col_TitleBgCollapsed, title_bg)
   local theme_n = push_grey_theme()
+  -- Checkbox ticks (and radio dots) take the showing tab's color, when it has one.
+  do
+    local at = tabs.list[tabs.active]
+    if at and at.color then ImGui.PushStyleColor(ctx, ImGui.Col_CheckMark, (at.color << 8) | 0xFF); theme_n = theme_n + 1 end
+  end
   -- No p_open: ImGui's small title-bar X is replaced by our big X in the same corner, and the
   -- title bar is made taller to fit it. When docked there's no title bar, so the dock tab gets
   -- ImGui's normal X instead (main_win_docked is from the last frame).
@@ -2368,6 +2697,7 @@ loop_body = function()
   if hide_title then ImGui.PopStyleColor(ctx) end
   ImGui.PopStyleVar(ctx, 2)
   if open == nil then open = true end
+  local round_n = visible and UI.push_rounding() or 0
   if visible and own_bg then
     -- One rounded rectangle for the whole window, then the solid border on top of it.
     local wx, wy = ImGui.GetWindowPos(ctx)
@@ -2375,7 +2705,7 @@ loop_body = function()
     local dl = ImGui.GetWindowDrawList(ctx)
     ImGui.PushClipRect(ctx, wx, wy, wx + ww, wy + wh, false)
     ImGui.DrawList_AddRectFilled(dl, wx, wy, wx + ww, wy + wh, bg_col, UI.WINDOW_ROUNDING)
-    ImGui.DrawList_AddRect(dl, wx + 0.5, wy + 0.5, wx + ww - 0.5, wy + wh - 0.5, 0x2E2E2EFF, UI.WINDOW_ROUNDING, 0, 1)
+    ImGui.DrawList_AddRect(dl, wx + 0.5, wy + 0.5, wx + ww - 0.5, wy + wh - 0.5, UI.look.outline or UI.DEFAULT_OUTLINE, UI.WINDOW_ROUNDING, 0, 1)
     ImGui.PopClipRect(ctx)
   end
   if visible then
@@ -2397,30 +2727,36 @@ loop_body = function()
     -- Layout: setup on the left, preview + transfer on the right.
     local avail_w = ImGui.GetContentRegionAvail(ctx)
     local left_w = math.floor(math.max(340, math.min(440, avail_w * 0.42)))
-    -- Leave room under both columns for the Transfer bar along the bottom.
+    -- Left column: setup panel with the Transfer button under it. The preview on the right runs
+    -- all the way down, so its bottom lines up with the button's.
     local _, sp_y = ImGui.GetStyleVar(ctx, ImGui.StyleVar_ItemSpacing)
     -- Just the button plus one item spacing, so the button's bottom edge sits at the window
     -- padding, the same distance from the bottom as from the left.
     local footer_h = UI.TRANSFER_H + sp_y
+    ImGui.BeginGroup(ctx)
     if ImGui.BeginChild(ctx, "setup", left_w, -footer_h, ImGui.ChildFlags_Border) then
       section_source()
       section_destination()
       section_hierarchy()
       ImGui.EndChild(ctx)
     end
+    section_transfer(left_w) -- as wide as the left panel
+    ImGui.EndGroup(ctx)
     ImGui.SameLine(ctx)
-    if ImGui.BeginChild(ctx, "previewpane", 0, -footer_h) then
+    if ImGui.BeginChild(ctx, "previewpane", 0, 0) then
       section_preview()
       ImGui.EndChild(ctx)
     end
-    section_transfer(left_w) -- as wide as the left panel
     summary_popup()
-    settings_popup()
     if not main_win_docked then title_close_button() end
+    if round_n > 0 then ImGui.PopStyleVar(ctx, round_n) end
     ImGui.End(ctx)
   end
+  -- Its own window, drawn after the main one ends, inside the same theme and rounding pushes.
+  settings_window()
   ImGui.PopStyleVar(ctx, 3)
   ImGui.PopStyleColor(ctx, 4 + theme_n)
+  if main_font then ImGui.PopFont(ctx) end
   if close_clicked then open = false end
   return open
 end
